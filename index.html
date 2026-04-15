@@ -48,6 +48,8 @@ input[type=date]:focus{border-color:var(--accent)}
 .fbtn-apply{background:var(--accent);color:#fff}
 .fbtn-pre{background:var(--s3);color:var(--dim);border:1px solid var(--border)}
 .fbtn-pre:hover{color:var(--text);border-color:var(--accent)}
+.tpl-var{font-size:11px;background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:2px 8px;cursor:pointer;font-family:'JetBrains Mono',monospace;transition:background .15s,border-color .15s}
+.tpl-var:hover{background:rgba(91,79,207,.1);border-color:var(--accent);color:var(--accent)}
 .presets{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 /* 커스텀 툴팁 */
 .has-tip{position:relative}
@@ -201,6 +203,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     <button class="raw-btn" onclick="exportArchiveJSON()" style="border-color:var(--orange);color:var(--orange)">📤 아카이브 백업</button>
     <button class="raw-btn" onclick="downloadArchiveXLSX()" style="border-color:var(--accent);color:var(--accent)">📥 아카이브 체크</button>
     <button class="raw-btn" onclick="sendSlackReport()" style="border-color:#e01e5a;color:#e01e5a;font-weight:700">📤 슬랙 리포트</button>
+    <button class="raw-btn" onclick="openSlackEditor()" style="border-color:#e01e5a;color:#e01e5a">✏️ 메시지 편집</button>
     <div class="live-chip"><div class="live-dot"></div>LIVE</div>
     <div id="hdr-clock" style="font-size:10px;color:var(--dim);font-family:'JetBrains Mono',monospace;text-align:right"></div>
     <div class="hdr-status" id="hdrStatus">최종 업데이트: --/--</div>
@@ -2600,14 +2603,42 @@ function exportArchiveJSON() {
 
 
 // ══════════════════════════════════════════
-// 슬랙 리포트 전송
+// 슬랙 리포트 전송 (템플릿 기반)
 // ══════════════════════════════════════════
 var SLACK_WEBHOOK = 'https://tomtomi-slack-relay.vercel.app/api/slack';
 
-function sendSlackReport(){
-  if(!confirm('현재 필터 기간의 리포트를 슬랙으로 보낼까요?')) return;
+var DEFAULT_SLACK_TEMPLATE = '📊 *톰토미 마케팅 {기간}*\n\n*💰 매출*\n▸ 네이버 {네이버매출}원 (결제 {네이버건수}건) / 쿠팡 {쿠팡매출}원 (입고 기준)\n\n*📣 광고*\n▸ 네이버SA {네이버SA비용} → ROAS {네이버SA_ROAS} / 쿠팡 {쿠팡광고비} → ROAS {쿠팡_ROAS} / 메타 {메타광고비} (CTR {메타CTR})\n💡 총 광고비 {총광고비} / 총 매출 {총매출} - ROAS {총ROAS}\n\n{TOP3}';
 
-  // 1. 매출 집계
+function getSlackTemplate(){
+  try { return localStorage.getItem('tomtomi_slack_tpl') || DEFAULT_SLACK_TEMPLATE; }
+  catch(e){ return DEFAULT_SLACK_TEMPLATE; }
+}
+function saveSlackTemplate(){
+  var tpl = document.getElementById('slackTemplate').value;
+  try { localStorage.setItem('tomtomi_slack_tpl', tpl); } catch(e){}
+  showSaveToast('💾 슬랙 템플릿 저장 완료!');
+}
+function resetSlackTemplate(){
+  if(!confirm('기본 템플릿으로 복원할까요?')) return;
+  document.getElementById('slackTemplate').value = DEFAULT_SLACK_TEMPLATE;
+  try { localStorage.removeItem('tomtomi_slack_tpl'); } catch(e){}
+  showSaveToast('🔄 기본 템플릿으로 복원!');
+}
+function openSlackEditor(){
+  document.getElementById('slackTemplate').value = getSlackTemplate();
+  document.getElementById('slackPreviewArea').style.display = 'none';
+  document.getElementById('slackEditorModal').style.display = 'flex';
+}
+function insertVar(v){
+  var ta = document.getElementById('slackTemplate');
+  var start = ta.selectionStart, end = ta.selectionEnd;
+  var text = ta.value;
+  ta.value = text.substring(0, start) + v + text.substring(end);
+  ta.selectionStart = ta.selectionEnd = start + v.length;
+  ta.focus();
+}
+
+function _collectSlackData(){
   var navRev=0, navOrders=0, cpRev=0;
   var nvDayMap={};
   DB.naver.forEach(function(e){
@@ -2623,25 +2654,20 @@ function sendSlackReport(){
     cpRev += (typeof e.a==='string'?Number(e.a.replace(/,/g,''))||0:Number(e.a)||0);
   });
 
-  // 2. 광고 집계
   var nvAdCost=0, nvAdRev=0, cpAdCost=0, cpAdRev=0;
   var metaAdCost=0, metaClicks=0, metaImp=0;
-
   DB.naverAd.forEach(function(e){ if(!inRange(e.d||''))return; nvAdCost+=e.cost||0; nvAdRev+=e.rev||0; });
-
   DB.coupAd.forEach(function(e){ if(!inRange(e.d||''))return; cpAdCost+=e.cost||0; });
   if(DB.coupAdRaw && DB.coupAdRaw.length>0){
     DB.coupAdRaw.forEach(function(e){ if(!inRange(e.d||''))return; cpAdRev+=e.rev||0; });
   } else {
     DB.coupAd.forEach(function(e){ if(!inRange(e.d||''))return; cpAdRev+=e.rev||0; });
   }
-
   DB.metaAd.forEach(function(e){
     if(!inRange(e.d||''))return;
     metaAdCost+=e.cost||0; metaClicks+=e.clicks||0; metaImp+=e.imp||0;
   });
 
-  // 3. 인기상품 TOP3 (네이버 상품성과 + 쿠팡 입고)
   var prodMap={};
   DB.naverProd.forEach(function(e){
     var ds=e.d||e.date||''; if(!inRange(ds)) return;
@@ -2665,44 +2691,70 @@ function sendSlackReport(){
   });
   var topProducts=Object.values(prodMap).sort(function(a,b){return b.rev-a.rev;}).slice(0,3);
 
-  // 4. 메시지 조합
   var fromD=filterFrom, toD=filterTo;
   var days=['일','월','화','수','목','금','토'];
   var dateDisplay=(fromD.getMonth()+1)+'/'+fromD.getDate();
   var dayLabel=days[fromD.getDay()];
   var isSingleDay=(toDateStr(fromD)===toDateStr(toD));
-
-  var msg='📊 *톰토미 마케팅 ';
-  if(isSingleDay){
-    msg+='일일리포트 ('+dateDisplay+' '+dayLabel+')*\n\n';
-  } else {
-    var toDisplay=(toD.getMonth()+1)+'/'+toD.getDate();
-    msg+='리포트 ('+dateDisplay+' ~ '+toDisplay+')*\n\n';
-  }
-
-  msg+='*💰 매출*\n';
-  msg+='▸ 네이버 '+fmtW(navRev)+'원 (결제 '+Math.round(navOrders)+'건) / 쿠팡 '+fmtW(cpRev)+'원 (입고 기준)\n';
-  msg+='*📣 광고*\n';
-  var fmtRoasS=function(cost,rev){return cost>0?Math.round(rev/cost*100)+'%':'—';};
-  var fmtCtrS=function(cl,im){return im>0?(cl/im*100).toFixed(1)+'%':'—';};
-  msg+='▸ 네이버SA '+fmtW(nvAdCost)+' → ROAS '+fmtRoasS(nvAdCost,nvAdRev)+' / ';
-  msg+='쿠팡 '+fmtW(cpAdCost)+' → ROAS '+fmtRoasS(cpAdCost,cpAdRev)+' / ';
-  msg+='메타 '+fmtW(metaAdCost)+' (CTR '+fmtCtrS(metaClicks,metaImp)+')\n';
+  var toDisplay=(toD.getMonth()+1)+'/'+toD.getDate();
 
   var totalAdCost=nvAdCost+cpAdCost+metaAdCost;
   var totalRev=navRev+cpRev;
   var totalAdRev=nvAdRev+cpAdRev;
-  var totalRoasPct=totalAdCost>0?Math.round(totalAdRev/totalAdCost*100):0;
-  msg+='💡 총 광고비 '+fmtW(totalAdCost)+' / 총 매출 '+fmtW(totalRev)+' - ROAS '+totalRoasPct+'%\n';
+  var fmtRoasS=function(cost,rev){return cost>0?Math.round(rev/cost*100)+'%':'—';};
+  var fmtCtrS=function(cl,im){return im>0?(cl/im*100).toFixed(1)+'%':'—';};
 
+  var top3Str='';
   if(topProducts.length>0){
-    msg+='\n*[고매출 상품 TOP3]*\n';
+    top3Str='*[고매출 상품 TOP3]*\n';
     topProducts.forEach(function(p,i){
-      msg+=(i+1)+'. '+p.name+' — '+fmtW(p.rev)+'원 ('+p.platform+')\n';
+      top3Str+=(i+1)+'. '+p.name+' — '+fmtW(p.rev)+'원 ('+p.platform+')\n';
     });
   }
 
-  // 5. 슬랙 전송
+  var periodStr = isSingleDay ? '일일리포트 ('+dateDisplay+' '+dayLabel+')' : '리포트 ('+dateDisplay+' ~ '+toDisplay+')';
+
+  return {
+    '{날짜}': dateDisplay,
+    '{요일}': dayLabel,
+    '{기간}': periodStr,
+    '{네이버매출}': fmtW(navRev),
+    '{네이버건수}': Math.round(navOrders)+'',
+    '{쿠팡매출}': fmtW(cpRev),
+    '{총매출}': fmtW(totalRev),
+    '{네이버SA비용}': fmtW(nvAdCost),
+    '{네이버SA_ROAS}': fmtRoasS(nvAdCost,nvAdRev),
+    '{쿠팡광고비}': fmtW(cpAdCost),
+    '{쿠팡_ROAS}': fmtRoasS(cpAdCost,cpAdRev),
+    '{메타광고비}': fmtW(metaAdCost),
+    '{메타CTR}': fmtCtrS(metaClicks,metaImp),
+    '{총광고비}': fmtW(totalAdCost),
+    '{총ROAS}': totalAdCost>0?Math.round(totalAdRev/totalAdCost*100)+'%':'—',
+    '{TOP3}': top3Str
+  };
+}
+
+function _applyTemplate(tpl, data){
+  var msg = tpl;
+  Object.keys(data).forEach(function(k){ msg = msg.split(k).join(data[k]); });
+  return msg;
+}
+
+function previewSlackMsg(){
+  var tpl = document.getElementById('slackTemplate').value;
+  var data = _collectSlackData();
+  var preview = _applyTemplate(tpl, data);
+  var el = document.getElementById('slackPreviewArea');
+  el.textContent = preview;
+  el.style.display = 'block';
+}
+
+function sendSlackReport(){
+  if(!confirm('현재 필터 기간의 리포트를 슬랙으로 보낼까요?')) return;
+  var tpl = getSlackTemplate();
+  var data = _collectSlackData();
+  var msg = _applyTemplate(tpl, data);
+
   fetch(SLACK_WEBHOOK,{
     method:'POST',
     headers:{'Content-Type':'application/json'},
@@ -2847,6 +2899,42 @@ function loadOtherFromGSheet(){
     </div>
     <input type="file" id="archiveInput" accept=".json" style="display:none" onchange="handleArchiveFile(this.files[0])">
     <button onclick="document.getElementById('archiveModal').style.display='none'" style="margin-top:16px;padding:8px 24px;border:1px solid var(--border);background:var(--s2);border-radius:8px;cursor:pointer;font-size:13px">닫기</button>
+  </div>
+</div>
+
+<!-- Slack Template Editor Modal -->
+<div id="slackEditorModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--bg);border-radius:16px;padding:32px;max-width:640px;width:95%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h3 style="font-size:18px;font-weight:700">✏️ 슬랙 메시지 템플릿 편집</h3>
+      <button onclick="document.getElementById('slackEditorModal').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--dim)">✕</button>
+    </div>
+    <p style="font-size:12px;color:var(--dim);margin-bottom:12px">중괄호 변수를 클릭하면 커서 위치에 삽입됩니다. 슬랙 볼드: <code>*텍스트*</code></p>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+      <span class="tpl-var" onclick="insertVar('{날짜}')">{날짜}</span>
+      <span class="tpl-var" onclick="insertVar('{요일}')">{요일}</span>
+      <span class="tpl-var" onclick="insertVar('{기간}')">{기간}</span>
+      <span class="tpl-var" onclick="insertVar('{네이버매출}')">{네이버매출}</span>
+      <span class="tpl-var" onclick="insertVar('{네이버건수}')">{네이버건수}</span>
+      <span class="tpl-var" onclick="insertVar('{쿠팡매출}')">{쿠팡매출}</span>
+      <span class="tpl-var" onclick="insertVar('{총매출}')">{총매출}</span>
+      <span class="tpl-var" onclick="insertVar('{네이버SA비용}')">{네이버SA비용}</span>
+      <span class="tpl-var" onclick="insertVar('{네이버SA_ROAS}')">{네이버SA_ROAS}</span>
+      <span class="tpl-var" onclick="insertVar('{쿠팡광고비}')">{쿠팡광고비}</span>
+      <span class="tpl-var" onclick="insertVar('{쿠팡_ROAS}')">{쿠팡_ROAS}</span>
+      <span class="tpl-var" onclick="insertVar('{메타광고비}')">{메타광고비}</span>
+      <span class="tpl-var" onclick="insertVar('{메타CTR}')">{메타CTR}</span>
+      <span class="tpl-var" onclick="insertVar('{총광고비}')">{총광고비}</span>
+      <span class="tpl-var" onclick="insertVar('{총ROAS}')">{총ROAS}</span>
+      <span class="tpl-var" onclick="insertVar('{TOP3}')">{TOP3}</span>
+    </div>
+    <textarea id="slackTemplate" style="width:100%;height:280px;padding:14px;border:2px solid var(--border);border-radius:10px;font-family:'JetBrains Mono','Noto Sans KR',monospace;font-size:13px;line-height:1.7;background:var(--s1);color:var(--text);resize:vertical;outline:none;tab-size:2" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" spellcheck="false"></textarea>
+    <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap">
+      <button onclick="resetSlackTemplate()" style="padding:8px 16px;border:1px solid var(--border);background:var(--s2);border-radius:8px;cursor:pointer;font-size:13px;font-family:'Noto Sans KR',sans-serif">🔄 기본값 복원</button>
+      <button onclick="previewSlackMsg()" style="padding:8px 16px;border:1px solid var(--accent);background:rgba(91,79,207,.1);color:var(--accent);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:'Noto Sans KR',sans-serif">👁 미리보기</button>
+      <button onclick="saveSlackTemplate()" style="padding:8px 16px;border:none;background:var(--accent);color:#fff;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:'Noto Sans KR',sans-serif">💾 저장</button>
+    </div>
+    <div id="slackPreviewArea" style="display:none;margin-top:14px;padding:14px;background:#1a1a2e;color:#e0e0e0;border-radius:10px;font-size:13px;line-height:1.7;white-space:pre-wrap;font-family:'JetBrains Mono','Noto Sans KR',monospace;max-height:200px;overflow-y:auto"></div>
   </div>
 </div>
 
