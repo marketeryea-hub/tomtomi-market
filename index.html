@@ -557,7 +557,7 @@ function loadArchiveFromJSON(jsonObj) {
   showSaveToast('✅ 아카이브 로드 완료! (' + ARCHIVE.naver.length + '건)');
 }
 
-// Check if archive was previously cached in localStorage
+// Check if archive was previously cached in localStorage, then try auto-fetch
 (function _tryLoadCachedArchive() {
   try {
     var cached = localStorage.getItem('tomtomi_archive_cache');
@@ -570,12 +570,23 @@ function loadArchiveFromJSON(jsonObj) {
       }
     }
   } catch(e) { console.log('[Archive] No cache found'); }
-  // If no cache, show archive modal on load
-  setTimeout(function() {
-    if (!_archiveLoaded) {
-      document.getElementById('archiveModal').style.display = 'flex';
-    }
-  }, 500);
+  // Auto-fetch archive.json from same directory
+  fetch('archive.json')
+    .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function(jsonObj) {
+      if (jsonObj && jsonObj.ARCHIVE) {
+        loadArchiveFromJSON(jsonObj);
+        console.log('[Archive] Auto-loaded from archive.json');
+      }
+    })
+    .catch(function(e) {
+      console.log('[Archive] Auto-fetch failed, showing modal:', e);
+      setTimeout(function() {
+        if (!_archiveLoaded) {
+          document.getElementById('archiveModal').style.display = 'flex';
+        }
+      }, 500);
+    });
 })();
 
 
