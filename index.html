@@ -4,9 +4,10 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>톰토미 마케팅 대시보드 v4</title>
+<title>톰토미 마케팅 대시보드 v5</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
@@ -194,13 +195,12 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   <div class="logo" onclick="showSec('overview',document.querySelector('.nb'))" style="cursor:pointer">
     <div class="logo-icon">TT</div>
     <div>
-      <div class="logo-text">톰토미 마케팅 대시보드 <span style="font-size:11px;color:var(--accent);font-weight:400">v4</span></div>
-      <div class="logo-sub">네이버 · 쿠팡(입고기준) · 기타마켓 · 광고 ROI 통합</div>
+      <div class="logo-text">톰토미 마케팅 대시보드 <span style="font-size:11px;color:var(--accent);font-weight:400">v5</span></div>
+      <div class="logo-sub">네이버 · 쿠팡(입고기준) · 기타마켓 · 광고 ROI 통합 · Supabase 연동</div>
     </div>
   </div>
   <div class="hdr-r">
-    <button class="raw-btn" onclick="document.getElementById('archiveModal').style.display='flex'" style="border-color:var(--green);color:var(--green)">📦 아카이브 불러오기</button>
-    <button class="raw-btn" onclick="exportArchiveJSON()" style="border-color:var(--orange);color:var(--orange)">📤 아카이브 백업</button>
+    <div id="cloudStatus" style="font-size:11px;color:var(--dim);display:flex;align-items:center;gap:4px">☁️ 연결 중...</div>
     <button class="raw-btn" onclick="downloadArchiveXLSX()" style="border-color:var(--accent);color:var(--accent)">📥 아카이브 체크</button>
     <button class="raw-btn" onclick="sendSlackReport()" style="border-color:#e01e5a;color:#e01e5a;font-weight:700">📤 슬랙 리포트</button>
     <div class="live-chip"><div class="live-dot"></div>LIVE</div>
@@ -550,15 +550,100 @@ let COST_MAPS = { master: {}, naver: {}, coupang: {}, other: {} };
 let ARCHIVE = { naver: [], naverProd: [], coupStock: [], naverAd: [], coupAd: [], metaAd: [], other: [], roi: {} };
 let _archiveLoaded = false;
 
+// ══════════════════════════════════════════
+// SUPABASE 연동
+// ══════════════════════════════════════════
+const SUPABASE_URL = 'https://ctyhisrbisqaescnpxbx.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN0eWhpc3JiaXNxYWVzY25weGJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjU0NzIsImV4cCI6MjA5MTg0MTQ3Mn0.v4SuezDeg3n8PDkHID1UinvZTH1dGFmqSAmYqtD4R8c';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Supabase에서 전체 데이터 로드 → DB 객체에 채우기
+async function loadFromSupabase() {
+  const statusEl = document.getElementById('cloudStatus');
+  try {
+    console.log('[Supabase] 데이터 로드 시작...');
+    if (statusEl) statusEl.innerHTML = '☁️ 불러오는 중...';
+    let allRows = [];
+    let from = 0;
+    const PAGE = 1000;
+    while (true) {
+      const { data, error } = await supabase
+        .from('tomtomi_data')
+        .select('channel, date, data')
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      allRows = allRows.concat(data);
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    console.log('[Supabase] 로드 완료:', allRows.length + '일치 데이터');
+
+    const byChannel = {};
+    allRows.forEach(r => {
+      if (!byChannel[r.channel]) byChannel[r.channel] = [];
+      if (Array.isArray(r.data)) byChannel[r.channel].push(...r.data);
+    });
+    ['naver','naverProd','coupStock','naverAd','coupAd','metaAd'].forEach(k => {
+      if (byChannel[k]) {
+        DB[k] = byChannel[k];
+        ARCHIVE[k] = byChannel[k];
+      }
+    });
+    _archiveLoaded = true;
+    updateStatus();
+    renderAll();
+    if (statusEl) statusEl.innerHTML = '☁️ <span style="color:var(--green)">연결됨</span>';
+    return true;
+  } catch(e) {
+    console.error('[Supabase] 로드 실패:', e);
+    if (statusEl) statusEl.innerHTML = '☁️ <span style="color:var(--red)">연결 실패</span>';
+    alert('Supabase에서 데이터를 불러오지 못했습니다.\n네트워크를 확인해주세요.\n\n에러: ' + e.message);
+    return false;
+  }
+}
+
+// 특정 channel + date 배열을 Supabase에 저장 (upsert)
+async function saveToSupabase(channel, dateToRows) {
+  try {
+    const rows = Object.entries(dateToRows).map(([date, data]) => ({
+      channel: channel, date: date, data: data
+    }));
+    if (rows.length === 0) return true;
+    const { error } = await supabase
+      .from('tomtomi_data')
+      .upsert(rows, { onConflict: 'channel,date' });
+    if (error) throw error;
+    console.log('[Supabase] 저장 완료:', channel, rows.length + '일');
+    return true;
+  } catch(e) {
+    console.error('[Supabase] 저장 실패:', e);
+    showSaveToast('❌ Supabase 저장 실패: ' + e.message);
+    return false;
+  }
+}
+
+// 파싱된 배열을 날짜별로 묶어 Supabase에 저장
+async function syncChannelToSupabase(channel) {
+  const arr = DB[channel] || [];
+  const byDate = {};
+  arr.forEach(row => {
+    const d = row.d || row.date || '';
+    if (!d) return;
+    if (!byDate[d]) byDate[d] = [];
+    byDate[d].push(row);
+  });
+  return await saveToSupabase(channel, byDate);
+}
+
 function handleArchiveFile(file) {
+  // 레거시 호환용 — 수동 archive.json 드롭도 여전히 지원
   if (!file) return;
   var reader = new FileReader();
   reader.onload = function(e) {
     try {
       var jsonObj = JSON.parse(e.target.result);
       loadArchiveFromJSON(jsonObj);
-      // Cache in localStorage for next time
-      try { localStorage.setItem('tomtomi_archive_cache', e.target.result); } catch(ex) { console.log('[Archive] Cache too large for LS'); }
       document.getElementById('archiveModal').style.display = 'none';
     } catch(err) {
       alert('❌ JSON 파일을 읽을 수 없어요: ' + err.message);
@@ -592,36 +677,18 @@ function loadArchiveFromJSON(jsonObj) {
   showSaveToast('✅ 아카이브 로드 완료! (' + ARCHIVE.naver.length + '건)');
 }
 
-// Check if archive was previously cached in localStorage, then try auto-fetch
-(function _tryLoadCachedArchive() {
-  try {
-    var cached = localStorage.getItem('tomtomi_archive_cache');
-    if (cached) {
-      var parsed = JSON.parse(cached);
-      if (parsed && parsed.ARCHIVE) {
-        loadArchiveFromJSON(parsed);
-        console.log('[Archive] Loaded from localStorage cache');
-        return;
-      }
-    }
-  } catch(e) { console.log('[Archive] No cache found'); }
-  // Auto-fetch archive.json from same directory
-  fetch('archive.json')
-    .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(function(jsonObj) {
-      if (jsonObj && jsonObj.ARCHIVE) {
-        loadArchiveFromJSON(jsonObj);
-        console.log('[Archive] Auto-loaded from archive.json');
-      }
-    })
-    .catch(function(e) {
-      console.log('[Archive] Auto-fetch failed, showing modal:', e);
+// 페이지 로드 시 Supabase에서 전체 데이터 자동 로드
+(function _autoLoadFromSupabase() {
+  loadFromSupabase().then(function(ok) {
+    if (!ok) {
+      // Supabase 실패 시 수동 archive 업로드 모달 표시 (fallback)
       setTimeout(function() {
         if (!_archiveLoaded) {
           document.getElementById('archiveModal').style.display = 'flex';
         }
       }, 500);
-    });
+    }
+  });
 })();
 
 
@@ -1145,11 +1212,13 @@ function parseNaver(wb){
     var ex=DB.naverHourly.find(function(x){return x.h===h;});
     if(ex) ex.r+=kv[1]; else DB.naverHourly.push({h:h,r:kv[1]});
   });
-  // 중복 방지: 이미 DB에 있는 날짜(로우)는 건너뜀
-  var existRawDates={};
-  DB.naver.filter(function(e){return e.isArchive===false;}).forEach(function(e){existRawDates[e.d]=true;});
-  var entries=Object.values(dayMap).filter(function(e){return (e.r!==0||e.o>0)&&!existRawDates[e.d];});
-  if(entries.length>0){DB.naver.push.apply(DB.naver,entries);return true;}
+  // 새로 들어올 날짜들 수집
+  var newDates={};
+  Object.values(dayMap).forEach(function(e){ if(e.r!==0||e.o>0) newDates[e.d]=true; });
+  // 해당 날짜의 기존 DB 데이터 제거 (덮어쓰기)
+  DB.naver = DB.naver.filter(function(e){ return !newDates[e.d]; });
+  var entries=Object.values(dayMap).filter(function(e){return (e.r!==0||e.o>0);});
+  if(entries.length>0){DB.naver.push.apply(DB.naver,entries);entries.forEach(function(e){markTouched('naver',e.d);});return true;}
   if(Object.keys(dayMap).length>0) return true;
   return false;
 }
@@ -1182,16 +1251,14 @@ function parseNaverProd(wb, filename){
     if(m) fileDate=m[1];
   }
   // 중복 방지: 이미 DB에 있는 날짜는 스킵
-  var existProdDates={};
-  DB.naverProd.filter(function(e){return !e.isArchive;}).forEach(function(e){existProdDates[e.d||e.date]=true;});
   var ds = iDate>=0 ? null : fileDate; // 날짜 컬럼 있으면 행마다, 없으면 파일명에서
-  if(!iDate&&ds&&existProdDates[ds]) return true; // 이미 올라간 날짜
   var entries=[];
+  var touchedDates = {};
   for(var i=1;i<rows.length;i++){
     var r=rows[i];
     var rowDate = iDate>=0 ? normalizeDate(r[iDate]) : ds;
     if(!rowDate||rowDate<ARCHIVE_CUTOFF_STR) continue;
-    if(existProdDates[rowDate]) continue;
+    touchedDates[rowDate] = true;
     var name=String(r[iName]||'').replace(/\[.*?\]/g,'').trim();
     if(!name) continue;
     var prodId=String(r[iProdId]||'');
@@ -1225,7 +1292,11 @@ function parseNaverProd(wb, filename){
       margin:0, isArchive:false
     });
   }
-  if(entries.length>0){DB.naverProd.push.apply(DB.naverProd,entries);return true;}
+  // 해당 날짜의 기존 DB 데이터 제거 (덮어쓰기)
+  DB.naverProd = DB.naverProd.filter(function(e){ return !touchedDates[e.d||e.date]; });
+  if(entries.length>0){DB.naverProd.push.apply(DB.naverProd,entries);entries.forEach(function(e){markTouched('naverProd',e.d);});return true;}
+  // 파싱은 성공했지만 데이터 없음 (빈 날짜)
+  Object.keys(touchedDates).forEach(function(d){ markTouched('naverProd',d); });
   if(fileDate) return true;
   return false;
 }
@@ -1266,7 +1337,7 @@ function parseCoupStock(wb){
     if(ds<ARCHIVE_CUTOFF_STR) continue;
     // 중복 방지: 발주번호+SKU번호 기준 (날짜 무관, 계산서 업데이트 대응)
     var dupKey=String(r[iNo]||'')+'|'+String(r[iSkuNo]||'');
-    var existIdx=DB.coupStock.findIndex(function(e){return e.isArchive===false&&(e.no+'|'+e.skuNo)===dupKey;});
+    var existIdx=DB.coupStock.findIndex(function(e){return (e.no+'|'+e.skuNo)===dupKey;});
     if(existIdx>=0){
       // 계산서번호가 업데이트됐으면 덮어쓰기
       var inv=String(r[iInvoice]||'');
@@ -1287,7 +1358,7 @@ function parseCoupStock(wb){
       isArchive:false
     });
   }
-  if(entries.length>0) DB.coupStock.push.apply(DB.coupStock,entries);
+  if(entries.length>0){DB.coupStock.push.apply(DB.coupStock,entries);entries.forEach(function(e){markTouched('coupStock',e.d);});}
   return entries.length>0;
 }
 
@@ -1306,30 +1377,29 @@ function parseCoupAdProd(wb){
     if(c.includes('주문수')&&iConv<0) iConv=i;
   });
   if(iDate<0)iDate=0; if(iCost<0)iCost=10; if(iRev<0)iRev=12;
-  // 중복 방지
-  var existCA={};
-  DB.coupAd.filter(function(e){return e.isArchive===false;}).forEach(function(e){existCA[e.d]=true;});
-  var existCAR={};
-  DB.coupAdRaw.forEach(function(e){existCAR[e.d+'|'+(e.group||'')+'|'+(e.prod||'')]=true;});
+  // 이 파일에서 나올 날짜 미리 수집
+  var touchedCA = {};
+  for(var ri=1;ri<rows.length;ri++){
+    var ds0=normalizeDate(rows[ri][iDate]);
+    if(ds0&&ds0>=ARCHIVE_CUTOFF_STR) touchedCA[ds0]=true;
+  }
+  // 파싱 전에 해당 날짜의 기존 DB 데이터 제거 (덮어쓰기)
+  DB.coupAd = DB.coupAd.filter(function(e){ return !touchedCA[e.d]; });
+  DB.coupAdRaw = DB.coupAdRaw.filter(function(e){ return !touchedCA[e.d]; });
   var dayMap2={};
   for(var i=1;i<rows.length;i++){
     var r=rows[i];
     var ds=normalizeDate(r[iDate]);
     if(!ds||ds<ARCHIVE_CUTOFF_STR) continue;
-    if(existCA[ds]) continue;
     var cost=toNum(r[iCost]),rev=toNum(r[iRev]);
     if(!cost&&!rev) continue;
-    // 원본 행 저장
-    var carKey=ds+'|'+String(r[3]||'')+'|'+String(r[4]||'');
-    if(!existCAR[carKey]){
-      DB.coupAdRaw.push({
-        d:ds, campaign:String(r[1]||''), goal:String(r[2]||''),
-        group:String(r[3]||''), prod:String(r[4]||''), conv_prod:String(r[5]||''),
-        billing:String(r[6]||''), imp:toNum(r[7]), clicks:toNum(r[8]),
-        ctr:toNum(r[9]), cost:cost, conv:toNum(r[11]), rev:toNum(r[iRev]),
-        roas:toNum(r[13]), qty:toNum(r[14])
-      });
-    }
+    DB.coupAdRaw.push({
+      d:ds, campaign:String(r[1]||''), goal:String(r[2]||''),
+      group:String(r[3]||''), prod:String(r[4]||''), conv_prod:String(r[5]||''),
+      billing:String(r[6]||''), imp:toNum(r[7]), clicks:toNum(r[8]),
+      ctr:toNum(r[9]), cost:cost, conv:toNum(r[11]), rev:toNum(r[iRev]),
+      roas:toNum(r[13]), qty:toNum(r[14])
+    });
     if(!dayMap2[ds]) dayMap2[ds]={d:ds,cost:0,rev:0,clicks:0,imp:0,conv:0,isArchive:false};
     dayMap2[ds].cost+=cost;
     dayMap2[ds].rev+=rev;
@@ -1338,8 +1408,8 @@ function parseCoupAdProd(wb){
     if(iConv>=0)   dayMap2[ds].conv+=toNum(r[iConv]);
   }
   var entries=Object.values(dayMap2);
-  if(entries.length>0){DB.coupAd.push.apply(DB.coupAd,entries);return true;}
-  if(Object.keys(existCA).length>0) return true;
+  if(entries.length>0){DB.coupAd.push.apply(DB.coupAd,entries);entries.forEach(function(e){markTouched('coupAd',e.d);});return true;}
+  if(Object.keys(touchedCA).length>0){ Object.keys(touchedCA).forEach(function(d){markTouched('coupAd',d);}); return true; }
   return false;
 }
 function parseMetaAd(wb){
@@ -1369,32 +1439,31 @@ function parseMetaAd(wb){
     if(c==='보고 시작') iStart=i;
     if(c==='보고 종료') iEnd=i;
   });
-  // 중복 방지
-  var existMeta={};
-  DB.metaAd.filter(function(e){return e.isArchive===false;}).forEach(function(e){existMeta[e.d]=true;});
-  var existMetaR={};
-  DB.metaAdRaw.forEach(function(e){existMetaR[e.d+'|'+(e.setName||'')]=true;});
+  // 이 파일에서 나올 날짜 미리 수집
+  var touchedMeta = {};
+  for(var ri=1;ri<rows.length;ri++){
+    var ds0=normalizeDate(rows[ri][iDate]);
+    if(ds0&&ds0>=ARCHIVE_CUTOFF_STR) touchedMeta[ds0]=true;
+  }
+  // 파싱 전 해당 날짜 기존 데이터 제거
+  DB.metaAd = DB.metaAd.filter(function(e){ return !touchedMeta[e.d]; });
+  DB.metaAdRaw = DB.metaAdRaw.filter(function(e){ return !touchedMeta[e.d]; });
   var dayMap={};
   for(var i=1;i<rows.length;i++){
     var r=rows[i];
     var ds=normalizeDate(r[iDate]);
     if(!ds||ds<ARCHIVE_CUTOFF_STR) continue;
-    if(existMeta[ds]) continue;
     var cost=toNum(r[iCost]);
     if(!cost) continue;
-    // 원본 행 저장 (광고세트별)
-    var metaRKey=ds+'|'+String(r[iSet]||'');
-    if(!existMetaR[metaRKey]){
-      DB.metaAdRaw.push({
-        d:ds, setName:String(r[iSet]||''),
-        reach:toNum(r[iReach]), imp:toNum(r[iImp]), clicks:toNum(r[iClicks]),
-        ctr:toNum(r[iCtr]), resType:String(r[iResType]||''), resCost:toNum(r[iResCost]),
-        cost:cost, cpc:toNum(r[iCpc]), result:toNum(r[iResult]),
-        quality:String(r[iQuality]||''), engage:String(r[iEngage]||''),
-        conv:String(r[iConv]||''), insta:toNum(r[iInsta]),
-        start:String(r[iStart]||''), end:String(r[iEnd]||'')
-      });
-    }
+    DB.metaAdRaw.push({
+      d:ds, setName:String(r[iSet]||''),
+      reach:toNum(r[iReach]), imp:toNum(r[iImp]), clicks:toNum(r[iClicks]),
+      ctr:toNum(r[iCtr]), resType:String(r[iResType]||''), resCost:toNum(r[iResCost]),
+      cost:cost, cpc:toNum(r[iCpc]), result:toNum(r[iResult]),
+      quality:String(r[iQuality]||''), engage:String(r[iEngage]||''),
+      conv:String(r[iConv]||''), insta:toNum(r[iInsta]),
+      start:String(r[iStart]||''), end:String(r[iEnd]||'')
+    });
     if(!dayMap[ds]) dayMap[ds]={
       d:ds, setName:'', resType:'', resCost:0,
       cost:0, cpc:0, result:0, quality:'', engage:'', conv:'',
@@ -1419,8 +1488,8 @@ function parseMetaAd(wb){
     e.ctr=e.imp>0?parseFloat((e.clicks/e.imp*100).toFixed(4)):0;
     e.result=Math.round(e.result);
   });
-  if(entries.length>0){DB.metaAd.push.apply(DB.metaAd,entries);return true;}
-  if(Object.keys(dayMap).length>0) return true;
+  if(entries.length>0){DB.metaAd.push.apply(DB.metaAd,entries);entries.forEach(function(e){markTouched('metaAd',e.d);});return true;}
+  if(Object.keys(touchedMeta).length>0){ Object.keys(touchedMeta).forEach(function(d){markTouched('metaAd',d);}); return true; }
   return false;
 }
 
@@ -1452,28 +1521,29 @@ function parseNaverAdCSV(text){
     if(c.includes('클릭률')&&iCtr<0) iCtr=i;
   });
   if(iDate<0)iDate=2; if(iCost<0)iCost=7; if(iRev<0)iRev=10;
-  // 중복 방지
-  var existNA={};
-  DB.naverAd.filter(function(e){return e.isArchive===false;}).forEach(function(e){existNA[e.d]=true;});
-  var existNAR={};
-  DB.naverAdRaw.forEach(function(e){existNAR[e.d+'|'+e.campaign+'|'+e.campaign_type]=true;});
+  // 이 파일에서 나올 날짜 미리 수집
+  var touchedNA = {};
+  for(var ri=2;ri<rawLines.length;ri++){
+    var r0=splitCSV(rawLines[ri]);
+    if(r0.length<3) continue;
+    var ds0=normalizeDate(r0[iDate]);
+    if(ds0&&ds0>=ARCHIVE_CUTOFF_STR) touchedNA[ds0]=true;
+  }
+  // 파싱 전 해당 날짜 기존 데이터 제거
+  DB.naverAd = DB.naverAd.filter(function(e){ return !touchedNA[e.d]; });
+  DB.naverAdRaw = DB.naverAdRaw.filter(function(e){ return !touchedNA[e.d]; });
   var dayMap={};
   for(var i=2;i<rawLines.length;i++){
     var r=splitCSV(rawLines[i]);
     if(r.length<3) continue;
     var ds=normalizeDate(r[iDate]);
     if(!ds||ds<ARCHIVE_CUTOFF_STR) continue;
-    if(existNA[ds]) continue;
-    // 원본 행 저장
-    var rawKey=ds+'|'+String(r[2]||'')+'|'+String(r[0]||'');
-    if(!existNAR[rawKey]){
-      DB.naverAdRaw.push({
-        d:ds, campaign_type:String(r[0]||''), campaign:String(r[2]||''),
-        imp:toNum(r[iImp]), clicks:toNum(r[iClicks]), ctr:toNum(r[iCtr<0?5:iCtr]),
-        avg_cpc:toNum(r[6]), cost:toNum(r[iCost]), conv:toNum(r[iConv<0?8:iConv]),
-        conv_rate:toNum(r[9]), rev:toNum(r[iRev]), cost_per_conv:toNum(r[11]), roas:toNum(r[12])
-      });
-    }
+    DB.naverAdRaw.push({
+      d:ds, campaign_type:String(r[0]||''), campaign:String(r[2]||''),
+      imp:toNum(r[iImp]), clicks:toNum(r[iClicks]), ctr:toNum(r[iCtr<0?5:iCtr]),
+      avg_cpc:toNum(r[6]), cost:toNum(r[iCost]), conv:toNum(r[iConv<0?8:iConv]),
+      conv_rate:toNum(r[9]), rev:toNum(r[iRev]), cost_per_conv:toNum(r[11]), roas:toNum(r[12])
+    });
     var cost=toNum(r[iCost]),rev=iRev<r.length?toNum(r[iRev]):0;
     if(!cost&&!rev) continue;
     if(!dayMap[ds]) dayMap[ds]={d:ds,cost:0,rev:0,clicks:0,imp:0,conv:0,ctr:0,isArchive:false};
@@ -1487,8 +1557,8 @@ function parseNaverAdCSV(text){
   entries.forEach(function(e){
     e.ctr=e.imp>0?parseFloat((e.clicks/e.imp*100).toFixed(4)):(iCtr>=0?0:0);
   });
-  if(entries.length>0){DB.naverAd.push.apply(DB.naverAd,entries);return true;}
-  if(Object.keys(dayMap).length>0) return true;
+  if(entries.length>0){DB.naverAd.push.apply(DB.naverAd,entries);entries.forEach(function(e){markTouched('naverAd',e.d);});return true;}
+  if(Object.keys(touchedNA).length>0){ Object.keys(touchedNA).forEach(function(d){markTouched('naverAd',d);}); return true; }
   return false;
 }
 
@@ -1622,11 +1692,57 @@ function _checkBatchDone(){
   if(_batchDone < _batchTotal) return;
   var ok=_batchTotal-_batchFail;
   if(_batchFail===0){
-    showSaveToast('✅ '+ok+'개 반영완료!');
+    showSaveToast('✅ '+ok+'개 반영완료! 클라우드 동기화 중...');
   } else {
     showSaveToast('⚠️ '+ok+'개 성공 / '+_batchFail+'개 실패');
   }
   _batchTotal=0; _batchDone=0; _batchFail=0;
+  // Supabase 자동 동기화: 최근 터치된 날짜만 업로드
+  _syncTouchedToSupabase();
+}
+
+// 드롭 중 터치된 (channel, date) 추적
+var _touchedKeys = new Set();
+function markTouched(channel, date){
+  if (channel && date) _touchedKeys.add(channel+'|'+date);
+}
+
+async function _syncTouchedToSupabase(){
+  if (_touchedKeys.size === 0) return;
+  try {
+    // channel별로 묶기
+    const byChannel = {};
+    _touchedKeys.forEach(function(key){
+      const [ch, d] = key.split('|');
+      if (!byChannel[ch]) byChannel[ch] = new Set();
+      byChannel[ch].add(d);
+    });
+    _touchedKeys.clear();
+    // 각 channel에서 해당 날짜 데이터만 모아서 upsert
+    let total = 0, fail = 0;
+    for (const ch in byChannel) {
+      const dates = byChannel[ch];
+      const byDate = {};
+      (DB[ch] || []).forEach(function(row){
+        const d = row.d || row.date || '';
+        if (dates.has(d)) {
+          if (!byDate[d]) byDate[d] = [];
+          byDate[d].push(row);
+        }
+      });
+      const ok = await saveToSupabase(ch, byDate);
+      if (ok) total += Object.keys(byDate).length;
+      else fail++;
+    }
+    if (fail === 0) {
+      showSaveToast('☁️ 클라우드 동기화 완료! ('+total+'일)');
+    } else {
+      showSaveToast('⚠️ 일부 동기화 실패');
+    }
+  } catch(e) {
+    console.error('Supabase sync 실패:', e);
+    showSaveToast('❌ 클라우드 동기화 실패');
+  }
 }
 
 
