@@ -576,6 +576,17 @@ function loadArchiveFromJSON(jsonObj) {
   archiveKeys.forEach(function(k) {
     if (Array.isArray(ARCHIVE[k])) DB[k] = [...ARCHIVE[k]];
   });
+  // Raw 데이터 복원 (신버전 백업 파일에만 있음)
+  if (jsonObj.RAW) {
+    if (Array.isArray(jsonObj.RAW.naverRaw))    DB.naverRaw    = jsonObj.RAW.naverRaw;
+    if (Array.isArray(jsonObj.RAW.naverAdRaw))  DB.naverAdRaw  = jsonObj.RAW.naverAdRaw;
+    if (Array.isArray(jsonObj.RAW.coupAdRaw))   DB.coupAdRaw   = jsonObj.RAW.coupAdRaw;
+    if (Array.isArray(jsonObj.RAW.metaAdRaw))   DB.metaAdRaw   = jsonObj.RAW.metaAdRaw;
+    if (Array.isArray(jsonObj.RAW.naverHourly)) DB.naverHourly = jsonObj.RAW.naverHourly;
+    console.log('[Archive] Raw 데이터 복원:',
+      'naverRaw='+DB.naverRaw.length, 'coupAdRaw='+DB.coupAdRaw.length,
+      'metaAdRaw='+DB.metaAdRaw.length, 'naverAdRaw='+DB.naverAdRaw.length);
+  }
   updateStatus();
   renderAll();
   showSaveToast('✅ 아카이브 로드 완료! (' + ARCHIVE.naver.length + '건)');
@@ -2606,16 +2617,25 @@ function downloadArchiveXLSX(){
 
 // 아카이브 JSON 내보내기 (백업용)
 function exportArchiveJSON() {
-  var data = { COST_MAPS: COST_MAPS, ARCHIVE: {} };
+  var data = { COST_MAPS: COST_MAPS, ARCHIVE: {}, RAW: {} };
   var keys = ['naver','naverProd','coupStock','naverAd','coupAd','metaAd','other','roi'];
   keys.forEach(function(k) { data.ARCHIVE[k] = DB[k] || ARCHIVE[k] || []; });
+  // Raw 데이터(원본 상세 행)도 함께 저장 — 복원 시 원본 그대로 복구됨
+  data.RAW = {
+    naverRaw:     DB.naverRaw     || [],
+    naverAdRaw:   DB.naverAdRaw   || [],
+    coupAdRaw:    DB.coupAdRaw    || [],
+    metaAdRaw:    DB.metaAdRaw    || [],
+    naverHourly:  DB.naverHourly  || []
+  };
   var blob = new Blob([JSON.stringify(data)], {type:'application/json'});
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   var todayStr = toDateStr(new Date());
   a.download = 'archive_' + todayStr.replace(/-/g,'') + '.json';
   a.click();
-  showSaveToast('📦 아카이브 JSON 내보내기 완료!');
+  var rawCount = data.RAW.naverRaw.length + data.RAW.coupAdRaw.length + data.RAW.metaAdRaw.length + data.RAW.naverAdRaw.length;
+  showSaveToast('📦 아카이브 JSON 내보내기 완료! (상세 '+rawCount+'건 포함)');
 }
 
 
