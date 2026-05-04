@@ -547,7 +547,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
 // ARCHIVE DATA — 외부 파일에서 로드
 // ══════════════════════════════════════════
 let COST_MAPS = { master: {}, naver: {}, coupang: {}, other: {} };
-let ARCHIVE = { naver: [], naverProd: [], coupStock: [], naverAd: [], coupAd: [], metaAd: [], other: [], roi: {} };
+let ARCHIVE = { naver: [], naverProd: [], coupStock: [], naverAd: [], coupAd: [], metaAd: [], other: [], roi: { naver: { roi_rate: 0.388, sales: 0, roi: 0 }, coupang: { roi_rate: 0.378, sales: 0, roi: 0 } } };
 let _archiveLoaded = false;
 
 // ══════════════════════════════════════════
@@ -1331,7 +1331,7 @@ function parseCoupStock(wb){
   for(var i=1;i<rows.length;i++){
     var r=rows[i];
     var sku=String(r[iSku]||'');
-    if(sku.indexOf('톰토미')===-1) continue;
+    if(sku.indexOf('톰토미')===-1 && sku.indexOf('다다 NEW 봉제인형')===-1 && sku.indexOf('루나 NEW 봉제인형')===-1) continue;
     var ds=normalizeDate(r[iDate]);
     if(!ds) continue;
     if(ds<ARCHIVE_CUTOFF_STR) continue;
