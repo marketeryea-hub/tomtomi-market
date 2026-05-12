@@ -537,17 +537,11 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     <div class="kpi" style="--c:var(--coupang)"><div class="kpi-ico">🔵</div><div class="kpi-lbl">쿠팡</div><div id="cmp-coup-a" class="kpi-val">-</div><div id="cmp-coup-b" style="font-size:12px;color:var(--dim)">비교: -</div><div id="cmp-coup-diff" style="font-size:13px;font-weight:700;margin-top:4px">-</div><div id="cmp-coup-forecast" style="font-size:11px;color:var(--dim);margin-top:4px"></div></div>
     <div class="kpi" style="--c:var(--yellow)"><div class="kpi-ico">🛍️</div><div class="kpi-lbl">기타마켓</div><div id="cmp-other-a" class="kpi-val">-</div><div id="cmp-other-b" style="font-size:12px;color:var(--dim)">비교: -</div><div id="cmp-other-diff" style="font-size:13px;font-weight:700;margin-top:4px">-</div></div>
   </div>
-  <!-- 일별 추이 오버레이 차트 -->
+  <!-- 일별 추이 오버레이 차트 (매출 + 광고비) -->
   <div class="card gf" style="margin-top:12px">
-    <div class="ctitle">일별 매출 추이 비교</div>
-    <div class="csub">기간 A(실선) vs 기간 B(점선) — 일차 기준 정렬</div>
+    <div class="ctitle">일별 매출·광고비 추이 비교</div>
+    <div class="csub">기간 A(실선) vs 기간 B(점선) — 매출 + 광고비 동시 표시</div>
     <canvas id="cmp-daily-chart"></canvas>
-  </div>
-  <!-- 일별 광고비 추이 차트 -->
-  <div class="card gf" style="margin-top:12px">
-    <div class="ctitle">일별 광고비 추이 비교</div>
-    <div class="csub">네이버SA + 쿠팡 + 메타 합산 광고비 — 기간 A(실선) vs 기간 B(점선)</div>
-    <canvas id="cmp-adcost-chart"></canvas>
   </div>
   <!-- 광고 비교 카드 -->
   <div class="card gf" style="margin-top:12px">
@@ -2627,7 +2621,6 @@ function renderAll(){
 // COMPARE TAB — 기간 비교
 // ══════════════════════════════════════════
 var _cmpChartInstance = null;
-var _cmpAdCostChartInstance = null;
 
 function initCompare(){
   // 기본값: 기간A = 이번달 1일~오늘, 기간B = 전월
@@ -2791,45 +2784,29 @@ function renderCompare(){
   if(_cmpChartInstance){ _cmpChartInstance.destroy(); _cmpChartInstance=null; }
   var aLabel = aFrom.slice(5)+' ~ '+aTo.slice(5);
   var bLabel = bFrom.slice(5)+' ~ '+bTo.slice(5);
+
+  // 광고비도 같은 Day 기준으로 정렬
+  var aAdDays = Object.keys(A.adCostDay).sort();
+  var bAdDays = Object.keys(B.adCostDay).sort();
+  var aAdData = aAdDays.map(function(d){return A.adCostDay[d];});
+  var bAdData = bAdDays.map(function(d){return B.adCostDay[d];});
+  while(aAdData.length<maxLen) aAdData.push(null);
+  while(bAdData.length<maxLen) bAdData.push(null);
+
   _cmpChartInstance = mkChart('cmp-daily-chart',{
     type:'line',
     data:{
       labels:labels,
       datasets:[
-        {label:'기간 A ('+aLabel+')', data:aData, borderColor:'var(--accent)', backgroundColor:'rgba(91,79,207,.1)', borderWidth:2.5, tension:0.3, fill:true, pointRadius:2},
-        {label:'기간 B ('+bLabel+')', data:bData, borderColor:'var(--dim)', backgroundColor:'transparent', borderWidth:2, borderDash:[6,4], tension:0.3, fill:false, pointRadius:2}
+        {label:'A 매출 ('+aLabel+')', data:aData, borderColor:'var(--accent)', backgroundColor:'rgba(91,79,207,.08)', borderWidth:2.5, tension:0.3, fill:true, pointRadius:2, yAxisID:'y'},
+        {label:'B 매출 ('+bLabel+')', data:bData, borderColor:'#bbb', backgroundColor:'transparent', borderWidth:2, borderDash:[6,4], tension:0.3, fill:false, pointRadius:2, yAxisID:'y'},
+        {label:'A 광고비 ('+aLabel+')', data:aAdData, borderColor:'#e01e5a', backgroundColor:'rgba(224,30,90,.06)', borderWidth:2, tension:0.3, fill:true, pointRadius:1.5, yAxisID:'y'},
+        {label:'B 광고비 ('+bLabel+')', data:bAdData, borderColor:'#e01e5a', backgroundColor:'transparent', borderWidth:1.5, borderDash:[4,3], tension:0.3, fill:false, pointRadius:1.5, yAxisID:'y'}
       ]
     },
     options:{
       responsive:true,
-      plugins:{legend:{position:'top'},tooltip:{mode:'index',intersect:false,callbacks:{label:function(ctx){return ctx.dataset.label+': '+fmtW(ctx.parsed.y)+'원';}}}},
-      scales:{y:{ticks:{callback:function(v){return fmtW(v);}},beginAtZero:true}}
-    }
-  });
-
-  // 일별 광고비 추이 오버레이 차트
-  var aAdDays = Object.keys(A.adCostDay).sort();
-  var bAdDays = Object.keys(B.adCostDay).sort();
-  var adMaxLen = Math.max(aAdDays.length, bAdDays.length);
-  var adLabels = [];
-  for(var j=0;j<adMaxLen;j++) adLabels.push('Day '+(j+1));
-  var aAdData = aAdDays.map(function(d){return A.adCostDay[d];});
-  var bAdData = bAdDays.map(function(d){return B.adCostDay[d];});
-  while(aAdData.length<adMaxLen) aAdData.push(null);
-  while(bAdData.length<adMaxLen) bAdData.push(null);
-  if(_cmpAdCostChartInstance){ _cmpAdCostChartInstance.destroy(); _cmpAdCostChartInstance=null; }
-  _cmpAdCostChartInstance = mkChart('cmp-adcost-chart',{
-    type:'line',
-    data:{
-      labels:adLabels,
-      datasets:[
-        {label:'기간 A 광고비 ('+aLabel+')', data:aAdData, borderColor:'#e01e5a', backgroundColor:'rgba(224,30,90,.08)', borderWidth:2.5, tension:0.3, fill:true, pointRadius:2},
-        {label:'기간 B 광고비 ('+bLabel+')', data:bAdData, borderColor:'#999', backgroundColor:'transparent', borderWidth:2, borderDash:[6,4], tension:0.3, fill:false, pointRadius:2}
-      ]
-    },
-    options:{
-      responsive:true,
-      plugins:{legend:{position:'top'},tooltip:{mode:'index',intersect:false,callbacks:{label:function(ctx){return ctx.dataset.label+': '+fmtW(ctx.parsed.y)+'원';}}}},
+      plugins:{legend:{position:'top',labels:{font:{size:11}}},tooltip:{mode:'index',intersect:false,callbacks:{label:function(ctx){return ctx.dataset.label+': '+fmtW(ctx.parsed.y)+'원';}}}},
       scales:{y:{ticks:{callback:function(v){return fmtW(v);}},beginAtZero:true}}
     }
   });
