@@ -295,9 +295,9 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     <div class="ssub">선택 기간 내 전 채널 실적 통합 요약</div>
   </div>
   <div class="kpi-grid">
-    <div class="kpi" style="--c:var(--accent)"><div class="kpi-ico">💰</div><div class="kpi-lbl">총 합산 매출</div><div class="kpi-val" id="ov-total">-</div><div class="kpi-badge bi" id="ov-total-sub">-</div></div>
-    <div class="kpi" style="--c:var(--naver)"><div class="kpi-ico">🟢</div><div class="kpi-lbl">네이버 매출</div><div class="kpi-val" id="ov-naver">-</div><div class="kpi-badge bu" id="ov-naver-pct">-</div></div>
-    <div class="kpi" style="--c:var(--coupang)"><div class="kpi-ico">🔵</div><div class="kpi-lbl">쿠팡 실매출 (입고기준)</div><div class="kpi-val" id="ov-coup">-</div><div class="kpi-badge bi" id="ov-coup-sub">-</div></div>
+    <div class="kpi" style="--c:var(--accent)"><div class="kpi-ico">💰</div><div class="kpi-lbl">총 합산 매출</div><div class="kpi-val" id="ov-total">-</div><div class="kpi-badge bi" id="ov-total-sub">-</div><div id="ov-total-forecast" style="font-size:11px;color:var(--dim);margin-top:6px"></div></div>
+    <div class="kpi" style="--c:var(--naver)"><div class="kpi-ico">🟢</div><div class="kpi-lbl">네이버 매출</div><div class="kpi-val" id="ov-naver">-</div><div class="kpi-badge bu" id="ov-naver-pct">-</div><div id="ov-naver-forecast" style="font-size:11px;color:var(--dim);margin-top:6px"></div></div>
+    <div class="kpi" style="--c:var(--coupang)"><div class="kpi-ico">🔵</div><div class="kpi-lbl">쿠팡 실매출 (입고기준)</div><div class="kpi-val" id="ov-coup">-</div><div class="kpi-badge bi" id="ov-coup-sub">-</div><div id="ov-coup-forecast" style="font-size:11px;color:var(--dim);margin-top:6px"></div></div>
     <div class="kpi" style="--c:var(--yellow)"><div class="kpi-ico">🛍️</div><div class="kpi-lbl">기타마켓 매출</div><div class="kpi-val" id="ov-other">-</div><div class="kpi-badge bi">이베이·11번가·카카오</div></div>
   </div>
   <div class="g2">
@@ -1858,6 +1858,37 @@ function renderOverview(){
   document.getElementById('ov-coup').textContent=fmtW(cpTotal)+'원';
   document.getElementById('ov-coup-sub').textContent='톰토미 SKU 입고 기준';
   document.getElementById('ov-other').textContent=fmtW(otTotal)+'원';
+
+  // ── 이번달 예상매출 계산 ──
+  // 선택 기간이 같은 월 내에 있을 때만 표시
+  (function calcForecast(){
+    var fY=filterFrom.getFullYear(), fM=filterFrom.getMonth();
+    var tY=filterTo.getFullYear(), tM=filterTo.getMonth();
+    var elTotal=document.getElementById('ov-total-forecast');
+    var elNav=document.getElementById('ov-naver-forecast');
+    var elCoup=document.getElementById('ov-coup-forecast');
+    // 선택 기간이 여러 달에 걸치면 예상매출 안 보여줌
+    if(fY!==tY||fM!==tM){ elTotal.textContent=''; elNav.textContent=''; elCoup.textContent=''; return; }
+    // 해당 월의 총 일수
+    var totalDays=new Date(fY, fM+1, 0).getDate();
+    // 경과일수 = 선택 기간 내 데이터가 있는 날짜 수
+    var allDates=new Set();
+    Object.keys(nvDayMap).forEach(function(d){allDates.add(d);});
+    Object.keys(cpDayMap).forEach(function(d){allDates.add(d);});
+    var elapsedDays=allDates.size;
+    if(elapsedDays<1){ elTotal.textContent=''; elNav.textContent=''; elCoup.textContent=''; return; }
+    // 일평균 × 총일수
+    var forecastNav=Math.round(navTotal/elapsedDays*totalDays);
+    var forecastCoup=Math.round(cpTotal/elapsedDays*totalDays);
+    var forecastTotal=forecastNav+forecastCoup;
+    // 달성률
+    var pctNav=forecastNav>0?Math.round(navTotal/forecastNav*100):0;
+    var pctCoup=forecastCoup>0?Math.round(cpTotal/forecastCoup*100):0;
+    var pctTotal=forecastTotal>0?Math.round((navTotal+cpTotal)/forecastTotal*100):0;
+    elTotal.innerHTML='📈 이번달 예상 <b>'+fmtW(forecastTotal)+'원</b> (달성 '+pctTotal+'%)';
+    elNav.innerHTML='📈 예상 <b>'+fmtW(forecastNav)+'원</b> (달성 '+pctNav+'%)';
+    elCoup.innerHTML='📈 예상 <b>'+fmtW(forecastCoup)+'원</b> (달성 '+pctCoup+'%)';
+  })();
 
   var groups=sortedGroups([navM,cpM,otM]);
   var labels=groups.map(function(k){return toGroupLabel(k,unit);});
