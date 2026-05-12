@@ -296,9 +296,9 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     <div class="ssub">선택 기간 내 전 채널 실적 통합 요약</div>
   </div>
   <div class="kpi-grid">
-    <div class="kpi" style="--c:var(--accent)"><div class="kpi-ico">💰</div><div class="kpi-lbl">총 합산 매출</div><div class="kpi-val" id="ov-total">-</div><div class="kpi-badge bi" id="ov-total-sub">-</div><div id="ov-total-forecast" style="font-size:11px;color:var(--dim);margin-top:6px"></div></div>
-    <div class="kpi" style="--c:var(--naver)"><div class="kpi-ico">🟢</div><div class="kpi-lbl">네이버 매출</div><div class="kpi-val" id="ov-naver">-</div><div class="kpi-badge bu" id="ov-naver-pct">-</div><div id="ov-naver-forecast" style="font-size:11px;color:var(--dim);margin-top:6px"></div></div>
-    <div class="kpi" style="--c:var(--coupang)"><div class="kpi-ico">🔵</div><div class="kpi-lbl">쿠팡 실매출 (입고기준)</div><div class="kpi-val" id="ov-coup">-</div><div class="kpi-badge bi" id="ov-coup-sub">-</div><div id="ov-coup-forecast" style="font-size:11px;color:var(--dim);margin-top:6px"></div></div>
+    <div class="kpi" style="--c:var(--accent)"><div class="kpi-ico">💰</div><div class="kpi-lbl">총 합산 매출</div><div class="kpi-val" id="ov-total">-</div><div class="kpi-badge bi" id="ov-total-sub">-</div></div>
+    <div class="kpi" style="--c:var(--naver)"><div class="kpi-ico">🟢</div><div class="kpi-lbl">네이버 매출</div><div class="kpi-val" id="ov-naver">-</div><div class="kpi-badge bu" id="ov-naver-pct">-</div></div>
+    <div class="kpi" style="--c:var(--coupang)"><div class="kpi-ico">🔵</div><div class="kpi-lbl">쿠팡 실매출 (입고기준)</div><div class="kpi-val" id="ov-coup">-</div><div class="kpi-badge bi" id="ov-coup-sub">-</div></div>
     <div class="kpi" style="--c:var(--yellow)"><div class="kpi-ico">🛍️</div><div class="kpi-lbl">기타마켓 매출</div><div class="kpi-val" id="ov-other">-</div><div class="kpi-badge bi">이베이·11번가·카카오</div></div>
   </div>
   <div class="g2">
@@ -542,6 +542,12 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     <div class="ctitle">일별 매출 추이 비교</div>
     <div class="csub">기간 A(실선) vs 기간 B(점선) — 일차 기준 정렬</div>
     <canvas id="cmp-daily-chart"></canvas>
+  </div>
+  <!-- 일별 광고비 추이 차트 -->
+  <div class="card gf" style="margin-top:12px">
+    <div class="ctitle">일별 광고비 추이 비교</div>
+    <div class="csub">네이버SA + 쿠팡 + 메타 합산 광고비 — 기간 A(실선) vs 기간 B(점선)</div>
+    <canvas id="cmp-adcost-chart"></canvas>
   </div>
   <!-- 광고 비교 카드 -->
   <div class="card gf" style="margin-top:12px">
@@ -1919,37 +1925,6 @@ function renderOverview(){
   document.getElementById('ov-coup-sub').textContent='톰토미 SKU 입고 기준';
   document.getElementById('ov-other').textContent=fmtW(otTotal)+'원';
 
-  // ── 이번달 예상매출 계산 ──
-  // 선택 기간이 같은 월 내에 있을 때만 표시
-  (function calcForecast(){
-    var fY=filterFrom.getFullYear(), fM=filterFrom.getMonth();
-    var tY=filterTo.getFullYear(), tM=filterTo.getMonth();
-    var elTotal=document.getElementById('ov-total-forecast');
-    var elNav=document.getElementById('ov-naver-forecast');
-    var elCoup=document.getElementById('ov-coup-forecast');
-    // 선택 기간이 여러 달에 걸치면 예상매출 안 보여줌
-    if(fY!==tY||fM!==tM){ elTotal.textContent=''; elNav.textContent=''; elCoup.textContent=''; return; }
-    // 해당 월의 총 일수
-    var totalDays=new Date(fY, fM+1, 0).getDate();
-    // 경과일수 = 선택 기간 내 데이터가 있는 날짜 수
-    var allDates=new Set();
-    Object.keys(nvDayMap).forEach(function(d){allDates.add(d);});
-    Object.keys(cpDayMap).forEach(function(d){allDates.add(d);});
-    var elapsedDays=allDates.size;
-    if(elapsedDays<1){ elTotal.textContent=''; elNav.textContent=''; elCoup.textContent=''; return; }
-    // 일평균 × 총일수
-    var forecastNav=Math.round(navTotal/elapsedDays*totalDays);
-    var forecastCoup=Math.round(cpTotal/elapsedDays*totalDays);
-    var forecastTotal=forecastNav+forecastCoup;
-    // 달성률
-    var pctNav=forecastNav>0?Math.round(navTotal/forecastNav*100):0;
-    var pctCoup=forecastCoup>0?Math.round(cpTotal/forecastCoup*100):0;
-    var pctTotal=forecastTotal>0?Math.round((navTotal+cpTotal)/forecastTotal*100):0;
-    elTotal.innerHTML='📈 이번달 예상 <b>'+fmtW(forecastTotal)+'원</b> (달성 '+pctTotal+'%)';
-    elNav.innerHTML='📈 예상 <b>'+fmtW(forecastNav)+'원</b> (달성 '+pctNav+'%)';
-    elCoup.innerHTML='📈 예상 <b>'+fmtW(forecastCoup)+'원</b> (달성 '+pctCoup+'%)';
-  })();
-
   var groups=sortedGroups([navM,cpM,otM]);
   var labels=groups.map(function(k){return toGroupLabel(k,unit);});
 
@@ -2652,6 +2627,7 @@ function renderAll(){
 // COMPARE TAB — 기간 비교
 // ══════════════════════════════════════════
 var _cmpChartInstance = null;
+var _cmpAdCostChartInstance = null;
 
 function initCompare(){
   // 기본값: 기간A = 이번달 1일~오늘, 기간B = 전월
@@ -2718,14 +2694,15 @@ function _collectPeriod(fromStr, toStr){
     otDay[ds]=(otDay[ds]||0)+a;
   });
   // 광고
-  DB.naverAd.forEach(function(e){ if(!inR(e.d||''))return; nvAdCost+=e.cost||0; nvAdRev+=e.rev||0; });
-  DB.coupAd.forEach(function(e){ if(!inR(e.d||''))return; cpAdCost+=e.cost||0; });
+  var adCostDay = {};
+  DB.naverAd.forEach(function(e){ if(!inR(e.d||''))return; nvAdCost+=e.cost||0; nvAdRev+=e.rev||0; adCostDay[e.d]=(adCostDay[e.d]||0)+(e.cost||0); });
+  DB.coupAd.forEach(function(e){ if(!inR(e.d||''))return; cpAdCost+=e.cost||0; adCostDay[e.d]=(adCostDay[e.d]||0)+(e.cost||0); });
   if(DB.coupAdRaw && DB.coupAdRaw.length>0){
     DB.coupAdRaw.forEach(function(e){ if(!inR(e.d||''))return; cpAdRev+=e.rev||0; });
   } else {
     DB.coupAd.forEach(function(e){ if(!inR(e.d||''))return; cpAdRev+=e.rev||0; });
   }
-  DB.metaAd.forEach(function(e){ if(!inR(e.d||''))return; metaCost+=e.cost||0; });
+  DB.metaAd.forEach(function(e){ if(!inR(e.d||''))return; metaCost+=e.cost||0; adCostDay[e.d]=(adCostDay[e.d]||0)+(e.cost||0); });
   // 일별 합산
   var allDays = new Set();
   Object.keys(navDay).forEach(function(d){allDays.add(d);});
@@ -2737,6 +2714,7 @@ function _collectPeriod(fromStr, toStr){
   return {
     nav:nav, coup:coup, ot:ot, total:nav+coup+ot,
     navDay:navDay, coupDay:coupDay, otDay:otDay, totalDay:totalDay,
+    adCostDay:adCostDay,
     elapsedDays: allDays.size,
     ads: {
       nvCost:nvAdCost, nvRev:nvAdRev,
@@ -2820,6 +2798,33 @@ function renderCompare(){
       datasets:[
         {label:'기간 A ('+aLabel+')', data:aData, borderColor:'var(--accent)', backgroundColor:'rgba(91,79,207,.1)', borderWidth:2.5, tension:0.3, fill:true, pointRadius:2},
         {label:'기간 B ('+bLabel+')', data:bData, borderColor:'var(--dim)', backgroundColor:'transparent', borderWidth:2, borderDash:[6,4], tension:0.3, fill:false, pointRadius:2}
+      ]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{position:'top'},tooltip:{mode:'index',intersect:false,callbacks:{label:function(ctx){return ctx.dataset.label+': '+fmtW(ctx.parsed.y)+'원';}}}},
+      scales:{y:{ticks:{callback:function(v){return fmtW(v);}},beginAtZero:true}}
+    }
+  });
+
+  // 일별 광고비 추이 오버레이 차트
+  var aAdDays = Object.keys(A.adCostDay).sort();
+  var bAdDays = Object.keys(B.adCostDay).sort();
+  var adMaxLen = Math.max(aAdDays.length, bAdDays.length);
+  var adLabels = [];
+  for(var j=0;j<adMaxLen;j++) adLabels.push('Day '+(j+1));
+  var aAdData = aAdDays.map(function(d){return A.adCostDay[d];});
+  var bAdData = bAdDays.map(function(d){return B.adCostDay[d];});
+  while(aAdData.length<adMaxLen) aAdData.push(null);
+  while(bAdData.length<adMaxLen) bAdData.push(null);
+  if(_cmpAdCostChartInstance){ _cmpAdCostChartInstance.destroy(); _cmpAdCostChartInstance=null; }
+  _cmpAdCostChartInstance = mkChart('cmp-adcost-chart',{
+    type:'line',
+    data:{
+      labels:adLabels,
+      datasets:[
+        {label:'기간 A 광고비 ('+aLabel+')', data:aAdData, borderColor:'#e01e5a', backgroundColor:'rgba(224,30,90,.08)', borderWidth:2.5, tension:0.3, fill:true, pointRadius:2},
+        {label:'기간 B 광고비 ('+bLabel+')', data:bAdData, borderColor:'#999', backgroundColor:'transparent', borderWidth:2, borderDash:[6,4], tension:0.3, fill:false, pointRadius:2}
       ]
     },
     options:{
