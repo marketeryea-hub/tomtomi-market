@@ -283,6 +283,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   <button class="nb" onclick="showSec('other',this)">🛍️ 기타마켓</button>
   <button class="nb" onclick="showSec('ads',this)">🎯 광고 ROAS</button>
   <button class="nb" onclick="showSec('roi',this)">💹 영업이익</button>
+  <button class="nb" onclick="showSec('compare',this)">📊 기간 비교</button>
   <button class="nb" onclick="showSec('settings',this)">⚙️ 가격 보정</button>
 </nav>
 
@@ -494,6 +495,64 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     <div class="ctitle">🧮 영업이익 계산기</div>
     <div class="csub">채널 ROI 합계 → 광고비 차감 → 최종 영업이익</div>
     <div id="roi-calc-detail" style="margin-top:12px;font-size:13px;line-height:2.4"></div>
+  </div>
+</section>
+
+<!-- COMPARE -->
+<section id="compare" class="section">
+  <div class="shd">
+    <div class="stitle">📊 기간 비교</div>
+    <div class="ssub">두 기간의 매출·광고 성과를 나란히 비교합니다</div>
+  </div>
+  <!-- 기간 선택기 -->
+  <div class="card gf">
+    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end">
+      <div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:4px;font-weight:600">📅 기간 A (기준)</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="date" id="cmp-a-from" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--s1);color:var(--text);outline:none">
+          <span style="color:var(--dim)">~</span>
+          <input type="date" id="cmp-a-to" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--s1);color:var(--text);outline:none">
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:4px;font-weight:600">📅 기간 B (비교)</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="date" id="cmp-b-from" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--s1);color:var(--text);outline:none">
+          <span style="color:var(--dim)">~</span>
+          <input type="date" id="cmp-b-to" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--s1);color:var(--text);outline:none">
+        </div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="fbtn fbtn-pre" onclick="setCmpPreset('pm')">전월 비교</button>
+        <button class="fbtn fbtn-pre" onclick="setCmpPreset('py')">전년 동월</button>
+        <button class="fbtn" style="background:var(--accent);color:#fff;padding:6px 16px" onclick="renderCompare()">비교 실행</button>
+      </div>
+    </div>
+  </div>
+  <!-- 매출 비교 카드 -->
+  <div class="kpi-grid" id="cmp-kpi-grid" style="margin-top:12px">
+    <div class="kpi" style="--c:var(--accent)"><div class="kpi-ico">💰</div><div class="kpi-lbl">합산 매출</div><div id="cmp-total-a" class="kpi-val">-</div><div id="cmp-total-b" style="font-size:12px;color:var(--dim)">비교: -</div><div id="cmp-total-diff" style="font-size:13px;font-weight:700;margin-top:4px">-</div><div id="cmp-total-forecast" style="font-size:11px;color:var(--dim);margin-top:4px"></div></div>
+    <div class="kpi" style="--c:var(--naver)"><div class="kpi-ico">🟢</div><div class="kpi-lbl">네이버</div><div id="cmp-nav-a" class="kpi-val">-</div><div id="cmp-nav-b" style="font-size:12px;color:var(--dim)">비교: -</div><div id="cmp-nav-diff" style="font-size:13px;font-weight:700;margin-top:4px">-</div><div id="cmp-nav-forecast" style="font-size:11px;color:var(--dim);margin-top:4px"></div></div>
+    <div class="kpi" style="--c:var(--coupang)"><div class="kpi-ico">🔵</div><div class="kpi-lbl">쿠팡</div><div id="cmp-coup-a" class="kpi-val">-</div><div id="cmp-coup-b" style="font-size:12px;color:var(--dim)">비교: -</div><div id="cmp-coup-diff" style="font-size:13px;font-weight:700;margin-top:4px">-</div><div id="cmp-coup-forecast" style="font-size:11px;color:var(--dim);margin-top:4px"></div></div>
+    <div class="kpi" style="--c:var(--yellow)"><div class="kpi-ico">🛍️</div><div class="kpi-lbl">기타마켓</div><div id="cmp-other-a" class="kpi-val">-</div><div id="cmp-other-b" style="font-size:12px;color:var(--dim)">비교: -</div><div id="cmp-other-diff" style="font-size:13px;font-weight:700;margin-top:4px">-</div></div>
+  </div>
+  <!-- 일별 추이 오버레이 차트 -->
+  <div class="card gf" style="margin-top:12px">
+    <div class="ctitle">일별 매출 추이 비교</div>
+    <div class="csub">기간 A(실선) vs 기간 B(점선) — 일차 기준 정렬</div>
+    <canvas id="cmp-daily-chart"></canvas>
+  </div>
+  <!-- 광고 비교 카드 -->
+  <div class="card gf" style="margin-top:12px">
+    <div class="ctitle">광고 성과 비교</div>
+    <div class="csub">채널별 광고비·ROAS 비교</div>
+    <div style="overflow-x:auto;margin-top:12px">
+      <table class="tbl">
+        <thead><tr><th style="text-align:left">채널</th><th>기간 A 광고비</th><th>기간 A ROAS</th><th>기간 B 광고비</th><th>기간 B ROAS</th><th>광고비 증감</th></tr></thead>
+        <tbody id="cmp-ad-tbl"></tbody>
+      </table>
+    </div>
   </div>
 </section>
 
@@ -1807,6 +1866,7 @@ function renderSection(id){
   else if(id==='ads') renderAds();
   else if(id==='other') renderOther();
   else if(id==='roi') renderROI();
+  else if(id==='compare') initCompare();
   else if(id==='settings') buildPriceTable();
 }
 
@@ -2588,6 +2648,217 @@ function renderAll(){
 // ══════════════════════════════════════════
 // 아카이브 체크 & 상세 검증 엑셀 다운로드
 // ══════════════════════════════════════════
+// ══════════════════════════════════════════
+// COMPARE TAB — 기간 비교
+// ══════════════════════════════════════════
+var _cmpChartInstance = null;
+
+function initCompare(){
+  // 기본값: 기간A = 이번달 1일~오늘, 기간B = 전월
+  var now = new Date();
+  var aFrom = new Date(now.getFullYear(), now.getMonth(), 1);
+  var aTo = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var bFrom = new Date(now.getFullYear(), now.getMonth()-1, 1);
+  var bTo = new Date(now.getFullYear(), now.getMonth(), 0); // 전월 마지막일
+  if(!document.getElementById('cmp-a-from').value){
+    document.getElementById('cmp-a-from').value = toDateStr(aFrom);
+    document.getElementById('cmp-a-to').value = toDateStr(aTo);
+    document.getElementById('cmp-b-from').value = toDateStr(bFrom);
+    document.getElementById('cmp-b-to').value = toDateStr(bTo);
+  }
+  renderCompare();
+}
+
+function setCmpPreset(type){
+  var now = new Date();
+  var aFrom, aTo, bFrom, bTo;
+  if(type==='pm'){ // 전월 비교
+    aFrom = new Date(now.getFullYear(), now.getMonth(), 1);
+    aTo = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    bFrom = new Date(now.getFullYear(), now.getMonth()-1, 1);
+    bTo = new Date(now.getFullYear(), now.getMonth(), 0);
+  } else if(type==='py'){ // 전년 동월
+    aFrom = new Date(now.getFullYear(), now.getMonth(), 1);
+    aTo = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    bFrom = new Date(now.getFullYear()-1, now.getMonth(), 1);
+    bTo = new Date(now.getFullYear()-1, now.getMonth()+1, 0);
+  }
+  document.getElementById('cmp-a-from').value = toDateStr(aFrom);
+  document.getElementById('cmp-a-to').value = toDateStr(aTo);
+  document.getElementById('cmp-b-from').value = toDateStr(bFrom);
+  document.getElementById('cmp-b-to').value = toDateStr(bTo);
+  renderCompare();
+}
+
+function _collectPeriod(fromStr, toStr){
+  var nav=0, coup=0, ot=0;
+  var navDay={}, coupDay={}, otDay={};
+  var nvAdCost=0, nvAdRev=0, cpAdCost=0, cpAdRev=0, metaCost=0;
+  function inR(ds){ return ds>=fromStr && ds<=toStr; }
+  // 네이버
+  var nvDM={};
+  DB.naver.forEach(function(e){
+    var ds=e.d||''; if(!inR(ds)) return;
+    if(!nvDM[ds]) nvDM[ds]=0;
+    nvDM[ds]+=(parseFloat(e.r)||0);
+  });
+  Object.entries(nvDM).forEach(function(kv){ nav+=kv[1]; navDay[kv[0]]=kv[1]; });
+  // 쿠팡
+  DB.coupStock.forEach(function(e){
+    var ds=e.d||''; if(!inR(ds)) return;
+    var a=parseFloat(String(e.a).replace(',',''))||0;
+    coup+=a;
+    coupDay[ds]=(coupDay[ds]||0)+a;
+  });
+  // 기타
+  DB.other.forEach(function(e){
+    var ds=e.d||''; if(!inR(ds)) return;
+    var a=parseFloat(String(e.a).replace(',',''))||0;
+    ot+=a;
+    otDay[ds]=(otDay[ds]||0)+a;
+  });
+  // 광고
+  DB.naverAd.forEach(function(e){ if(!inR(e.d||''))return; nvAdCost+=e.cost||0; nvAdRev+=e.rev||0; });
+  DB.coupAd.forEach(function(e){ if(!inR(e.d||''))return; cpAdCost+=e.cost||0; });
+  if(DB.coupAdRaw && DB.coupAdRaw.length>0){
+    DB.coupAdRaw.forEach(function(e){ if(!inR(e.d||''))return; cpAdRev+=e.rev||0; });
+  } else {
+    DB.coupAd.forEach(function(e){ if(!inR(e.d||''))return; cpAdRev+=e.rev||0; });
+  }
+  DB.metaAd.forEach(function(e){ if(!inR(e.d||''))return; metaCost+=e.cost||0; });
+  // 일별 합산
+  var allDays = new Set();
+  Object.keys(navDay).forEach(function(d){allDays.add(d);});
+  Object.keys(coupDay).forEach(function(d){allDays.add(d);});
+  Object.keys(otDay).forEach(function(d){allDays.add(d);});
+  var totalDay = {};
+  allDays.forEach(function(d){ totalDay[d]=(navDay[d]||0)+(coupDay[d]||0)+(otDay[d]||0); });
+
+  return {
+    nav:nav, coup:coup, ot:ot, total:nav+coup+ot,
+    navDay:navDay, coupDay:coupDay, otDay:otDay, totalDay:totalDay,
+    elapsedDays: allDays.size,
+    ads: {
+      nvCost:nvAdCost, nvRev:nvAdRev,
+      cpCost:cpAdCost, cpRev:cpAdRev,
+      metaCost:metaCost
+    }
+  };
+}
+
+function _diffBadge(a, b){
+  if(b===0 && a===0) return '<span style="color:var(--dim)">—</span>';
+  if(b===0) return '<span style="color:var(--green)">▲ NEW</span>';
+  var pct = Math.round((a-b)/b*100);
+  if(pct>0) return '<span style="color:var(--green)">▲ '+pct+'%</span>';
+  if(pct<0) return '<span style="color:var(--red)">▼ '+Math.abs(pct)+'%</span>';
+  return '<span style="color:var(--dim)">0%</span>';
+}
+
+function _forecastText(rev, elapsedDays, fromStr, toStr){
+  // 같은 월인지 확인
+  if(fromStr.slice(0,7) !== toStr.slice(0,7)) return '';
+  if(elapsedDays < 1) return '';
+  var y = parseInt(fromStr.slice(0,4));
+  var m = parseInt(fromStr.slice(5,7));
+  var totalDays = new Date(y, m, 0).getDate();
+  var forecast = Math.round(rev / elapsedDays * totalDays);
+  var pct = forecast>0 ? Math.round(rev/forecast*100) : 0;
+  return '📈 예상 <b>'+fmtW(forecast)+'원</b> (달성 '+pct+'%)';
+}
+
+function renderCompare(){
+  var aFrom = document.getElementById('cmp-a-from').value;
+  var aTo = document.getElementById('cmp-a-to').value;
+  var bFrom = document.getElementById('cmp-b-from').value;
+  var bTo = document.getElementById('cmp-b-to').value;
+  if(!aFrom||!aTo||!bFrom||!bTo){ showSaveToast('⚠️ 기간을 모두 설정해주세요'); return; }
+
+  var A = _collectPeriod(aFrom, aTo);
+  var B = _collectPeriod(bFrom, bTo);
+
+  // 매출 카드 업데이트
+  document.getElementById('cmp-total-a').textContent = fmtW(A.total)+'원';
+  document.getElementById('cmp-total-b').innerHTML = '비교: '+fmtW(B.total)+'원';
+  document.getElementById('cmp-total-diff').innerHTML = _diffBadge(A.total, B.total);
+  document.getElementById('cmp-total-forecast').innerHTML = _forecastText(A.total, A.elapsedDays, aFrom, aTo);
+
+  document.getElementById('cmp-nav-a').textContent = fmtW(A.nav)+'원';
+  document.getElementById('cmp-nav-b').innerHTML = '비교: '+fmtW(B.nav)+'원';
+  document.getElementById('cmp-nav-diff').innerHTML = _diffBadge(A.nav, B.nav);
+  document.getElementById('cmp-nav-forecast').innerHTML = _forecastText(A.nav, A.elapsedDays, aFrom, aTo);
+
+  document.getElementById('cmp-coup-a').textContent = fmtW(A.coup)+'원';
+  document.getElementById('cmp-coup-b').innerHTML = '비교: '+fmtW(B.coup)+'원';
+  document.getElementById('cmp-coup-diff').innerHTML = _diffBadge(A.coup, B.coup);
+  document.getElementById('cmp-coup-forecast').innerHTML = _forecastText(A.coup, A.elapsedDays, aFrom, aTo);
+
+  document.getElementById('cmp-other-a').textContent = fmtW(A.ot)+'원';
+  document.getElementById('cmp-other-b').innerHTML = '비교: '+fmtW(B.ot)+'원';
+  document.getElementById('cmp-other-diff').innerHTML = _diffBadge(A.ot, B.ot);
+
+  // 일별 추이 오버레이 차트
+  var aDays = Object.keys(A.totalDay).sort();
+  var bDays = Object.keys(B.totalDay).sort();
+  var maxLen = Math.max(aDays.length, bDays.length);
+  var labels = [];
+  for(var i=0;i<maxLen;i++) labels.push('Day '+(i+1));
+
+  var aData = aDays.map(function(d){return A.totalDay[d];});
+  var bData = bDays.map(function(d){return B.totalDay[d];});
+  // 짧은 쪽 패딩
+  while(aData.length<maxLen) aData.push(null);
+  while(bData.length<maxLen) bData.push(null);
+
+  if(_cmpChartInstance){ _cmpChartInstance.destroy(); _cmpChartInstance=null; }
+  var aLabel = aFrom.slice(5)+' ~ '+aTo.slice(5);
+  var bLabel = bFrom.slice(5)+' ~ '+bTo.slice(5);
+  _cmpChartInstance = mkChart('cmp-daily-chart',{
+    type:'line',
+    data:{
+      labels:labels,
+      datasets:[
+        {label:'기간 A ('+aLabel+')', data:aData, borderColor:'var(--accent)', backgroundColor:'rgba(91,79,207,.1)', borderWidth:2.5, tension:0.3, fill:true, pointRadius:2},
+        {label:'기간 B ('+bLabel+')', data:bData, borderColor:'var(--dim)', backgroundColor:'transparent', borderWidth:2, borderDash:[6,4], tension:0.3, fill:false, pointRadius:2}
+      ]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{position:'top'},tooltip:{mode:'index',intersect:false,callbacks:{label:function(ctx){return ctx.dataset.label+': '+fmtW(ctx.parsed.y)+'원';}}}},
+      scales:{y:{ticks:{callback:function(v){return fmtW(v);}},beginAtZero:true}}
+    }
+  });
+
+  // 광고 비교 테이블
+  var adRows = [
+    {name:'네이버SA', aCost:A.ads.nvCost, aRev:A.ads.nvRev, bCost:B.ads.nvCost, bRev:B.ads.nvRev},
+    {name:'쿠팡', aCost:A.ads.cpCost, aRev:A.ads.cpRev, bCost:B.ads.cpCost, bRev:B.ads.cpRev},
+    {name:'메타', aCost:A.ads.metaCost, aRev:0, bCost:B.ads.metaCost, bRev:0}
+  ];
+  var adHtml='';
+  adRows.forEach(function(r){
+    var aRoas = r.aCost>0&&r.aRev>0 ? (r.aRev/r.aCost*100).toFixed(0)+'%' : (r.name==='메타'?'—':'0%');
+    var bRoas = r.bCost>0&&r.bRev>0 ? (r.bRev/r.bCost*100).toFixed(0)+'%' : (r.name==='메타'?'—':'0%');
+    var costDiff = _diffBadge(r.aCost, r.bCost);
+    adHtml+='<tr><td style="text-align:left;font-weight:600">'+r.name+'</td>';
+    adHtml+='<td>'+fmtW(r.aCost)+'</td><td>'+aRoas+'</td>';
+    adHtml+='<td>'+fmtW(r.bCost)+'</td><td>'+bRoas+'</td>';
+    adHtml+='<td>'+costDiff+'</td></tr>';
+  });
+  // 합산 행
+  var aTotalCost=A.ads.nvCost+A.ads.cpCost+A.ads.metaCost;
+  var bTotalCost=B.ads.nvCost+B.ads.cpCost+B.ads.metaCost;
+  var aTotalRev=A.ads.nvRev+A.ads.cpRev;
+  var bTotalRev=B.ads.nvRev+B.ads.cpRev;
+  var aTotalRoas=aTotalCost>0?(aTotalRev/aTotalCost*100).toFixed(0)+'%':'0%';
+  var bTotalRoas=bTotalCost>0?(bTotalRev/bTotalCost*100).toFixed(0)+'%':'0%';
+  adHtml+='<tr style="font-weight:700;border-top:2px solid var(--border)"><td style="text-align:left">합산</td>';
+  adHtml+='<td>'+fmtW(aTotalCost)+'</td><td>'+aTotalRoas+'</td>';
+  adHtml+='<td>'+fmtW(bTotalCost)+'</td><td>'+bTotalRoas+'</td>';
+  adHtml+='<td>'+_diffBadge(aTotalCost,bTotalCost)+'</td></tr>';
+  document.getElementById('cmp-ad-tbl').innerHTML=adHtml;
+}
+
 function downloadArchiveXLSX(){
   var wb=XLSX.utils.book_new();
   var todayStr=toDateStr(new Date());
