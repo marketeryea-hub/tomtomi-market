@@ -2856,14 +2856,21 @@ function downloadArchiveXLSX(){
   }
   function v(x){return (x===undefined||x===null)?'':x;}
 
-  // 1. 네이버_일매출: 아카이브(ARCHIVE.naver) + 로우 원본 시간대별 행(DB.naverRaw)
-  // ARCHIVE.naver는 이미 시간대별 행으로 구성되어 있음
-  var nvArchive = ARCHIVE.naver.slice().sort(function(a,b){return String(a.d||'').localeCompare(String(b.d||''));});
+  // 1. 네이버_일매출: DB.naverRaw(시간대별 원본)을 기본으로,
+  //    ARCHIVE.naver(일별 집계)는 naverRaw에 없는 날짜만 보충
   var nvRaw = DB.naverRaw.slice().sort(function(a,b){
     if(a.d!==b.d) return String(a.d||'').localeCompare(String(b.d||''));
     return String(a.time||'').localeCompare(String(b.time||''));
   });
-  var nvAll = nvArchive.concat(nvRaw);
+  // naverRaw에 있는 날짜 수집
+  var nvRawDates={};
+  nvRaw.forEach(function(e){ if(e.d) nvRawDates[e.d]=true; });
+  // ARCHIVE.naver에서 naverRaw에 없는 날짜만 추가 (이중 집계 방지)
+  var nvArchiveOnly = ARCHIVE.naver.filter(function(e){ return e.d && !nvRawDates[e.d]; })
+    .sort(function(a,b){return String(a.d||'').localeCompare(String(b.d||''));});
+  // 합산 후 날짜+시간대 기준 dedupe (같은 키가 있으면 첫 번째만 유지)
+  var nvMerged = nvArchiveOnly.concat(nvRaw);
+  var nvAll = dedupe(nvMerged, function(e){ return (e.d||'')+'|'+(e.time||''); });
   addSheet('네이버_일매출',
     ['날짜','요일','시간대','결제자수','결제수','모바일비율(결제건수)','결제금액','모바일비율(결제금액)',
      '결제당 결제금액','결제상품수량','결제당 상품수량','배송비','쿠폰합계','상품쿠폰','주문쿠폰',
@@ -2875,9 +2882,12 @@ function downloadArchiveXLSX(){
     ];}));
 
   // 2. 네이버_상품성과 (원본 행 전체)
-  // naverProd: 아카이브 + 로우 합산
+  // naverProd: 아카이브 + 로우 합산 (날짜+상품명+결제금액 기준 중복 제거)
   var nvpAll=(ARCHIVE.naverProd||[]).concat(DB.naverProd.filter(function(e){return !e.isArchive;}));
-  var nvp=nvpAll.slice().sort(function(a,b){return String(a.d||a.date||'').localeCompare(String(b.d||b.date||''));});
+  var nvp=dedupe(nvpAll, function(e){
+    return (e.d||e.date||'')+'|'+(e.name||'')+'|'+(e.rev||e.r||0)+'|'+(e.o||e.qty||0)+'|'+(e.refund||0);
+  });
+  nvp.sort(function(a,b){return String(a.d||a.date||'').localeCompare(String(b.d||b.date||''));});
   addSheet('네이버_상품성과',
     ['날짜','상품카테고리(대)','상품카테고리(중)','상품카테고리(소)','상품카테고리(세)',
      '상품명','상품ID','결제수','결제상품수량','모바일비율(결제상품수량)','결제금액',
@@ -2919,10 +2929,13 @@ function downloadArchiveXLSX(){
       v(e.totalTax),v(e.invoice),v(e.pay)
     ];}));
 
-  // 4. 기타마켓 (원본 행 전체)
+  // 4. 기타마켓 (원본 행 전체, 주문번호 기준 중복 제거)
   // other: 아카이브 + 로우 합산
   var otAll=(ARCHIVE.other||[]).concat(DB.other.filter(function(e){return !e.isArchive;}));
-  var ot=otAll.slice().sort(function(a,b){return String(a.d||'').localeCompare(String(b.d||''));});
+  var ot=dedupe(otAll, function(e){
+    return (e.d||'')+'|'+(e.ordNo||'')+'|'+(e.product||'')+'|'+(e.a||e.amount||0);
+  });
+  ot.sort(function(a,b){return String(a.d||'').localeCompare(String(b.d||''));});
   addSheet('기타마켓',
     ['결제일자','오픈마켓명','주문번호','묶음주문번호','오픈마켓상품명','오픈마켓품목key',
      '수량','주문금액','주문상태','상태별처리기능','배송방법코드','배송방법','송장번호'],
@@ -2931,13 +2944,15 @@ function downloadArchiveXLSX(){
       v(e.qty),v(e.a||e.amount),v(e.status),v(e.action),v(e.shipCode),v(e.ship),v(e.invoice)
     ];}));
 
-  // 5. 광고_네이버SA (아카이브 원본 + 로우 원본 행)
+  // 5. 광고_네이버SA (아카이브 원본 + 로우 원본 행, 중복 제거)
   var saArchive=(ARCHIVE.naverAd||[]).slice().sort(function(a,b){return String(a.d||'').localeCompare(String(b.d||''));});
   var saRaw=DB.naverAdRaw.slice().sort(function(a,b){
     if(a.d!==b.d) return String(a.d||'').localeCompare(String(b.d||''));
     return String(a.campaign_type||'').localeCompare(String(b.campaign_type||''));
   });
-  var saAll=saArchive.concat(saRaw);
+  var saAll=dedupe(saArchive.concat(saRaw), function(e){
+    return (e.d||'')+'|'+(e.campaign_type||'')+'|'+(e.campaign||'')+'|'+(e.cost||0)+'|'+(e.rev||0);
+  });
   addSheet('광고_네이버SA',
     ['일별','캠페인유형','캠페인','노출수','클릭수','클릭률(%)','평균클릭비용(VAT포함,원)',
      '총비용(VAT포함,원)','총 전환수','총 전환율(%)','총 전환매출액(원)','총 전환당비용(원)','총 광고수익률(%)'],
@@ -2946,13 +2961,15 @@ function downloadArchiveXLSX(){
       v(e.cost),v(e.conv),v(e.conv_rate),v(e.rev),v(e.cost_per_conv),v(e.roas)
     ];}));
 
-  // 6. 광고_쿠팡 (아카이브 원본 + 로우 원본 행)
+  // 6. 광고_쿠팡 (아카이브 원본 + 로우 원본 행, 중복 제거)
   var cpaArchive=(ARCHIVE.coupAd||[]).slice().sort(function(a,b){return String(a.d||'').localeCompare(String(b.d||''));});
   var cpaRaw=DB.coupAdRaw.slice().sort(function(a,b){
     if(a.d!==b.d) return String(a.d||'').localeCompare(String(b.d||''));
     return String(a.campaign||'').localeCompare(String(b.campaign||''));
   });
-  var cpaAll=cpaArchive.concat(cpaRaw);
+  var cpaAll=dedupe(cpaArchive.concat(cpaRaw), function(e){
+    return (e.d||'')+'|'+(e.campaign||'')+'|'+(e.prod||'')+'|'+(e.cost||0)+'|'+(e.rev||0);
+  });
   addSheet('광고_쿠팡',
     ['날짜','캠페인 이름','광고 목표','광고그룹','광고집행 상품명','광고 전환 매출 발생 상품명',
      '과금방식','노출수','클릭수','클릭률','광고비(원)','총 주문수 (1일)',
@@ -2963,13 +2980,15 @@ function downloadArchiveXLSX(){
       v(e.rev),v(e.roas),v(e.qty)
     ];}));
 
-  // 7. 광고_메타 (아카이브 원본 + 로우 원본 행)
+  // 7. 광고_메타 (아카이브 원본 + 로우 원본 행, 중복 제거)
   var metaArchive=(ARCHIVE.metaAd||[]).slice().sort(function(a,b){return String(a.d||'').localeCompare(String(b.d||''));});
   var metaRaw=DB.metaAdRaw.slice().sort(function(a,b){
     if(a.d!==b.d) return String(a.d||'').localeCompare(String(b.d||''));
     return String(a.setName||'').localeCompare(String(b.setName||''));
   });
-  var metaAll=metaArchive.concat(metaRaw);
+  var metaAll=dedupe(metaArchive.concat(metaRaw), function(e){
+    return (e.d||'')+'|'+(e.setName||'')+'|'+(e.cost||0)+'|'+(e.imp||0);
+  });
   addSheet('광고_메타',
     ['날짜','광고 세트 이름','도달','노출','클릭(전체)','CTR(전체)','결과 유형',
      '결과당 비용','지출 금액 (KRW)','CPC(전체)','결과','품질 순위','참여율 순위',
@@ -2982,8 +3001,13 @@ function downloadArchiveXLSX(){
 
   // 8. 영업이익_검증
   var roiRows=[];
-  var nvD=dedupe(nvAll.filter(function(e){return e.d;}),function(e){return e.d;});
-  nvD.forEach(function(e){
+  // nvAll에서 날짜별 합산 (시간대별 행이므로 단순 dedupe 불가)
+  var nvDayMap={};
+  nvAll.filter(function(e){return e.d;}).forEach(function(e){
+    if(!nvDayMap[e.d]) nvDayMap[e.d]={d:e.d, r:0};
+    nvDayMap[e.d].r += (parseFloat(e.r)||0);
+  });
+  Object.values(nvDayMap).forEach(function(e){
     var s=parseFloat(e.r)||0,comm=Math.round(s*NAVER_FEE_RATE);
     var cost=Math.round(s*(1-ARCHIVE.roi.naver.roi_rate))-comm,roi=s-cost-comm;
     roiRows.push([v(e.d),'네이버',s,cost,comm,roi,s>0?+((roi/s)*100).toFixed(1):0,'수수료7%']);
