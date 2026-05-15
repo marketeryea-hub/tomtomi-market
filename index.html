@@ -297,7 +297,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   </div>
   <div class="kpi-grid">
     <div class="kpi" style="--c:var(--accent)"><div class="kpi-ico">💰</div><div class="kpi-lbl">총 합산 매출</div><div class="kpi-val" id="ov-total">-</div><div class="kpi-badge bi" id="ov-total-sub">-</div></div>
-    <div class="kpi" style="--c:var(--naver)"><div class="kpi-ico">🟢</div><div class="kpi-lbl">네이버 매출</div><div class="kpi-val" id="ov-naver">-</div><div class="kpi-badge bu" id="ov-naver-pct">-</div></div>
+    <div class="kpi" style="--c:var(--naver)"><div class="kpi-ico">🟢</div><div class="kpi-lbl">네이버 결제금액</div><div class="kpi-val" id="ov-naver">-</div><div class="kpi-badge bu" id="ov-naver-pct">-</div><div class="kpi-badge" style="background:#fff0f0;color:#d32f2f;margin-top:4px" id="ov-naver-refund">환불 -</div></div>
     <div class="kpi" style="--c:var(--coupang)"><div class="kpi-ico">🔵</div><div class="kpi-lbl">쿠팡 실매출 (입고기준)</div><div class="kpi-val" id="ov-coup">-</div><div class="kpi-badge bi" id="ov-coup-sub">-</div></div>
     <div class="kpi" style="--c:var(--yellow)"><div class="kpi-ico">🛍️</div><div class="kpi-lbl">기타마켓 매출</div><div class="kpi-val" id="ov-other">-</div><div class="kpi-badge bi">이베이·11번가·카카오</div></div>
   </div>
@@ -324,7 +324,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
 <section id="naver" class="section">
   <div class="shd"><div class="stitle">🟢 네이버 스마트스토어 <span class="ptag" id="nv-period">-</span></div><div class="ssub">판매성과 기준 일별 매출 · 결제 분석</div></div>
   <div class="kpi-grid">
-    <div class="kpi" style="--c:var(--naver)"><div class="kpi-ico">💚</div><div class="kpi-lbl">네이버 총매출</div><div class="kpi-val" id="nv-total">-</div><div class="kpi-badge bg2" id="nv-period2">-</div></div>
+    <div class="kpi" style="--c:var(--naver)"><div class="kpi-ico">💚</div><div class="kpi-lbl">네이버 결제금액</div><div class="kpi-val" id="nv-total">-</div><div class="kpi-badge bg2" id="nv-period2">-</div><div class="kpi-badge" style="background:#fff0f0;color:#d32f2f;margin-top:4px" id="nv-refund">환불 -</div></div>
     <div class="kpi" style="--c:var(--naver)"><div class="kpi-ico">🛒</div><div class="kpi-lbl">순 결제건수</div><div class="kpi-val" id="nv-orders">-</div><div class="kpi-badge bu">환불 차감</div></div>
     <div class="kpi" style="--c:var(--naver)"><div class="kpi-ico">📦</div><div class="kpi-lbl">객단가</div><div class="kpi-val" id="nv-aov">-</div><div class="kpi-badge bi">평균 주문금액</div></div>
     <div class="kpi" style="--c:var(--naver)"><div class="kpi-ico">📅</div><div class="kpi-lbl">일평균 매출</div><div class="kpi-val" id="nv-daily-avg">-</div><div class="kpi-badge bi">영업일 기준</div></div>
@@ -1889,12 +1889,14 @@ function renderOverview(){
   // 날짜별 합산 (네이버는 시간대별 여러 행 → SUMIFS)
   var nvDayMap={},cpDayMap={},otDayMap={};
   var navTotal=0,cpTotal=0,otTotal=0;
+  var navRefundTotal=0;
   var navM={},cpM={},otM={};
 
   DB.naver.forEach(function(e){
     var ds=e.d||''; if(!inRange(ds)) return;
     if(!nvDayMap[ds]) nvDayMap[ds]=0;
     nvDayMap[ds]+=(parseFloat(e.r)||0);
+    navRefundTotal+=(parseFloat(e.refund)||0);
   });
   Object.entries(nvDayMap).forEach(function(kv){
     navTotal+=kv[1];
@@ -1918,11 +1920,13 @@ function renderOverview(){
     otM[k]=(otM[k]||0)+a;
   });
 
-  var all=navTotal+cpTotal+otTotal;
+  var navGross=navTotal+navRefundTotal; // 결제금액 = 순매출 + 환불금액
+  var all=navGross+cpTotal+otTotal;
   document.getElementById('ov-total').textContent=fmtW(all)+'원';
   document.getElementById('ov-total-sub').textContent=sortedGroups([navM,cpM,otM]).length+(unit==='day'?'일':unit==='week'?'주':'개월');
-  document.getElementById('ov-naver').textContent=fmtW(navTotal)+'원';
-  document.getElementById('ov-naver-pct').textContent=all>0?((navTotal/all*100).toFixed(1)+'%'):'0%';
+  document.getElementById('ov-naver').textContent=fmtW(navGross)+'원';
+  document.getElementById('ov-naver-pct').textContent=all>0?((navGross/all*100).toFixed(1)+'%'):'0%';
+  document.getElementById('ov-naver-refund').textContent='환불 '+fmtW(navRefundTotal)+'원';
   document.getElementById('ov-coup').textContent=fmtW(cpTotal)+'원';
   document.getElementById('ov-coup-sub').textContent='톰토미 SKU 입고 기준';
   document.getElementById('ov-other').textContent=fmtW(otTotal)+'원';
@@ -2034,12 +2038,20 @@ function renderNaver(){
     byHour[h]+=rev;
   });
 
-  var total=0,orders=0,days=Object.keys(dayMap).length;
+  var total=0,orders=0,days=Object.keys(dayMap).length,nvRefund=0;
   Object.values(dayMap).forEach(function(d){total+=d.r;orders+=d.o;});
+  DB.naver.forEach(function(e){
+    var ds=e.d||''; if(!inRange(ds)) return;
+    nvRefund+=(parseFloat(e.refund)||0);
+  });
+  var nvGross=total+nvRefund; // 결제금액 = 순매출 + 환불금액
 
-  document.getElementById('nv-total').textContent=fmtW(total)+'원';
+  document.getElementById('nv-total').textContent=fmtW(nvGross)+'원';
   document.getElementById('nv-period2').textContent=fp;
+  document.getElementById('nv-refund').textContent='환불 '+fmtW(nvRefund)+'원';
   document.getElementById('nv-orders').textContent=orders.toLocaleString()+'건';
+  document.getElementById('nv-aov').textContent=orders>0?fmtW(Math.round(nvGross/orders))+'원':'-';
+  document.getElementById('nv-daily-avg').textContent=days>0?fmtW(Math.round(nvGross/days))+'원':'-';
   document.getElementById('nv-aov').textContent=orders>0?fmtW(Math.round(total/orders))+'원':'-';
   document.getElementById('nv-daily-avg').textContent=days>0?fmtW(Math.round(total/days))+'원':'-';
 
