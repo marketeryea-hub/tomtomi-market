@@ -752,8 +752,8 @@ function loadArchiveFromJSON(jsonObj) {
 
 
 
-const ARCHIVE_CUTOFF = new Date('2026-03-23');
-const ARCHIVE_CUTOFF_STR = '2026-03-22'; // 이 날짜 포함 이후만 로우로 처리
+const ARCHIVE_CUTOFF = new Date('2020-01-01');
+const ARCHIVE_CUTOFF_STR = '2020-01-01'; // 업로드 파일의 모든 날짜를 처리 (환불 등 갱신 반영)
 
 // ══════════════════════════════════════════
 // STATE
@@ -1240,6 +1240,14 @@ function parseNaver(wb){
   }
   // 시간대별 집계 → naverHourly + naverRaw (원본 행 저장)
   var hourMap={};
+  // 업로드 파일에 있는 날짜 수집
+  var uploadedRawDates={};
+  for(var pi=1;pi<rows.length;pi++){
+    var pds=normalizeDate(rows[pi][iDate]);
+    if(pds&&pds>=ARCHIVE_CUTOFF_STR) uploadedRawDates[pds]=true;
+  }
+  // 해당 날짜의 기존 naverRaw 제거 (덮어쓰기 — 환불 갱신 반영)
+  DB.naverRaw = DB.naverRaw.filter(function(e){ return !uploadedRawDates[e.d]; });
   var existRawDays={};
   DB.naverRaw.forEach(function(e){existRawDays[e.d+'|'+(e.time||'')]=true;});
   for(var hi=1;hi<rows.length;hi++){
