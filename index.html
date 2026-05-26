@@ -264,6 +264,40 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     <span style="font-size:11px;color:var(--dim)">기간 필터에 맞는 데이터로 메시지를 생성합니다. 전송 전에 자유롭게 수정 가능!</span>
     <span style="font-size:10px;color:var(--dim);margin-left:auto">기간: <b id="slack-period-label">—</b></span>
   </div>
+  <!-- 고정 텍스트 편집 영역 -->
+  <details id="slack-label-editor" style="margin-bottom:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0">
+    <summary style="padding:8px 12px;cursor:pointer;font-size:12px;font-weight:600;color:var(--dim);list-style:none;display:flex;align-items:center;gap:6px">✏️ 메시지 라벨 편집 <span style="font-size:10px;font-weight:400">(타이틀·섹션명 수정)</span></summary>
+    <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <label style="font-size:11px;color:var(--dim);min-width:90px">일일 타이틀</label>
+        <input id="slk-lbl-daily" type="text" style="flex:1;min-width:200px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--s1);color:var(--text);outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <label style="font-size:11px;color:var(--dim);min-width:90px">기간 타이틀</label>
+        <input id="slk-lbl-period" type="text" style="flex:1;min-width:200px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--s1);color:var(--text);outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <label style="font-size:11px;color:var(--dim);min-width:90px">매출 섹션</label>
+        <input id="slk-lbl-sales" type="text" style="flex:1;min-width:200px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--s1);color:var(--text);outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <label style="font-size:11px;color:var(--dim);min-width:90px">광고 섹션</label>
+        <input id="slk-lbl-ads" type="text" style="flex:1;min-width:200px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--s1);color:var(--text);outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <label style="font-size:11px;color:var(--dim);min-width:90px">TOP3 섹션</label>
+        <input id="slk-lbl-top3" type="text" style="flex:1;min-width:200px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--s1);color:var(--text);outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <label style="font-size:11px;color:var(--dim);min-width:90px">하단 고정글</label>
+        <textarea id="slk-lbl-footer" rows="3" style="flex:1;min-width:200px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--s1);color:var(--text);outline:none;resize:vertical;font-family:'Noto Sans KR',sans-serif;line-height:1.6" placeholder="매일 리포트 아래에 붙는 고정 텍스트 (CRM, 키워드 등)" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="fbtn fbtn-pre" onclick="resetSlackLabels()" style="font-size:11px;padding:4px 10px">🔄 기본값</button>
+        <button class="fbtn" onclick="saveSlackLabels()" style="font-size:11px;padding:4px 10px;background:var(--accent);color:#fff">💾 저장</button>
+      </div>
+    </div>
+  </details>
   <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
     <button class="fbtn fbtn-pre" onclick="generateSlackPreview()" style="font-size:11px;padding:5px 12px">🔄 미리보기 생성</button>
     <button class="fbtn fbtn-pre" onclick="toggleSlackPanel()" style="font-size:11px;padding:5px 12px">✕ 닫기</button>
@@ -3095,6 +3129,55 @@ var SLACK_WEBHOOK = 'https://tomtomi-slack-relay.vercel.app/api/slack';
 function toggleSlackPanel(){
   var p = document.getElementById('slackPanel');
   p.style.display = p.style.display==='none'?'block':'none';
+  if(p.style.display==='block') loadSlackLabels();
+}
+
+// ── 슬랙 라벨 관리 ──
+var SLACK_LABEL_DEFAULTS = {
+  daily: '톰토미 커머스 데일리리포트',
+  period: '톰토미 커머스 리포트',
+  sales: '💰 매출',
+  ads: '📣 광고',
+  top3: '고매출 상품 TOP3',
+  footer: ''
+};
+
+function getSlackLabels(){
+  try {
+    var saved = localStorage.getItem('tomtomi_slack_labels');
+    if(saved) return Object.assign({}, SLACK_LABEL_DEFAULTS, JSON.parse(saved));
+  } catch(e){}
+  return Object.assign({}, SLACK_LABEL_DEFAULTS);
+}
+
+function loadSlackLabels(){
+  var lbl = getSlackLabels();
+  document.getElementById('slk-lbl-daily').value = lbl.daily;
+  document.getElementById('slk-lbl-period').value = lbl.period;
+  document.getElementById('slk-lbl-sales').value = lbl.sales;
+  document.getElementById('slk-lbl-ads').value = lbl.ads;
+  document.getElementById('slk-lbl-top3').value = lbl.top3;
+  document.getElementById('slk-lbl-footer').value = lbl.footer;
+}
+
+function saveSlackLabels(){
+  var lbl = {
+    daily: document.getElementById('slk-lbl-daily').value.trim() || SLACK_LABEL_DEFAULTS.daily,
+    period: document.getElementById('slk-lbl-period').value.trim() || SLACK_LABEL_DEFAULTS.period,
+    sales: document.getElementById('slk-lbl-sales').value.trim() || SLACK_LABEL_DEFAULTS.sales,
+    ads: document.getElementById('slk-lbl-ads').value.trim() || SLACK_LABEL_DEFAULTS.ads,
+    top3: document.getElementById('slk-lbl-top3').value.trim() || SLACK_LABEL_DEFAULTS.top3,
+    footer: document.getElementById('slk-lbl-footer').value
+  };
+  try { localStorage.setItem('tomtomi_slack_labels', JSON.stringify(lbl)); } catch(e){}
+  showSaveToast('💾 슬랙 라벨 저장 완료!');
+}
+
+function resetSlackLabels(){
+  if(!confirm('슬랙 라벨을 기본값으로 복원할까요?')) return;
+  try { localStorage.removeItem('tomtomi_slack_labels'); } catch(e){}
+  loadSlackLabels();
+  showSaveToast('🔄 기본값으로 복원!');
 }
 
 function buildSlackMessage(){
@@ -3164,26 +3247,32 @@ function buildSlackMessage(){
   var fmtCtrS=function(cl,im){return im>0?(cl/im*100).toFixed(1)+'%':'—';};
   var totalRoasPct=totalAdCost>0?Math.round(totalAdRev/totalAdCost*100)+'%':'—';
 
+  var lbl = getSlackLabels();
   var lines=[];
   if(isSingleDay){
-    lines.push('📊 *톰토미 마케팅 일일리포트 ('+dateDisplay+' '+dayLabel+')*');
+    lines.push('📊 *'+lbl.daily+' ('+dateDisplay+' '+dayLabel+')*');
   } else {
-    lines.push('📊 *톰토미 마케팅 리포트 ('+dateDisplay+' ~ '+toDisplay+')*');
+    lines.push('📊 *'+lbl.period+' ('+dateDisplay+' ~ '+toDisplay+')*');
   }
   lines.push('');
-  lines.push('*💰 매출*');
+  lines.push('*'+lbl.sales+'*');
   lines.push('▸ 네이버 '+fmtW(navRev)+'원 (결제 '+Math.round(navOrders)+'건) / 쿠팡 '+fmtW(cpRev)+'원 (입고 기준)');
   lines.push('');
-  lines.push('*📣 광고*');
+  lines.push('*'+lbl.ads+'*');
   lines.push('▸ 네이버SA '+fmtW(nvAdCost)+' → ROAS '+fmtRoasS(nvAdCost,nvAdRev)+' / 쿠팡 '+fmtW(cpAdCost)+' → ROAS '+fmtRoasS(cpAdCost,cpAdRev)+' / 메타 '+fmtW(metaAdCost)+' (CTR '+fmtCtrS(metaClicks,metaImp)+')');
   lines.push('💡 총 광고비 '+fmtW(totalAdCost)+' / 총 매출 '+fmtW(totalRev)+' - ROAS '+totalRoasPct);
 
   if(topProducts.length>0){
     lines.push('');
-    lines.push('*[고매출 상품 TOP3]*');
+    lines.push('*['+lbl.top3+']*');
     topProducts.forEach(function(p,i){
       lines.push((i+1)+'. '+p.name+' — '+fmtW(p.rev)+'원 ('+p.platform+')');
     });
+  }
+
+  if(lbl.footer && lbl.footer.trim()){
+    lines.push('');
+    lines.push(lbl.footer);
   }
 
   return lines.join('\n');
