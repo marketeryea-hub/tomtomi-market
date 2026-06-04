@@ -3261,7 +3261,7 @@ function buildSlackMessage(){
   lines.push('*'+lbl.ads+'*');
   lines.push('▸총광고비 '+fmtW(totalAdCost)+': 네이버SA '+fmtW(nvAdCost)+' → ROAS '+fmtRoasS(nvAdCost,nvAdRev)+' / 쿠팡 '+fmtW(cpAdCost)+' → ROAS '+fmtRoasS(cpAdCost,cpAdRev)+' / 메타 '+fmtW(metaAdCost)+' (CTR '+fmtCtrS(metaClicks,metaImp)+')');
   var storeAdCost=nvAdCost+metaAdCost;
-  lines.push('▸ 톰토미스토어 ROAS '+fmtRoasS(storeAdCost,nvAdRev)+' (광고비 '+fmtW(storeAdCost)+', 매출 '+fmtW(nvAdRev)+')');
+  lines.push('▸ 톰토미스토어 ROAS '+fmtRoasS(storeAdCost,navRev)+' (광고비 '+fmtW(storeAdCost)+', 매출 '+fmtW(navRev)+')');
   lines.push('▸ 쿠팡애즈 ROAS '+fmtRoasS(cpAdCost,cpAdRev)+' (광고비 '+fmtW(cpAdCost)+', 광고 발생매출 '+fmtW(cpAdRev)+')');
 
   if(topProducts.length>0){
