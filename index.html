@@ -3259,8 +3259,10 @@ function buildSlackMessage(){
   lines.push('▸ 네이버 '+fmtW(navRev)+'원 (결제 '+Math.round(navOrders)+'건) / 쿠팡 '+fmtW(cpRev)+'원 (입고 기준)');
   lines.push('');
   lines.push('*'+lbl.ads+'*');
-  lines.push('▸ 네이버SA '+fmtW(nvAdCost)+' → ROAS '+fmtRoasS(nvAdCost,nvAdRev)+' / 쿠팡 '+fmtW(cpAdCost)+' → ROAS '+fmtRoasS(cpAdCost,cpAdRev)+' / 메타 '+fmtW(metaAdCost)+' (CTR '+fmtCtrS(metaClicks,metaImp)+')');
-  lines.push('💡 총 광고비 '+fmtW(totalAdCost)+' / 총 매출 '+fmtW(totalRev)+' - ROAS '+totalRoasPct);
+  lines.push('▸총광고비 '+fmtW(totalAdCost)+': 네이버SA '+fmtW(nvAdCost)+' → ROAS '+fmtRoasS(nvAdCost,nvAdRev)+' / 쿠팡 '+fmtW(cpAdCost)+' → ROAS '+fmtRoasS(cpAdCost,cpAdRev)+' / 메타 '+fmtW(metaAdCost)+' (CTR '+fmtCtrS(metaClicks,metaImp)+')');
+  var storeAdCost=nvAdCost+metaAdCost;
+  lines.push('▸ 톰토미스토어 ROAS '+fmtRoasS(storeAdCost,nvAdRev)+' (광고비 '+fmtW(storeAdCost)+', 매출 '+fmtW(nvAdRev)+')');
+  lines.push('▸ 쿠팡애즈 ROAS '+fmtRoasS(cpAdCost,cpAdRev)+' (광고비 '+fmtW(cpAdCost)+', 광고 발생매출 '+fmtW(cpAdRev)+')');
 
   if(topProducts.length>0){
     lines.push('');
