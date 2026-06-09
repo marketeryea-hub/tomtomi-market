@@ -914,9 +914,12 @@ function fmtW(n){
   if(n===undefined||n===null||n==='') return '0';
   if(typeof n==='string') n=Number(n.replace(/,/g,''));
   if(isNaN(n)) return '0';
-  if(Math.abs(n)>=100000000) return (n/100000000).toFixed(1)+'억';
-  if(Math.abs(n)>=10000000)  return (n/10000000).toFixed(0)+'천만';
-  if(Math.abs(n)>=10000)     return (n/10000).toFixed(1)+'만';
+  if(Math.abs(n)>=100000000) return (Math.floor(n/10000000)/10).toFixed(1)+'억';
+  if(Math.abs(n)>=10000){
+    var man=n/10000;
+    if(Math.abs(n)>=10000000) return Math.floor(man).toLocaleString()+'만';
+    return (Math.floor(man*10)/10).toFixed(1)+'만';
+  }
   return Math.round(n).toLocaleString();
 }
 function fmtDate(d){
