@@ -335,6 +335,15 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     <div class="kpi" style="--c:var(--coupang)"><div class="kpi-ico">🔵</div><div class="kpi-lbl">쿠팡 실매출 (입고기준)</div><div class="kpi-val" id="ov-coup">-</div><div class="kpi-badge bi" id="ov-coup-sub">-</div></div>
     <div class="kpi" style="--c:var(--yellow)"><div class="kpi-ico">🛍️</div><div class="kpi-lbl">기타마켓 매출</div><div class="kpi-val" id="ov-other">-</div><div class="kpi-badge bi">이베이·11번가·카카오</div></div>
   </div>
+  <!-- 평균 매출 -->
+  <div class="card gf" style="margin-bottom:14px;padding:14px 20px">
+    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:12px;font-weight:700;color:var(--dim)">📊 평균 매출</span>
+      <span style="font-size:13px" id="ov-avg-daily">일평균: -</span>
+      <span style="font-size:13px" id="ov-avg-monthly">월평균: -</span>
+      <span style="font-size:13px" id="ov-avg-yearly">연평균: -</span>
+    </div>
+  </div>
   <div class="g2">
     <div class="card"><div class="ctitle">채널별 월 매출 추이 <span class="badge ba">이번 달</span></div><div class="csub">네이버(판매성과) + 쿠팡(입고기준) + 기타마켓 이번 달 일별 추이</div><canvas id="ov-monthly-chart"></canvas></div>
     <div class="card"><div class="ctitle">채널 매출 비중 <span class="badge ba">선택 기간</span></div><div class="csub">전체 오픈마켓 기여도</div><canvas id="ov-pie-chart"></canvas></div>
@@ -570,6 +579,23 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     <div class="kpi" style="--c:var(--naver)"><div class="kpi-ico">🟢</div><div class="kpi-lbl">네이버</div><div id="cmp-nav-a" class="kpi-val">-</div><div id="cmp-nav-b" style="font-size:12px;color:var(--dim)">비교: -</div><div id="cmp-nav-diff" style="font-size:13px;font-weight:700;margin-top:4px">-</div><div id="cmp-nav-forecast" style="font-size:11px;color:var(--dim);margin-top:4px"></div></div>
     <div class="kpi" style="--c:var(--coupang)"><div class="kpi-ico">🔵</div><div class="kpi-lbl">쿠팡</div><div id="cmp-coup-a" class="kpi-val">-</div><div id="cmp-coup-b" style="font-size:12px;color:var(--dim)">비교: -</div><div id="cmp-coup-diff" style="font-size:13px;font-weight:700;margin-top:4px">-</div><div id="cmp-coup-forecast" style="font-size:11px;color:var(--dim);margin-top:4px"></div></div>
     <div class="kpi" style="--c:var(--yellow)"><div class="kpi-ico">🛍️</div><div class="kpi-lbl">기타마켓</div><div id="cmp-other-a" class="kpi-val">-</div><div id="cmp-other-b" style="font-size:12px;color:var(--dim)">비교: -</div><div id="cmp-other-diff" style="font-size:13px;font-weight:700;margin-top:4px">-</div></div>
+  </div>
+  <!-- 평균 매출 비교 -->
+  <div class="card gf" style="margin-top:12px;padding:14px 20px">
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:12px;font-weight:700;color:var(--accent)">📊 기간 A 평균</span>
+        <span style="font-size:13px" id="cmp-avg-daily-a">일평균: -</span>
+        <span style="font-size:13px" id="cmp-avg-monthly-a">월평균: -</span>
+        <span style="font-size:13px" id="cmp-avg-yearly-a">연평균: -</span>
+      </div>
+      <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:12px;font-weight:700;color:var(--dim)">📊 기간 B 평균</span>
+        <span style="font-size:13px" id="cmp-avg-daily-b">일평균: -</span>
+        <span style="font-size:13px" id="cmp-avg-monthly-b">월평균: -</span>
+        <span style="font-size:13px" id="cmp-avg-yearly-b">연평균: -</span>
+      </div>
+    </div>
   </div>
   <!-- 일별 추이 오버레이 차트 (매출 + 광고비) -->
   <div class="card gf" style="margin-top:12px">
@@ -1968,6 +1994,23 @@ function renderOverview(){
   document.getElementById('ov-coup-sub').textContent='톰토미 SKU 입고 기준';
   document.getElementById('ov-other').textContent=fmtW(otTotal)+'원';
 
+  // 평균 매출 계산
+  (function(){
+    var allDates=new Set(), allMonths=new Set(), allYears=new Set();
+    [nvDayMap,cpDayMap,otDayMap].forEach(function(m){
+      Object.keys(m).forEach(function(d){
+        allDates.add(d);
+        if(d.length>=7) allMonths.add(d.slice(0,7));
+        if(d.length>=4) allYears.add(d.slice(0,4));
+      });
+    });
+    var total=navTotal+cpTotal+otTotal;
+    var days=allDates.size, months=allMonths.size, years=allYears.size;
+    document.getElementById('ov-avg-daily').innerHTML='일평균: <b>'+(days>0?fmtW(Math.floor(total/days))+'원':'—')+'</b> <span style="color:var(--dim);font-size:11px">('+days+'일)</span>';
+    document.getElementById('ov-avg-monthly').innerHTML='월평균: <b>'+(months>0?fmtW(Math.floor(total/months))+'원':'—')+'</b> <span style="color:var(--dim);font-size:11px">('+months+'개월)</span>';
+    document.getElementById('ov-avg-yearly').innerHTML='연평균: <b>'+(years>0?fmtW(Math.floor(total/years))+'원':'—')+'</b> <span style="color:var(--dim);font-size:11px">('+years+'년)</span>';
+  })();
+
   var groups=sortedGroups([navM,cpM,otM]);
   var labels=groups.map(function(k){return toGroupLabel(k,unit);});
 
@@ -2824,6 +2867,19 @@ function renderCompare(){
   document.getElementById('cmp-other-a').textContent = fmtW(A.ot)+'원';
   document.getElementById('cmp-other-b').innerHTML = '비교: '+fmtW(B.ot)+'원';
   document.getElementById('cmp-other-diff').innerHTML = _diffBadge(A.ot, B.ot);
+
+  // 평균 매출 계산 (기간 A / B)
+  function _setAvg(prefix, data){
+    var dates=Object.keys(data.totalDay);
+    var months=new Set(), years=new Set();
+    dates.forEach(function(d){ if(d.length>=7) months.add(d.slice(0,7)); if(d.length>=4) years.add(d.slice(0,4)); });
+    var days=dates.length, mc=months.size, yc=years.size;
+    document.getElementById('cmp-avg-daily-'+prefix).innerHTML='일평균: <b>'+(days>0?fmtW(Math.floor(data.total/days))+'원':'—')+'</b> <span style="color:var(--dim);font-size:11px">('+days+'일)</span>';
+    document.getElementById('cmp-avg-monthly-'+prefix).innerHTML='월평균: <b>'+(mc>0?fmtW(Math.floor(data.total/mc))+'원':'—')+'</b> <span style="color:var(--dim);font-size:11px">('+mc+'개월)</span>';
+    document.getElementById('cmp-avg-yearly-'+prefix).innerHTML='연평균: <b>'+(yc>0?fmtW(Math.floor(data.total/yc))+'원':'—')+'</b> <span style="color:var(--dim);font-size:11px">('+yc+'년)</span>';
+  }
+  _setAvg('a', A);
+  _setAvg('b', B);
 
   // 일별 추이 오버레이 차트
   var aDays = Object.keys(A.totalDay).sort();
