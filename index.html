@@ -3160,20 +3160,21 @@ function downloadArchiveXLSX(){
   }
   function v(x){return (x===undefined||x===null)?'':x;}
 
-  // 1. 네이버_일매출: DB.naverRaw(시간대별 원본)을 기본으로,
-  //    ARCHIVE.naver(일별 집계)는 naverRaw에 없는 날짜만 보충
+  // 1. 네이버_일매출: DB.naverRaw(시간대별 원본) + ARCHIVE.naver + DB.naver 전체 합산
+  //    우선순위: naverRaw > DB.naver > ARCHIVE.naver (같은 날짜는 먼저 나온 것 유지)
   var nvRaw = DB.naverRaw.slice().sort(function(a,b){
     if(a.d!==b.d) return String(a.d||'').localeCompare(String(b.d||''));
     return String(a.time||'').localeCompare(String(b.time||''));
   });
-  // naverRaw에 있는 날짜 수집
   var nvRawDates={};
   nvRaw.forEach(function(e){ if(e.d) nvRawDates[e.d]=true; });
-  // ARCHIVE.naver에서 naverRaw에 없는 날짜만 추가 (이중 집계 방지)
+  // DB.naver에서 naverRaw에 없는 날짜 추가 (새 양식 등)
+  var nvDbOnly = DB.naver.filter(function(e){ return e.d && !nvRawDates[e.d]; });
+  nvDbOnly.forEach(function(e){ nvRawDates[e.d]=true; });
+  // ARCHIVE.naver에서 위 둘에 없는 날짜만 보충
   var nvArchiveOnly = ARCHIVE.naver.filter(function(e){ return e.d && !nvRawDates[e.d]; })
     .sort(function(a,b){return String(a.d||'').localeCompare(String(b.d||''));});
-  // 합산 후 날짜+시간대 기준 dedupe (같은 키가 있으면 첫 번째만 유지)
-  var nvMerged = nvArchiveOnly.concat(nvRaw);
+  var nvMerged = nvArchiveOnly.concat(nvDbOnly).concat(nvRaw);
   var nvAll = dedupe(nvMerged, function(e){ return (e.d||'')+'|'+(e.time||''); });
   addSheet('네이버_일매출',
     ['날짜','요일','시간대','결제자수','결제수','모바일비율(결제건수)','결제금액','모바일비율(결제금액)',
