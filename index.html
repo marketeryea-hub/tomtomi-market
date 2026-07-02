@@ -703,7 +703,7 @@ async function loadFromSupabase() {
       if (!byChannel[r.channel]) byChannel[r.channel] = [];
       if (Array.isArray(r.data)) byChannel[r.channel].push(...r.data);
     });
-    ['naver','naverProd','coupStock','naverAd','coupAd','metaAd'].forEach(k => {
+    ['naver','naverProd','coupStock','naverAd','coupAd','metaAd','naverVisit','naverProdVisit'].forEach(k => {
       if (byChannel[k]) {
         DB[k] = byChannel[k];
         ARCHIVE[k] = byChannel[k];
@@ -830,7 +830,9 @@ const DB = {
   naverRaw:    [],    // 네이버 시간대별 원본 행 (아카이브 체크용)
   naverAdRaw:  [],    // 네이버SA 광고 원본 행 (아카이브 체크용)
   coupAdRaw:   [],    // 쿠팡 광고 원본 행 (아카이브 체크용)
-  metaAdRaw:   []     // 메타 광고 원본 행 (아카이브 체크용)
+  metaAdRaw:   [],    // 메타 광고 원본 행 (아카이브 체크용)
+  naverProdVisit: [], // 🆕 상품별 방문분석
+  naverVisit:  []     // 🆕 경로별 방문분석
 };
 
 let filterFrom = new Date('2023-07-06');
@@ -1245,6 +1247,8 @@ function updateStatus(){
 function parseXLSX(wb,type,filename){
   if(type==='naver')      return parseNaver(wb);
   if(type==='naverProd')  return parseNaverProd(wb,filename);
+  if(type==='newSales')   return parseNewSales(wb,filename);
+  if(type==='newVisit')   return parseNewVisit(wb,filename);
   if(type==='coupStock')  return parseCoupStock(wb);
   if(type==='coupAdProd') return parseCoupAdProd(wb);
   if(type==='metaAd')     return parseMetaAd(wb);
@@ -1692,6 +1696,190 @@ function parseNaverAdCSV(text){
   return false;
 }
 
+// ══════════════════════════════════════════
+// 새 양식 파싱 (2026.07~ 네이버 커머스센터)
+// ══════════════════════════════════════════
+
+// 상품별 판매분석 (sales) → naver + naverProd
+function parseNewSales(wb, filename){
+  var rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:'',raw:true});
+  if(rows.length<2) return false;
+  var hdr=rows[0].map(function(v){return String(v||'').trim();});
+  // 컬럼 인덱스 찾기
+  var iDate=hdr.indexOf('날짜');
+  var iName=hdr.indexOf('채널상품명');
+  var iId=hdr.indexOf('채널상품번호');
+  var iOrders=hdr.indexOf('상품결제건수');
+  var iRefCnt=hdr.indexOf('환불건수');
+  var iRevGross=hdr.indexOf('판매금액(총)');
+  var iRevNet=hdr.indexOf('판매금액(순)');
+  var iRefund=hdr.indexOf('환불금액');
+  var iQty=hdr.indexOf('결제상품수량');
+  var iRefQty=hdr.indexOf('환불상품수량');
+  var iVisits=hdr.indexOf('방문수');
+  var iCvr=hdr.indexOf('구매전환율');
+  var iShip=hdr.indexOf('배송비');
+  var iDiscount=hdr.indexOf('전체 할인액');
+  var iSellerDisc=hdr.indexOf('판매자 부담 상품할인액');
+  var iSellerOrdDisc=hdr.indexOf('판매자 부담 주문할인액');
+  if(iDate<0||iName<0) return false;
+
+  var touchedNaver={}, touchedProd={};
+  var naverEntries=[], prodEntries=[];
+
+  for(var i=1;i<rows.length;i++){
+    var r=rows[i];
+    var ds=normalizeDate(r[iDate]);
+    if(!ds) continue;
+    var name=String(r[iName]||'');
+    var isTotal=(name==='전체');
+
+    if(isTotal){
+      // "전체" 행 → DB.naver (일매출)
+      touchedNaver[ds]=true;
+      naverEntries.push({
+        d:ds,
+        o:toNum(r[iOrders]),
+        r:toNum(r[iRevNet]),  // 판매금액(순) = 이미 환불 차감됨
+        rev_gross:toNum(r[iRevGross]),
+        refund_cnt:toNum(r[iRefCnt]),
+        refund:toNum(r[iRefund]),
+        qty:toNum(r[iQty]),
+        refund_qty:toNum(r[iRefQty]),
+        visits:toNum(r[iVisits]),
+        cvr:toNum(r[iCvr]),
+        ship:toNum(r[iShip]),
+        coupon:toNum(r[iDiscount]),
+        prod_coupon:toNum(r[iSellerDisc]),
+        order_coupon:toNum(r[iSellerOrdDisc]),
+        isArchive:false,
+        src:'newSales'
+      });
+    } else {
+      // 상품 행 → DB.naverProd (상품성과)
+      touchedProd[ds]=true;
+      var pid=String(r[iId]||'');
+      prodEntries.push({
+        d:ds, date:ds,
+        name:name.replace(/\[.*?\]/g,'').trim(),
+        prodId:pid,
+        o:toNum(r[iOrders]),
+        qty:toNum(r[iQty]),
+        rev:toNum(r[iRevNet]),
+        visits:toNum(r[iVisits]),
+        cvr:toNum(r[iCvr]),
+        isArchive:false,
+        src:'newSales'
+      });
+    }
+  }
+
+  // 기존 날짜 데이터 제거 후 추가 (덮어쓰기)
+  DB.naver = DB.naver.filter(function(e){ return !touchedNaver[e.d]; });
+  DB.naverProd = DB.naverProd.filter(function(e){ return !touchedProd[e.d||e.date]; });
+  if(naverEntries.length>0){
+    DB.naver.push.apply(DB.naver, naverEntries);
+    naverEntries.forEach(function(e){ markTouched('naver',e.d); });
+  }
+  if(prodEntries.length>0){
+    DB.naverProd.push.apply(DB.naverProd, prodEntries);
+    prodEntries.forEach(function(e){ markTouched('naverProd',e.d); });
+  }
+  return naverEntries.length>0 || prodEntries.length>0;
+}
+
+// 상품별/경로별 방문분석 (visit) — 컬럼 기반 자동 구분
+function parseNewVisit(wb, filename){
+  var rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:'',raw:true});
+  if(rows.length<2) return false;
+  var hdr=rows[0].map(function(v){return String(v||'').trim();});
+
+  // 컬럼으로 구분: '경로(1단계)' 있으면 경로별, '브랜드' 있으면 상품별
+  if(hdr.indexOf('경로(1단계)')>=0) return parsePathVisit(rows, hdr);
+  if(hdr.indexOf('채널상품명')>=0)  return parseProdVisit(rows, hdr);
+  return false;
+}
+
+// 경로별 방문분석 → DB.naverVisit
+function parsePathVisit(rows, hdr){
+  var iDate=hdr.indexOf('날짜');
+  var iP1=hdr.indexOf('경로(1단계)');
+  var iP2=hdr.indexOf('경로(2단계)');
+  var iP3=hdr.indexOf('경로(3단계)');
+  var iVisits=hdr.indexOf('방문수');
+  var iOrders=hdr.indexOf('상품결제건수');
+  var iCvr=hdr.indexOf('구매전환율');
+  var iRev=hdr.indexOf('판매금액(총)');
+  if(iDate<0||iP1<0) return false;
+
+  var touched={}, entries=[];
+  for(var i=1;i<rows.length;i++){
+    var r=rows[i];
+    var ds=normalizeDate(r[iDate]);
+    if(!ds) continue;
+    var p1=String(r[iP1]||'');
+    if(p1==='전체') continue; // 합계행 스킵
+    touched[ds]=true;
+    entries.push({
+      d:ds, path1:p1, path2:String(r[iP2]||''), path3:String(r[iP3]||''),
+      visits:toNum(r[iVisits]), orders:toNum(r[iOrders]),
+      cvr:toNum(r[iCvr]), rev:toNum(r[iRev])
+    });
+  }
+  DB.naverVisit = DB.naverVisit.filter(function(e){ return !touched[e.d]; });
+  if(entries.length>0){
+    DB.naverVisit.push.apply(DB.naverVisit, entries);
+    entries.forEach(function(e){ markTouched('naverVisit',e.d); });
+  }
+  return entries.length>0;
+}
+
+// 상품별 방문분석 → DB.naverProdVisit
+function parseProdVisit(rows, hdr){
+  var iDate=hdr.indexOf('날짜');
+  var iName=hdr.indexOf('채널상품명');
+  var iId=hdr.indexOf('채널상품번호');
+  var iCat1=hdr.indexOf('대 카테고리');
+  var iCat2=hdr.indexOf('중 카테고리');
+  var iCat3=hdr.indexOf('소 카테고리');
+  var iCat4=hdr.indexOf('세부 카테고리');
+  var iBrand=hdr.indexOf('브랜드');
+  var iChannel=hdr.indexOf('채널');
+  var iVisits=hdr.indexOf('방문수');
+  var iOrders=hdr.indexOf('상품결제건수');
+  var iCvr=hdr.indexOf('구매전환율');
+  var iRev=hdr.indexOf('판매금액(총)');
+  if(iDate<0||iName<0) return false;
+
+  var touched={}, entries=[];
+  for(var i=1;i<rows.length;i++){
+    var r=rows[i];
+    var ds=normalizeDate(r[iDate]);
+    if(!ds) continue;
+    var name=String(r[iName]||'');
+    if(name==='전체') continue;
+    touched[ds]=true;
+    entries.push({
+      d:ds, name:name.replace(/\[.*?\]/g,'').trim(),
+      prodId:String(r[iId]||''),
+      cat1:iCat1>=0?String(r[iCat1]||''):'',
+      cat2:iCat2>=0?String(r[iCat2]||''):'',
+      cat3:iCat3>=0?String(r[iCat3]||''):'',
+      cat4:iCat4>=0?String(r[iCat4]||''):'',
+      brand:iBrand>=0?String(r[iBrand]||''):'',
+      channel:iChannel>=0?String(r[iChannel]||''):'',
+      visits:toNum(r[iVisits]), orders:toNum(r[iOrders]),
+      cvr:toNum(r[iCvr]), rev:toNum(r[iRev])
+    });
+  }
+  DB.naverProdVisit = DB.naverProdVisit.filter(function(e){ return !touched[e.d]; });
+  if(entries.length>0){
+    DB.naverProdVisit.push.apply(DB.naverProdVisit, entries);
+    entries.forEach(function(e){ markTouched('naverProdVisit',e.d); });
+  }
+  return entries.length>0;
+}
+
 function parseOther(wb){
   var sname=wb.SheetNames[0];
   var raw=XLSX.utils.sheet_to_json(wb.Sheets[sname],{header:1,defval:''});
@@ -1745,6 +1933,9 @@ function detectFileType(filename){
   // 영문 패턴
   if(f.indexOf('nv_sales')!==-1)        return 'naver';
   if(f.indexOf('nv_product')!==-1)      return 'naverProd';
+  // 새 양식 (2026.07~ 네이버 커머스센터)
+  if(f.indexOf('sales_')===0) return 'newSales';
+  if(f.indexOf('visit_')===0) return 'newVisit';
   if(f.indexOf('coupang_stocked')!==-1) return 'coupStock';
   if(f.indexOf('custom_report')!==-1)   return 'coupAdProd';
   if(f.indexOf('yyk')!==-1||(f.indexOf('.csv')!==-1&&(f.indexOf('naver')!==-1||f.indexOf('naver')!==-1))) return 'naverAd';
