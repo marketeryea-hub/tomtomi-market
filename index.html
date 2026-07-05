@@ -382,6 +382,20 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     <div class="plist" id="nv-prod-list"></div>
   </div>
 
+  <!-- 구매경로 분석 -->
+  <div class="g2">
+    <div class="card">
+      <div class="ctitle">🔀 유입 경로별 성과 <span class="badge ba">선택 기간</span></div>
+      <div class="csub">경로별 방문분석 파일(visit) 기반</div>
+      <div id="nv-path-list" style="margin-top:12px;max-height:400px;overflow-y:auto"></div>
+    </div>
+    <div class="card">
+      <div class="ctitle">👀 유입↑ 구매✗ 상품 <span class="badge br">주목</span></div>
+      <div class="csub">방문은 많은데 구매가 없는 상품 (상품별 방문분석 기반)</div>
+      <div id="nv-noconv-list" style="margin-top:12px;max-height:400px;overflow-y:auto"></div>
+    </div>
+  </div>
+
   <!-- 시간대별 결제 + 상품 TOP5 -->
   <div class="g2">
     <div class="card">
@@ -942,12 +956,6 @@ function fmtW(n){
   if(n===undefined||n===null||n==='') return '0';
   if(typeof n==='string') n=Number(n.replace(/,/g,''));
   if(isNaN(n)) return '0';
-  if(Math.abs(n)>=100000000) return (Math.floor(n/10000000)/10).toFixed(1)+'억';
-  if(Math.abs(n)>=10000){
-    var man=n/10000;
-    if(Math.abs(n)>=10000000) return Math.floor(man).toLocaleString()+'만';
-    return (Math.floor(man*10)/10).toFixed(1)+'만';
-  }
   return Math.round(n).toLocaleString();
 }
 function fmtDate(d){
@@ -2411,6 +2419,85 @@ function renderNaver(){
           '<div style="background:var(--naver);width:'+pct+'%;height:4px;border-radius:3px"></div></div>'+
           '</div></div>';
       }).join('');
+    }
+  }
+
+  // ── 유입 경로별 성과 (naverVisit) ──
+  var pathEl = document.getElementById('nv-path-list');
+  if(pathEl){
+    var pathData = (DB.naverVisit||[]).filter(function(e){ return inRange(e.d); });
+    if(pathData.length===0){
+      pathEl.innerHTML='<div style="color:var(--dim);font-size:12px;padding:8px">경로별 방문분석(visit) 파일을 업로드하면 표시됩니다</div>';
+    } else {
+      // 경로별 집계
+      var pathMap={};
+      pathData.forEach(function(e){
+        var key=e.path1+'|'+(e.path2||'');
+        if(!pathMap[key]) pathMap[key]={path1:e.path1,path2:e.path2||'',visits:0,orders:0,rev:0};
+        pathMap[key].visits+=e.visits||0;
+        pathMap[key].orders+=e.orders||0;
+        pathMap[key].rev+=e.rev||0;
+      });
+      var pathArr=Object.values(pathMap).sort(function(a,b){return b.visits-a.visits;});
+      var pathHtml='<table class="tbl"><thead><tr><th style="text-align:left">경로</th><th>방문</th><th>구매</th><th>전환율</th><th>매출</th></tr></thead><tbody>';
+      pathArr.forEach(function(p){
+        var cvr=p.visits>0?(p.orders/p.visits*100).toFixed(1)+'%':'0%';
+        var pathName=p.path2?p.path1+' > '+p.path2:p.path1;
+        var revStr=p.rev>0?fmtW(p.rev)+'원':'—';
+        pathHtml+='<tr><td style="text-align:left;font-size:12px">'+pathName+'</td><td>'+p.visits.toLocaleString()+'</td><td>'+p.orders+'</td><td>'+cvr+'</td><td>'+revStr+'</td></tr>';
+      });
+      pathHtml+='</tbody></table>';
+      pathEl.innerHTML=pathHtml;
+    }
+  }
+
+  // ── 유입↑ 구매✗ 상품 (naverProdVisit) ──
+  var noconvEl = document.getElementById('nv-noconv-list');
+  if(noconvEl){
+    var pvData = (DB.naverProdVisit||[]).filter(function(e){ return inRange(e.d); });
+    if(pvData.length===0){
+      noconvEl.innerHTML='<div style="color:var(--dim);font-size:12px;padding:8px">상품별 방문분석(visit) 파일을 업로드하면 표시됩니다</div>';
+    } else {
+      // 상품별 집계
+      var pvMap={};
+      pvData.forEach(function(e){
+        var key=e.name||'';
+        if(!key) return;
+        if(!pvMap[key]) pvMap[key]={name:key,visits:0,orders:0,rev:0};
+        pvMap[key].visits+=e.visits||0;
+        pvMap[key].orders+=e.orders||0;
+        pvMap[key].rev+=e.rev||0;
+      });
+      // 유입 많은데 구매 없는 상품 (방문 5회 이상, 구매 0)
+      var noconv=Object.values(pvMap).filter(function(p){return p.visits>=5 && p.orders===0;})
+        .sort(function(a,b){return b.visits-a.visits;});
+      // 전체 상품도 보여주되 구매 없는 것 우선
+      var allPv=Object.values(pvMap).sort(function(a,b){return b.visits-a.visits;}).slice(0,30);
+      
+      if(noconv.length===0 && allPv.length===0){
+        noconvEl.innerHTML='<div style="color:var(--dim);font-size:12px;padding:8px">해당 기간 데이터가 없습니다</div>';
+      } else {
+        var ncHtml='';
+        if(noconv.length>0){
+          ncHtml+='<div style="font-size:11px;color:var(--red);font-weight:700;margin-bottom:8px">🚨 방문 5회 이상인데 구매 0건 — '+noconv.length+'개 상품</div>';
+          ncHtml+='<table class="tbl"><thead><tr><th style="text-align:left">상품명</th><th>방문</th><th>구매</th></tr></thead><tbody>';
+          noconv.forEach(function(p){
+            ncHtml+='<tr style="background:rgba(220,38,38,.04)"><td style="text-align:left;font-size:11px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.name+'</td><td style="font-weight:700;color:var(--red)">'+p.visits+'</td><td>0</td></tr>';
+          });
+          ncHtml+='</tbody></table>';
+        }
+        if(allPv.length>0){
+          ncHtml+='<div style="font-size:11px;color:var(--dim);font-weight:700;margin:12px 0 6px">📋 전체 상품 방문 순위 (상위 30개)</div>';
+          ncHtml+='<table class="tbl"><thead><tr><th style="text-align:left">상품명</th><th>방문</th><th>구매</th><th>전환율</th><th>매출</th></tr></thead><tbody>';
+          allPv.forEach(function(p){
+            var cvr=p.visits>0?(p.orders/p.visits*100).toFixed(1)+'%':'0%';
+            var rowStyle=p.orders===0&&p.visits>=5?'background:rgba(220,38,38,.04)':'';
+            ncHtml+='<tr style="'+rowStyle+'"><td style="text-align:left;font-size:11px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.name+'</td><td>'+p.visits+'</td><td>'+p.orders+'</td><td>'+cvr+'</td><td>'+(p.rev>0?fmtW(p.rev)+'원':'—')+'</td></tr>';
+          });
+          ncHtml+='</tbody></table>';
+        }
+        noconvEl.innerHTML=ncHtml;
+      }
     }
   }
 }
