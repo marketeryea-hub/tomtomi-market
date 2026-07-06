@@ -717,7 +717,7 @@ async function loadFromSupabase() {
       if (!byChannel[r.channel]) byChannel[r.channel] = [];
       if (Array.isArray(r.data)) byChannel[r.channel].push(...r.data);
     });
-    ['naver','naverProd','coupStock','naverAd','coupAd','metaAd','naverVisit','naverProdVisit'].forEach(k => {
+    ['naver','naverProd','coupStock','naverAd','coupAd','metaAd','naverVisit','naverProdVisit','naverAdBoost'].forEach(k => {
       if (byChannel[k]) {
         DB[k] = byChannel[k];
         ARCHIVE[k] = byChannel[k];
@@ -846,7 +846,8 @@ const DB = {
   coupAdRaw:   [],    // 쿠팡 광고 원본 행 (아카이브 체크용)
   metaAdRaw:   [],    // 메타 광고 원본 행 (아카이브 체크용)
   naverProdVisit: [], // 🆕 상품별 방문분석
-  naverVisit:  []     // 🆕 경로별 방문분석
+  naverVisit:  [],    // 🆕 경로별 방문분석
+  naverAdBoost: []    // 🆕 네이버 애드부스트 광고
 };
 
 let filterFrom = new Date('2023-07-06');
@@ -1265,6 +1266,7 @@ function parseXLSX(wb,type,filename){
 }
 function parseCSV(text,type){
   if(type==='naverAd') return parseNaverAdCSV(text);
+  if(type==='naverAdBoost') return parseNaverAdBoostCSV(text);
   return false;
 }
 
@@ -1888,6 +1890,63 @@ function parseProdVisit(rows, hdr){
   return entries.length>0;
 }
 
+// ══════════════════════════════════════════
+// 네이버 애드부스트 파싱 (result.csv)
+// ══════════════════════════════════════════
+function parseNaverAdBoostCSV(text){
+  var lines=text.split(/\r?\n/).filter(function(l){return l.trim();});
+  if(lines.length<2) return false;
+  var hdr=lines[0].split(',').map(function(v){return v.replace(/^"|"$/g,'').trim();});
+  var iDate=-1,iCost=-1,iImp=-1,iClicks=-1,iCtr=-1,iConv=-1,iRoas=-1,iName=-1,iCamp=-1;
+  hdr.forEach(function(c,i){
+    if(c==='기간') iDate=i;
+    else if(c==='총비용') iCost=i;
+    else if(c==='노출수') iImp=i;
+    else if(c==='클릭수') iClicks=i;
+    else if(c==='클릭률(%)') iCtr=i;
+    else if(c==='결과') iConv=i;
+    else if(c==='총 광고수익률(%)') iRoas=i;
+    else if(c==='상품명') iName=i;
+    else if(c==='캠페인 이름') iCamp=i;
+  });
+  if(iDate<0||iCost<0) return false;
+
+  // 이 파일에서 나올 날짜 미리 수집
+  var touched={};
+  for(var ri=1;ri<lines.length;ri++){
+    var cols0=splitCSV(lines[ri]);
+    if(cols0.length<3) continue;
+    var ds0=normalizeDate(cols0[iDate]);
+    if(ds0) touched[ds0]=true;
+  }
+  // 기존 해당 날짜 데이터 제거 (덮어쓰기)
+  DB.naverAdBoost = DB.naverAdBoost.filter(function(e){ return !touched[e.d]; });
+
+  var dayMap={};
+  for(var i=1;i<lines.length;i++){
+    var cols=splitCSV(lines[i]);
+    if(cols.length<3) continue;
+    var ds=normalizeDate(cols[iDate]);
+    if(!ds) continue;
+    var cost=toNum(cols[iCost]);
+    if(!dayMap[ds]) dayMap[ds]={d:ds,cost:0,imp:0,clicks:0,conv:0,ctr:0,roas:0,isArchive:false};
+    dayMap[ds].cost+=cost;
+    if(iImp>=0) dayMap[ds].imp+=toNum(cols[iImp]);
+    if(iClicks>=0) dayMap[ds].clicks+=toNum(cols[iClicks]);
+    if(iConv>=0) dayMap[ds].conv+=toNum(cols[iConv]);
+  }
+  var entries=Object.values(dayMap);
+  entries.forEach(function(e){
+    e.ctr=e.imp>0?parseFloat((e.clicks/e.imp*100).toFixed(2)):0;
+  });
+  if(entries.length>0){
+    DB.naverAdBoost.push.apply(DB.naverAdBoost, entries);
+    entries.forEach(function(e){ markTouched('naverAdBoost',e.d); });
+    return true;
+  }
+  return false;
+}
+
 function parseOther(wb){
   var sname=wb.SheetNames[0];
   var raw=XLSX.utils.sheet_to_json(wb.Sheets[sname],{header:1,defval:''});
@@ -1947,6 +2006,7 @@ function detectFileType(filename){
   if(f.indexOf('coupang_stocked')!==-1) return 'coupStock';
   if(f.indexOf('custom_report')!==-1)   return 'coupAdProd';
   if(f.indexOf('yyk')!==-1||(f.indexOf('.csv')!==-1&&(f.indexOf('naver')!==-1||f.indexOf('naver')!==-1))) return 'naverAd';
+  if(f==='result.csv'||f.indexOf('result')!==-1&&f.indexOf('.csv')!==-1) return 'naverAdBoost';
   if(filename.indexOf('yyk')!==-1) return 'naverAd'; // 쉼표 포함 파일명 대응
   if(f.indexOf('meta_')!==-1)           return 'metaAd';
   if(f.indexOf('esk003e')!==-1)         return 'other';
@@ -2257,7 +2317,9 @@ function renderOverview(){
     DB.coupAd.forEach(function(e){if(!inRange(e.d||''))return;cpAdRev+=e.rev||0;});
   }
   DB.metaAd.forEach(function(e){if(!inRange(e.d||''))return;metaAdCost+=e.cost||0;});
-  var totalAdCost=nvAdCost+cpAdCost+metaAdCost;
+  var abCost=0;
+  (DB.naverAdBoost||[]).forEach(function(e){if(!inRange(e.d||''))return;abCost+=e.cost||0;});
+  var totalAdCost=nvAdCost+cpAdCost+metaAdCost+abCost;
   var totalAdRev=nvAdRev+cpAdRev;
   var fmtRoas=function(cost,rev){return cost>0?(rev/cost).toFixed(2)+'x':'데이터 없음';};
   document.getElementById('ov-roas-nv').textContent=fmtRoas(nvAdCost,nvAdRev);
@@ -3074,6 +3136,8 @@ function _collectPeriod(fromStr, toStr){
     DB.coupAd.forEach(function(e){ if(!inR(e.d||''))return; cpAdRev+=e.rev||0; });
   }
   DB.metaAd.forEach(function(e){ if(!inR(e.d||''))return; metaCost+=e.cost||0; adCostDay[e.d]=(adCostDay[e.d]||0)+(e.cost||0); });
+  var abCost=0;
+  (DB.naverAdBoost||[]).forEach(function(e){ if(!inR(e.d||''))return; abCost+=e.cost||0; adCostDay[e.d]=(adCostDay[e.d]||0)+(e.cost||0); });
   // 일별 합산
   var allDays = new Set();
   Object.keys(navDay).forEach(function(d){allDays.add(d);});
@@ -3090,7 +3154,8 @@ function _collectPeriod(fromStr, toStr){
     ads: {
       nvCost:nvAdCost, nvRev:nvAdRev,
       cpCost:cpAdCost, cpRev:cpAdRev,
-      metaCost:metaCost
+      metaCost:metaCost,
+      abCost:abCost
     }
   };
 }
@@ -3206,7 +3271,8 @@ function renderCompare(){
   var adRows = [
     {name:'네이버SA', aCost:A.ads.nvCost, aRev:A.ads.nvRev, bCost:B.ads.nvCost, bRev:B.ads.nvRev},
     {name:'쿠팡', aCost:A.ads.cpCost, aRev:A.ads.cpRev, bCost:B.ads.cpCost, bRev:B.ads.cpRev},
-    {name:'메타', aCost:A.ads.metaCost, aRev:0, bCost:B.ads.metaCost, bRev:0}
+    {name:'메타', aCost:A.ads.metaCost, aRev:0, bCost:B.ads.metaCost, bRev:0},
+    {name:'애드부스트', aCost:A.ads.abCost||0, aRev:0, bCost:B.ads.abCost||0, bRev:0}
   ];
   var adHtml='';
   adRows.forEach(function(r){
@@ -3578,7 +3644,11 @@ function buildSlackMessage(){
   var isSingleDay=(toDateStr(fromD)===toDateStr(toD));
   var toDisplay=(toD.getMonth()+1)+'/'+toD.getDate();
 
-  var totalAdCost=nvAdCost+cpAdCost+metaAdCost;
+  // 애드부스트
+  var abCost=0;
+  (DB.naverAdBoost||[]).forEach(function(e){ if(!inRange(e.d||''))return; abCost+=e.cost||0; });
+
+  var totalAdCost=nvAdCost+cpAdCost+metaAdCost+abCost;
   var totalRev=navRev+cpRev;
   var totalAdRev=nvAdRev+cpAdRev;
   var fmtRoasS=function(cost,rev){return cost>0?Math.round(rev/cost*100)+'%':'—';};
@@ -3597,11 +3667,13 @@ function buildSlackMessage(){
   lines.push('▸ 네이버 '+fmtW(navRev)+'원 (결제 '+Math.round(navOrders)+'건) / 쿠팡 '+fmtW(cpRev)+'원 (입고 기준)');
   lines.push('');
   lines.push('*'+lbl.ads+'*');
-  lines.push('▸총광고비 '+fmtW(totalAdCost)+': 네이버SA '+fmtW(nvAdCost)+' → ROAS '+fmtRoasS(nvAdCost,nvAdRev)+' / 쿠팡 '+fmtW(cpAdCost)+' → ROAS '+fmtRoasS(cpAdCost,cpAdRev)+' / 메타 '+fmtW(metaAdCost)+' (CTR '+fmtCtrS(metaClicks,metaImp)+')');
-  var storeAdCost=nvAdCost+metaAdCost;
+  var adLine='▸총광고비 '+fmtW(totalAdCost)+': 네이버SA '+fmtW(nvAdCost)+' → ROAS '+fmtRoasS(nvAdCost,nvAdRev);
+  if(abCost>0) adLine+=' / 애드부스트 '+fmtW(abCost);
+  adLine+=' / 쿠팡 '+fmtW(cpAdCost)+' → ROAS '+fmtRoasS(cpAdCost,cpAdRev)+' / 메타 '+fmtW(metaAdCost)+' (CTR '+fmtCtrS(metaClicks,metaImp)+')';
+  lines.push(adLine);
+  var storeAdCost=nvAdCost+metaAdCost+abCost;
   lines.push('▸ 톰토미스토어 ROAS '+fmtRoasS(storeAdCost,navRev)+' (광고비 '+fmtW(storeAdCost)+', 매출 '+fmtW(navRev)+')');
   lines.push('▸ 쿠팡애즈 ROAS '+fmtRoasS(cpAdCost,cpAdRev)+' (광고비 '+fmtW(cpAdCost)+', 광고 발생매출 '+fmtW(cpAdRev)+')');
-
   if(topProducts.length>0){
     lines.push('');
     lines.push('*['+lbl.top3+']*');
