@@ -356,6 +356,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     <div class="csub">채널별 광고비 대비 전환매출 (ROAS = 전환매출 ÷ 광고비)</div>
     <div class="kpi-grid" style="margin-top:14px">
       <div class="kpi" style="--c:var(--naver)"><div class="kpi-lbl">🟢 네이버SA</div><div class="kpi-val" id="ov-roas-nv">-</div><div class="kpi-badge bg2" id="ov-roas-nv-cost">광고비 -</div></div>
+      <div class="kpi" style="--c:#2DB400"><div class="kpi-lbl">🚀 애드부스트</div><div class="kpi-val" id="ov-roas-ab">-</div><div class="kpi-badge bg2" id="ov-roas-ab-cost">광고비 -</div></div>
       <div class="kpi" style="--c:var(--coupang)"><div class="kpi-lbl">🔵 쿠팡광고</div><div class="kpi-val" id="ov-roas-cp">-</div><div class="kpi-badge bi" id="ov-roas-cp-cost">광고비 -</div></div>
       <div class="kpi" style="--c:#7B74C0"><div class="kpi-lbl">🔮 메타광고</div><div class="kpi-val" id="ov-roas-meta">-</div><div class="kpi-badge" style="background:#F0EEF9;color:#7B74C0" id="ov-roas-meta-cost">광고비 -</div></div>
       <div class="kpi" style="--c:var(--red)"><div class="kpi-lbl">💸 전체 ROAS</div><div class="kpi-val" id="ov-roas-total">-</div><div class="kpi-badge br" id="ov-roas-total-cost">총광고비 -</div></div>
@@ -2334,6 +2335,8 @@ function renderOverview(){
   var fmtRoas=function(cost,rev){return cost>0?(rev/cost).toFixed(2)+'x':'데이터 없음';};
   document.getElementById('ov-roas-nv').textContent=fmtRoas(nvAdCost,nvAdRev);
   document.getElementById('ov-roas-nv-cost').textContent='광고비 '+(nvAdCost>0?fmtW(nvAdCost)+'원':'-');
+  document.getElementById('ov-roas-ab').textContent=abCost>0?fmtW(abCost)+'원 지출':'데이터 없음';
+  document.getElementById('ov-roas-ab-cost').textContent='광고비 '+(abCost>0?fmtW(abCost)+'원':'-');
   document.getElementById('ov-roas-cp').textContent=fmtRoas(cpAdCost,cpAdRev);
   document.getElementById('ov-roas-cp-cost').textContent='광고비 '+(cpAdCost>0?fmtW(cpAdCost)+'원':'-');
   document.getElementById('ov-roas-meta').textContent=metaAdCost>0?fmtW(metaAdCost)+'원 지출':'데이터 없음';
