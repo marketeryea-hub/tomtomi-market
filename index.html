@@ -1896,7 +1896,17 @@ function parseProdVisit(rows, hdr){
 function parseNaverAdBoostCSV(text){
   var lines=text.split(/\r?\n/).filter(function(l){return l.trim();});
   if(lines.length<2) return false;
-  var hdr=lines[0].split(',').map(function(v){return v.replace(/^"|"$/g,'').trim();});
+  function splitCSV(line){
+    var res=[],cur='',inQ=false;
+    for(var c of line){
+      if(c==='"'){inQ=!inQ;continue;}
+      if(c===','&&!inQ){res.push(cur.trim());cur='';continue;}
+      cur+=c;
+    }
+    res.push(cur.trim());
+    return res;
+  }
+  var hdr=splitCSV(lines[0]);
   var iDate=-1,iCost=-1,iImp=-1,iClicks=-1,iCtr=-1,iConv=-1,iRoas=-1,iName=-1,iCamp=-1;
   hdr.forEach(function(c,i){
     if(c==='기간') iDate=i;
