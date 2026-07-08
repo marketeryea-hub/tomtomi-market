@@ -3650,10 +3650,10 @@ function buildSlackMessage(){
   });
   DB.other.forEach(function(e){
     var ds=e.d||''; if(!inRange(ds)) return;
-    var name=(e.name||e.sku||'').replace(/\[.*?\]/g,'').trim();
+    var name=(e.product||e.name||e.sku||'').replace(/\[.*?\]/g,'').trim();
     var amt=(typeof e.a==='string'?Number(e.a.replace(/,/g,''))||0:Number(e.a)||0);
     if(name&&amt>0){
-      var pf=e.platform||e.market||'기타';
+      var pf=e.m||e.platform||e.market||'기타';
       var key=name+'|'+pf;
       if(!prodMap[key]) prodMap[key]={name:name,rev:0,platform:pf};
       prodMap[key].rev+=amt;
