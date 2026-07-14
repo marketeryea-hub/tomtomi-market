@@ -1748,11 +1748,20 @@ function parseNewSales(wb, filename){
     if(isTotal){
       // "전체" 행 → DB.naver (일매출)
       touchedNaver[ds]=true;
+      var orders=toNum(r[iOrders]);
+      var revNet=toNum(r[iRevNet]);
+      // 요일 자동 계산
+      var dayNames=['일','월','화','수','목','금','토'];
+      var dow=dayNames[new Date(ds+'T00:00:00').getDay()]||'';
       naverEntries.push({
         d:ds,
-        o:toNum(r[iOrders]),
-        r:toNum(r[iRevNet]),  // 판매금액(순) = 이미 환불 차감됨
+        dow:dow,
+        time:'',
+        buyer:orders,  // 결제자수 미제공 → 결제건수로 대체
+        o:orders,
+        r:revNet,  // 판매금액(순) = 이미 환불 차감됨
         rev_gross:toNum(r[iRevGross]),
+        unit_rev:orders>0?Math.round(revNet/orders):0,
         refund_cnt:toNum(r[iRefCnt]),
         refund:toNum(r[iRefund]),
         qty:toNum(r[iQty]),
@@ -3346,9 +3355,15 @@ function downloadArchiveXLSX(){
     ['날짜','요일','시간대','결제자수','결제수','모바일비율(결제건수)','결제금액','모바일비율(결제금액)',
      '결제당 결제금액','결제상품수량','결제당 상품수량','배송비','쿠폰합계','상품쿠폰','주문쿠폰',
      '환불건수','환불금액','환불비율(결제금액)','환불수량','환불비율(결제상품수량)'],
-    nvAll.map(function(e){return [
-      v(e.d),v(e.dow),v(e.time),v(e.buyer),v(e.o),v(e.mob_ord),v(e.r),v(e.mob_rev),
-      v(e.unit_rev),v(e.qty),v(e.unit_qty),v(e.ship),v(e.coupon),v(e.prod_coupon),v(e.order_coupon),
+    nvAll.map(function(e){
+      // 요일 자동 계산 (비어있을 경우)
+      var dow=e.dow||'';
+      if(!dow && e.d){ var dn=['일','월','화','수','목','금','토']; try{dow=dn[new Date(e.d+'T00:00:00').getDay()]||'';}catch(x){} }
+      var unitRev=e.unit_rev||0;
+      if(!unitRev && e.o>0 && e.r>0) unitRev=Math.round(e.r/e.o);
+      return [
+      v(e.d),v(dow),v(e.time),v(e.buyer),v(e.o),v(e.mob_ord),v(e.r),v(e.mob_rev),
+      v(unitRev),v(e.qty),v(e.unit_qty),v(e.ship),v(e.coupon),v(e.prod_coupon),v(e.order_coupon),
       v(e.refund_cnt),v(e.refund),v(e.refund_pct),v(e.refund_qty),v(e.refund_qty_pct)
     ];}));
 
