@@ -196,7 +196,22 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     <div class="logo-icon">TT</div>
     <div>
       <div class="logo-text">톰토미 마케팅 대시보드 <span style="font-size:11px;color:var(--accent);font-weight:400">v5</span></div>
-      <div class="logo-sub">네이버 · 쿠팡(입고기준) · 기타마켓 · 광고 ROI 통합 · Supabase 연동</div>
+      <div class="logo-sub">네이버 · 쿠팡(입고기준) · 기타마켓 · 광고 ROI 통합 · Supabase 연동
+        <span style="cursor:pointer;color:var(--accent);font-weight:600;margin-left:6px" onclick="document.getElementById('fileGuide').style.display=document.getElementById('fileGuide').style.display==='none'?'block':'none'">📁 파일 가이드</span>
+      </div>
+      <div id="fileGuide" style="display:none;position:absolute;top:52px;left:60px;z-index:100;background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:14px 18px;box-shadow:0 8px 24px rgba(0,0,0,.12);font-size:12px;line-height:1.9;max-width:480px">
+        <div style="font-weight:700;margin-bottom:6px">📥 매일 드롭할 파일 (데일리)</div>
+        <div>1. <b>sales_*.xlsx</b> — 판매분석>상품 (일매출+상품성과)</div>
+        <div>2. <b>visit_*.xlsx</b> — 방문분석>경로 (유입경로)</div>
+        <div>3. <b>visit_*.xlsx</b> — 방문분석>상품 (상품별 방문)</div>
+        <div>4. <b>query_*.xlsx</b> — 검색분석>검색어 (검색어 TOP)</div>
+        <div>5. <b>result.csv</b> — 애드부스트 / <b>yyk*.csv</b> — 네이버SA</div>
+        <div>6. 쿠팡 입고 / 메타 광고 엑셀 (기존과 동일)</div>
+        <div style="font-weight:700;margin:8px 0 6px">📅 매주 월요일 (위클리)</div>
+        <div>7. <b>customer_*.xlsx</b> — 고객분석>신규/재구매</div>
+        <div>8. <b>customer_*.xlsx</b> — 고객분석>성/연령별</div>
+        <div style="margin-top:8px;color:var(--dim);font-size:11px">※ 판매분석의 채널/브랜드/배송유형, 방문분석의 채널/브랜드는 스킵 OK<br>※ 클릭하면 닫혀요</div>
+      </div>
     </div>
   </div>
   <div class="hdr-r">
