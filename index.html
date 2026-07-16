@@ -300,6 +300,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   </details>
   <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
     <button class="fbtn fbtn-pre" onclick="generateSlackPreview()" style="font-size:11px;padding:5px 12px">🔄 미리보기 생성</button>
+    <button class="fbtn fbtn-pre" onclick="generateWeeklyPreview()" style="font-size:11px;padding:5px 12px;border-color:var(--accent);color:var(--accent)">📈 위클리 리포트</button>
     <button class="fbtn fbtn-pre" onclick="toggleSlackPanel()" style="font-size:11px;padding:5px 12px">✕ 닫기</button>
   </div>
   <textarea id="slack-preview" rows="14" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;color:var(--text);font-size:12px;font-family:'JetBrains Mono','Noto Sans KR',monospace;outline:none;resize:vertical;line-height:1.7" placeholder="🔄 미리보기 생성 버튼을 눌러주세요" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"></textarea>
@@ -718,7 +719,7 @@ async function loadFromSupabase() {
       if (!byChannel[r.channel]) byChannel[r.channel] = [];
       if (Array.isArray(r.data)) byChannel[r.channel].push(...r.data);
     });
-    ['naver','naverProd','coupStock','naverAd','coupAd','metaAd','naverVisit','naverProdVisit','naverAdBoost'].forEach(k => {
+    ['naver','naverProd','coupStock','naverAd','coupAd','metaAd','naverVisit','naverProdVisit','naverAdBoost','naverQuery','naverCustNew','naverCustDemo'].forEach(k => {
       if (byChannel[k]) {
         DB[k] = byChannel[k];
         ARCHIVE[k] = byChannel[k];
@@ -848,7 +849,10 @@ const DB = {
   metaAdRaw:   [],    // 메타 광고 원본 행 (아카이브 체크용)
   naverProdVisit: [], // 🆕 상품별 방문분석
   naverVisit:  [],    // 🆕 경로별 방문분석
-  naverAdBoost: []    // 🆕 네이버 애드부스트 광고
+  naverAdBoost: [],   // 🆕 네이버 애드부스트 광고
+  naverQuery:  [],    // 🆕 검색어 분석
+  naverCustNew: [],   // 🆕 고객 신규/재구매 (주단위)
+  naverCustDemo: []   // 🆕 고객 성/연령 (주단위)
 };
 
 let filterFrom = new Date('2023-07-06');
@@ -1259,6 +1263,8 @@ function parseXLSX(wb,type,filename){
   if(type==='naverProd')  return parseNaverProd(wb,filename);
   if(type==='newSales')   return parseNewSales(wb,filename);
   if(type==='newVisit')   return parseNewVisit(wb,filename);
+  if(type==='naverQuery')    return parseNaverQuery(wb,filename);
+  if(type==='naverCustomer') return parseNaverCustomer(wb,filename);
   if(type==='coupStock')  return parseCoupStock(wb);
   if(type==='coupAdProd') return parseCoupAdProd(wb);
   if(type==='metaAd')     return parseMetaAd(wb);
@@ -1967,6 +1973,97 @@ function parseNaverAdBoostCSV(text){
   return false;
 }
 
+// 검색어 분석 (query_) → DB.naverQuery
+function parseNaverQuery(wb, filename){
+  var rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:'',raw:true});
+  if(rows.length<2) return false;
+  var hdr=rows[0].map(function(v){return String(v||'').trim();});
+  var iDate=hdr.indexOf('날짜');
+  var iQuery=hdr.indexOf('검색어');
+  var iVisits=hdr.indexOf('방문수');
+  var iOrders=hdr.indexOf('상품결제건수');
+  var iCvr=hdr.indexOf('구매전환율');
+  var iRev=hdr.indexOf('판매금액(총)');
+  // 검색어/경로, 검색어/카테고리 파일은 경로/카테고리 컬럼 존재 — 기본 검색어 파일만 처리
+  if(iDate<0||iQuery<0) return false;
+  if(hdr.indexOf('경로(1단계)')>=0||hdr.indexOf('대 카테고리')>=0){
+    // 검색어/경로, 검색어/카테고리 형태는 스킵 (기본 검색어 파일 권장)
+    return false;
+  }
+
+  var touched={}, entries=[];
+  for(var i=1;i<rows.length;i++){
+    var r=rows[i];
+    var ds=normalizeDate(r[iDate]);
+    if(!ds) continue;
+    var q=String(r[iQuery]||'');
+    if(!q||q==='전체') continue;
+    touched[ds]=true;
+    entries.push({
+      d:ds, query:q,
+      visits:toNum(r[iVisits]), orders:toNum(r[iOrders]),
+      cvr:toNum(r[iCvr]), rev:toNum(r[iRev])
+    });
+  }
+  DB.naverQuery = DB.naverQuery.filter(function(e){ return !touched[e.d]; });
+  if(entries.length>0){
+    DB.naverQuery.push.apply(DB.naverQuery, entries);
+    entries.forEach(function(e){ markTouched('naverQuery',e.d); });
+    return true;
+  }
+  return false;
+}
+
+// 고객 분석 (customer_) → DB.naverCustNew / DB.naverCustDemo
+// 날짜가 '2026-07-06~2026-07-12' 주단위 형태
+function parseNaverCustomer(wb, filename){
+  var rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:'',raw:true});
+  if(rows.length<2) return false;
+  var hdr=rows[0].map(function(v){return String(v||'').trim();});
+  var iDate=hdr.indexOf('날짜');
+  var iType=hdr.indexOf('고객분류');  // 신규/재구매 파일
+  var iGender=hdr.indexOf('성별');    // 성/연령 파일
+  var iVC=hdr.indexOf('방문고객수');
+  var iVCP=hdr.indexOf('방문고객수비중');
+  var iPC=hdr.indexOf('결제고객수');
+  var iPCP=hdr.indexOf('결제고객수비중');
+  var iCvr=hdr.indexOf('구매전환율(고객)');
+  var iRev=hdr.indexOf('판매금액(총)');
+  var iRevP=hdr.indexOf('판매금액(총)비중');
+  var iAov=hdr.indexOf('객단가');
+  if(iDate<0||(iType<0&&iGender<0)) return false;
+
+  var isNewRe = iType>=0; // 신규/재구매 파일 여부
+  var targetCh = isNewRe ? 'naverCustNew' : 'naverCustDemo';
+  var iKey = isNewRe ? iType : iGender;
+
+  var touched={}, entries=[];
+  for(var i=1;i<rows.length;i++){
+    var r=rows[i];
+    var period=String(r[iDate]||'').trim(); // '2026-07-06~2026-07-12'
+    if(!period||period.indexOf('~')<0) continue;
+    var weekStart=period.split('~')[0].trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) continue;
+    var key=String(r[iKey]||'');
+    if(!key) continue;
+    touched[weekStart]=true;
+    entries.push({
+      d:weekStart, period:period, seg:key,
+      visitCust:toNum(r[iVC]), visitPct:toNum(r[iVCP]),
+      payCust:toNum(r[iPC]), payPct:toNum(r[iPCP]),
+      cvr:toNum(r[iCvr]), rev:toNum(r[iRev]), revPct:toNum(r[iRevP]),
+      aov:toNum(r[iAov])
+    });
+  }
+  DB[targetCh] = DB[targetCh].filter(function(e){ return !touched[e.d]; });
+  if(entries.length>0){
+    DB[targetCh].push.apply(DB[targetCh], entries);
+    entries.forEach(function(e){ markTouched(targetCh,e.d); });
+    return true;
+  }
+  return false;
+}
+
 function parseOther(wb){
   var sname=wb.SheetNames[0];
   var raw=XLSX.utils.sheet_to_json(wb.Sheets[sname],{header:1,defval:''});
@@ -2021,8 +2118,10 @@ function detectFileType(filename){
   if(f.indexOf('nv_sales')!==-1)        return 'naver';
   if(f.indexOf('nv_product')!==-1)      return 'naverProd';
   // 새 양식 (2026.07~ 네이버 커머스센터)
-  if(f.indexOf('sales_')===0) return 'newSales';
-  if(f.indexOf('visit_')===0) return 'newVisit';
+  if(f.indexOf('sales_')!==-1&&f.indexOf('.xlsx')!==-1) return 'newSales';
+  if(f.indexOf('visit_')!==-1&&f.indexOf('.xlsx')!==-1) return 'newVisit';
+  if(f.indexOf('query_')!==-1&&f.indexOf('.xlsx')!==-1) return 'naverQuery';
+  if(f.indexOf('customer_')!==-1&&f.indexOf('.xlsx')!==-1) return 'naverCustomer';
   if(f.indexOf('coupang_stocked')!==-1) return 'coupStock';
   if(f.indexOf('custom_report')!==-1)   return 'coupAdProd';
   if(f.indexOf('yyk')!==-1||(f.indexOf('.csv')!==-1&&(f.indexOf('naver')!==-1||f.indexOf('naver')!==-1))) return 'naverAd';
@@ -3703,7 +3802,16 @@ function buildSlackMessage(){
   }
   lines.push('');
   lines.push('*'+lbl.sales+'*');
-  lines.push('▸ 네이버 '+fmtW(navRev)+'원 (결제 '+Math.round(navOrders)+'건) / 쿠팡 '+fmtW(cpRev)+'원 (입고 기준)');
+  // 방문수/전환율 (새 양식 데이터가 있을 때)
+  var navVisits=0;
+  DB.naver.forEach(function(e){ if(!inRange(e.d||''))return; navVisits+=(e.visits||0); });
+  var navLine='▸ 네이버 '+fmtW(navRev)+'원 (결제 '+Math.round(navOrders)+'건';
+  if(navVisits>0){
+    var navCvr=(navOrders/navVisits*100).toFixed(1);
+    navLine+=', 방문 '+navVisits.toLocaleString()+'명, 전환율 '+navCvr+'%';
+  }
+  navLine+=') / 쿠팡 '+fmtW(cpRev)+'원 (입고 기준)';
+  lines.push(navLine);
   lines.push('');
   lines.push('*'+lbl.ads+'*');
   var adLine='▸총광고비 '+fmtW(totalAdCost)+': 네이버SA '+fmtW(nvAdCost)+' → ROAS '+fmtRoasS(nvAdCost,nvAdRev);
@@ -3721,6 +3829,45 @@ function buildSlackMessage(){
     });
   }
 
+  // ── 오늘의 유입 (검색어 + 경로) ──
+  var qData=(DB.naverQuery||[]).filter(function(e){return inRange(e.d);});
+  var vData=(DB.naverVisit||[]).filter(function(e){return inRange(e.d);});
+  if(qData.length>0||vData.length>0){
+    lines.push('');
+    lines.push('*🔍 유입 분석*');
+    // 검색어 TOP5
+    if(qData.length>0){
+      var qMap={};
+      qData.forEach(function(e){
+        if(!qMap[e.query]) qMap[e.query]={visits:0,orders:0,rev:0};
+        qMap[e.query].visits+=e.visits; qMap[e.query].orders+=e.orders; qMap[e.query].rev+=e.rev;
+      });
+      var qTop=Object.entries(qMap).sort(function(a,b){return b[1].visits-a[1].visits;}).slice(0,5);
+      var qStrs=qTop.map(function(kv){
+        var s=kv[0]+' '+kv[1].visits+'회';
+        if(kv[1].orders>0) s+='→'+kv[1].orders+'건';
+        return s;
+      });
+      lines.push('▸ 검색어 TOP: '+qStrs.join(' / '));
+    }
+    // 경로 요약 + 경고
+    if(vData.length>0){
+      var pMap={};
+      vData.forEach(function(e){
+        var k=e.path2||e.path1;
+        if(!pMap[k]) pMap[k]={visits:0,orders:0};
+        pMap[k].visits+=e.visits; pMap[k].orders+=e.orders;
+      });
+      var pTop=Object.entries(pMap).sort(function(a,b){return b[1].visits-a[1].visits;}).slice(0,4);
+      lines.push('▸ 주요 경로: '+pTop.map(function(kv){return kv[0]+' '+kv[1].visits;}).join(' / '));
+      // 경고: 방문 30 이상인데 전환 0
+      var warns=Object.entries(pMap).filter(function(kv){return kv[1].visits>=30&&kv[1].orders===0;});
+      if(warns.length>0){
+        lines.push('⚠️ '+warns.map(function(kv){return kv[0]+' '+kv[1].visits+'명 방문·전환 0';}).join(' / '));
+      }
+    }
+  }
+
   if(lbl.footer && lbl.footer.trim()){
     lines.push('');
     lines.push(lbl.footer);
@@ -3735,6 +3882,122 @@ function generateSlackPreview(){
   var fromStr = (filterFrom.getMonth()+1)+'/'+filterFrom.getDate();
   var toStr = (filterTo.getMonth()+1)+'/'+filterTo.getDate();
   document.getElementById('slack-period-label').textContent = fromStr + ' ~ ' + toStr;
+}
+
+// ══════════════════════════════════════════
+// 위클리 리포트 (고객분석 주단위 데이터 활용)
+// ══════════════════════════════════════════
+function generateWeeklyPreview(){
+  var msg = buildWeeklyMessage();
+  document.getElementById('slack-preview').value = msg;
+}
+
+function buildWeeklyMessage(){
+  // 가장 최근 주 찾기 (naverCustNew 기준)
+  var weeks = {};
+  (DB.naverCustNew||[]).forEach(function(e){ weeks[e.d]=e.period; });
+  var weekKeys = Object.keys(weeks).sort();
+  if(weekKeys.length===0){
+    return '⚠️ 고객분석 데이터가 없습니다.\n네이버 스토어분석 > 고객리포트에서 신규/재구매, 성/연령별 파일을 다운받아 드롭해주세요.';
+  }
+  var latestWeek = weekKeys[weekKeys.length-1];
+  var prevWeek = weekKeys.length>1 ? weekKeys[weekKeys.length-2] : null;
+  var period = weeks[latestWeek];
+
+  // 주간 매출 (기간 파싱해서 DB.naver에서 집계)
+  var ws=period.split('~')[0].trim(), we=period.split('~')[1].trim();
+  function sumRev(from,to){
+    var s=0;
+    var dm={};
+    DB.naver.forEach(function(e){
+      var ds=e.d||''; if(ds<from||ds>to) return;
+      if(!dm[ds]) dm[ds]=0;
+      dm[ds]+=(parseFloat(e.r)||0);
+    });
+    Object.values(dm).forEach(function(v){s+=v;});
+    return s;
+  }
+  var wRev=sumRev(ws,we);
+  var pRev=0;
+  if(prevWeek){
+    var pPeriod=weeks[prevWeek];
+    pRev=sumRev(pPeriod.split('~')[0].trim(), pPeriod.split('~')[1].trim());
+  }
+
+  var lines=[];
+  var wsDisp=ws.slice(5).replace('-','/'), weDisp=we.slice(5).replace('-','/');
+  lines.push('📈 *톰토미 주간 인사이트 ('+wsDisp+'~'+weDisp+')*');
+  lines.push('');
+  // 매출
+  var revLine='💰 주간 네이버 매출: '+fmtW(wRev)+'원';
+  if(prevWeek&&pRev>0){
+    var pct=Math.round((wRev-pRev)/pRev*100);
+    revLine+=' (전주 대비 '+(pct>=0?'▲'+pct:'▼'+Math.abs(pct))+'%)';
+  }
+  lines.push(revLine);
+  lines.push('');
+
+  // 고객 분석 (신규/재구매)
+  var custRows=(DB.naverCustNew||[]).filter(function(e){return e.d===latestWeek;});
+  var newC=custRows.find(function(e){return e.seg==='신규';});
+  var reC=custRows.find(function(e){return e.seg==='재구매';});
+  if(newC||reC){
+    lines.push('*👥 고객 분석*');
+    if(newC&&reC){
+      lines.push('▸ 결제고객: 신규 '+newC.payPct+'% / 재구매 '+reC.payPct+'%');
+      if(reC.aov>0&&newC.aov>0){
+        var ratio=(reC.aov/newC.aov).toFixed(1);
+        lines.push('▸ 객단가: 신규 '+fmtW(newC.aov)+'원 / 재구매 '+fmtW(reC.aov)+'원 ('+ratio+'배)');
+      }
+    }
+    // 성별
+    var demoRows=(DB.naverCustDemo||[]).filter(function(e){return e.d===latestWeek;});
+    var male=demoRows.find(function(e){return e.seg==='남성';});
+    var female=demoRows.find(function(e){return e.seg==='여성';});
+    if(male&&female){
+      lines.push('▸ 성별 결제: 남 '+male.payPct+'% (방문 '+male.visitPct+'%) / 여 '+female.payPct+'% (방문 '+female.visitPct+'%)');
+    }
+    lines.push('');
+  }
+
+  // 주간 검색어 TOP5
+  var qData=(DB.naverQuery||[]).filter(function(e){return e.d>=ws&&e.d<=we;});
+  if(qData.length>0){
+    var qMap={};
+    qData.forEach(function(e){
+      if(!qMap[e.query]) qMap[e.query]={visits:0,orders:0,rev:0};
+      qMap[e.query].visits+=e.visits; qMap[e.query].orders+=e.orders; qMap[e.query].rev+=e.rev;
+    });
+    var qTop=Object.entries(qMap).sort(function(a,b){return b[1].visits-a[1].visits;}).slice(0,5);
+    lines.push('*🔍 주간 검색어 TOP5*');
+    qTop.forEach(function(kv,i){
+      var s=(i+1)+'. '+kv[0]+' ('+kv[1].visits+'방문';
+      if(kv[1].orders>0) s+=', '+kv[1].orders+'건 전환';
+      else s+=', 전환 0 ⚠️';
+      s+=')';
+      lines.push(s);
+    });
+    lines.push('');
+  }
+
+  // 주간 경로 요약
+  var vData=(DB.naverVisit||[]).filter(function(e){return e.d>=ws&&e.d<=we;});
+  if(vData.length>0){
+    var pMap={};
+    vData.forEach(function(e){
+      var k=e.path2||e.path1;
+      if(!pMap[k]) pMap[k]={visits:0,orders:0,rev:0};
+      pMap[k].visits+=e.visits; pMap[k].orders+=e.orders; pMap[k].rev+=e.rev;
+    });
+    var pTop=Object.entries(pMap).sort(function(a,b){return b[1].visits-a[1].visits;}).slice(0,5);
+    lines.push('*🔀 주간 유입경로 TOP5*');
+    pTop.forEach(function(kv,i){
+      var cvr=kv[1].visits>0?(kv[1].orders/kv[1].visits*100).toFixed(1):'0';
+      lines.push((i+1)+'. '+kv[0]+' — '+kv[1].visits+'방문, 전환율 '+cvr+'%'+(kv[1].rev>0?', '+fmtW(kv[1].rev)+'원':''));
+    });
+  }
+
+  return lines.join('\n');
 }
 
 // 헤더 버튼용 (기존 호환)
