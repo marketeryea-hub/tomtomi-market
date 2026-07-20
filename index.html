@@ -413,6 +413,34 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     </div>
   </div>
 
+  <!-- 방문·전환율 추이 + 검색어 TOP -->
+  <div class="g2">
+    <div class="card">
+      <div class="ctitle">📈 방문수·전환율 추이 <span class="badge ba">선택 기간</span></div>
+      <div class="csub">일별 방문수(막대) + 구매전환율(선) — 새 양식(sales) 기반</div>
+      <canvas id="nv-visit-cvr-chart" style="max-height:260px;margin-top:10px"></canvas>
+    </div>
+    <div class="card">
+      <div class="ctitle">🔍 검색어 TOP 20 <span class="badge ba">선택 기간</span></div>
+      <div class="csub">검색분석(query) 파일 기반 — 방문수 순</div>
+      <div id="nv-query-list" style="margin-top:12px;max-height:280px;overflow-y:auto"></div>
+    </div>
+  </div>
+
+  <!-- 고객 분석 (주단위) -->
+  <div class="g2">
+    <div class="card">
+      <div class="ctitle">👥 신규 vs 재구매 <span class="badge ba">주단위</span></div>
+      <div class="csub">고객분석(customer) 파일 기반 — 결제고객 비중 & 객단가</div>
+      <div id="nv-cust-new" style="margin-top:12px"></div>
+    </div>
+    <div class="card">
+      <div class="ctitle">🚻 성별·연령 분석 <span class="badge ba">주단위</span></div>
+      <div class="csub">최근 주 기준 방문/결제 비중</div>
+      <div id="nv-cust-demo" style="margin-top:12px"></div>
+    </div>
+  </div>
+
   <!-- 시간대별 결제 + 상품 TOP5 -->
   <div class="g2">
     <div class="card">
@@ -2698,6 +2726,122 @@ function renderNaver(){
       }
     }
   }
+
+  // ── 방문수·전환율 추이 차트 ──
+  (function(){
+    var el=document.getElementById('nv-visit-cvr-chart');
+    if(!el) return;
+    var vDays={};
+    DB.naver.forEach(function(e){
+      var ds=e.d||''; if(!inRange(ds)) return;
+      if((e.visits||0)>0){
+        if(!vDays[ds]) vDays[ds]={visits:0,orders:0};
+        vDays[ds].visits+=e.visits||0;
+        vDays[ds].orders+=(parseFloat(e.o)||0);
+      }
+    });
+    var days=Object.keys(vDays).sort();
+    if(days.length===0){
+      el.parentElement.querySelector('.csub').textContent='새 양식(sales) 파일 데이터가 쌓이면 표시됩니다';
+      return;
+    }
+    var visits=days.map(function(d){return vDays[d].visits;});
+    var cvrs=days.map(function(d){return vDays[d].visits>0?parseFloat((vDays[d].orders/vDays[d].visits*100).toFixed(1)):0;});
+    mkChart('nv-visit-cvr-chart',{
+      type:'bar',
+      data:{
+        labels:days.map(function(d){return d.slice(5);}),
+        datasets:[
+          {label:'방문수',data:visits,backgroundColor:'rgba(3,199,90,.5)',yAxisID:'y',order:2},
+          {label:'전환율(%)',data:cvrs,type:'line',borderColor:'#5B4FCF',borderWidth:2,tension:0.3,pointRadius:3,yAxisID:'y1',order:1}
+        ]
+      },
+      options:{
+        responsive:true,
+        plugins:{legend:{position:'top'}},
+        scales:{
+          y:{position:'left',beginAtZero:true,title:{display:true,text:'방문수'}},
+          y1:{position:'right',beginAtZero:true,grid:{drawOnChartArea:false},title:{display:true,text:'전환율(%)'}}
+        }
+      }
+    });
+  })();
+
+  // ── 검색어 TOP 20 ──
+  (function(){
+    var el=document.getElementById('nv-query-list');
+    if(!el) return;
+    var qData=(DB.naverQuery||[]).filter(function(e){return inRange(e.d);});
+    if(qData.length===0){
+      el.innerHTML='<div style="color:var(--dim);font-size:12px;padding:8px">검색분석(query) 파일을 업로드하면 표시됩니다</div>';
+      return;
+    }
+    var qMap={};
+    qData.forEach(function(e){
+      if(!qMap[e.query]) qMap[e.query]={visits:0,orders:0,rev:0};
+      qMap[e.query].visits+=e.visits; qMap[e.query].orders+=e.orders; qMap[e.query].rev+=e.rev;
+    });
+    var qTop=Object.entries(qMap).sort(function(a,b){return b[1].visits-a[1].visits;}).slice(0,20);
+    var h='<table class="tbl"><thead><tr><th style="text-align:left">검색어</th><th>방문</th><th>전환</th><th>전환율</th><th>매출</th></tr></thead><tbody>';
+    qTop.forEach(function(kv){
+      var q=kv[0],v=kv[1];
+      var cvr=v.visits>0?(v.orders/v.visits*100).toFixed(1)+'%':'0%';
+      var warn=v.visits>=10&&v.orders===0;
+      h+='<tr style="'+(warn?'background:rgba(220,38,38,.04)':'')+'"><td style="text-align:left;font-size:12px">'+q+(warn?' ⚠️':'')+'</td><td>'+v.visits+'</td><td>'+v.orders+'</td><td>'+cvr+'</td><td>'+(v.rev>0?fmtW(v.rev)+'원':'—')+'</td></tr>';
+    });
+    h+='</tbody></table>';
+    el.innerHTML=h;
+  })();
+
+  // ── 고객 분석: 신규 vs 재구매 ──
+  (function(){
+    var el=document.getElementById('nv-cust-new');
+    if(!el) return;
+    var rows=DB.naverCustNew||[];
+    if(rows.length===0){
+      el.innerHTML='<div style="color:var(--dim);font-size:12px;padding:8px">고객분석(customer) 신규/재구매 파일을 업로드하면 표시됩니다</div>';
+      return;
+    }
+    var weeks=[...new Set(rows.map(function(e){return e.d;}))].sort();
+    var recent=weeks.slice(-6); // 최근 6주
+    var h='<table class="tbl"><thead><tr><th style="text-align:left">주간</th><th>신규 결제</th><th>재구매 결제</th><th>신규 객단가</th><th>재구매 객단가</th></tr></thead><tbody>';
+    recent.slice().reverse().forEach(function(w){
+      var newC=rows.find(function(e){return e.d===w&&e.seg==='신규';});
+      var reC=rows.find(function(e){return e.d===w&&e.seg==='재구매';});
+      if(!newC&&!reC) return;
+      var period=(newC||reC).period||w;
+      var label=period.split('~')[0].slice(5).replace('-','/')+'~'+period.split('~')[1].slice(5).replace('-','/');
+      h+='<tr><td style="text-align:left;font-size:11px">'+label+'</td>';
+      h+='<td>'+(newC?newC.payPct+'%':'—')+'</td><td style="font-weight:700;color:var(--accent)">'+(reC?reC.payPct+'%':'—')+'</td>';
+      h+='<td>'+(newC&&newC.aov>0?fmtW(newC.aov)+'원':'—')+'</td><td>'+(reC&&reC.aov>0?fmtW(reC.aov)+'원':'—')+'</td></tr>';
+    });
+    h+='</tbody></table>';
+    el.innerHTML=h;
+  })();
+
+  // ── 고객 분석: 성별·연령 ──
+  (function(){
+    var el=document.getElementById('nv-cust-demo');
+    if(!el) return;
+    var rows=DB.naverCustDemo||[];
+    if(rows.length===0){
+      el.innerHTML='<div style="color:var(--dim);font-size:12px;padding:8px">고객분석(customer) 성/연령별 파일을 업로드하면 표시됩니다</div>';
+      return;
+    }
+    var weeks=[...new Set(rows.map(function(e){return e.d;}))].sort();
+    var latest=weeks[weeks.length-1];
+    var latestRows=rows.filter(function(e){return e.d===latest&&e.seg!=='전체합산';});
+    var period=latestRows[0]?latestRows[0].period:latest;
+    var h='<div style="font-size:11px;color:var(--dim);margin-bottom:8px">기준: '+period+'</div>';
+    h+='<table class="tbl"><thead><tr><th style="text-align:left">구분</th><th>방문 비중</th><th>결제 비중</th><th>전환율</th><th>객단가</th></tr></thead><tbody>';
+    latestRows.sort(function(a,b){return b.payPct-a.payPct;}).forEach(function(e){
+      var highlight=e.payPct>e.visitPct*2; // 결제 비중이 방문 비중의 2배 이상이면 주목
+      h+='<tr style="'+(highlight?'background:rgba(91,79,207,.05)':'')+'"><td style="text-align:left">'+e.seg+(highlight?' 💪':'')+'</td>';
+      h+='<td>'+e.visitPct+'%</td><td style="font-weight:700">'+e.payPct+'%</td><td>'+e.cvr+'%</td><td>'+(e.aov>0?fmtW(e.aov)+'원':'—')+'</td></tr>';
+    });
+    h+='</tbody></table>';
+    el.innerHTML=h;
+  })();
 }
 
 
