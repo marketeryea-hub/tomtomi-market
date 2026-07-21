@@ -2731,18 +2731,21 @@ function renderNaver(){
   (function(){
     var el=document.getElementById('nv-visit-cvr-chart');
     if(!el) return;
+    // 방문수는 경로별 방문분석(naverVisit)에서, 결제건수는 sales(DB.naver)에서
     var vDays={};
+    (DB.naverVisit||[]).forEach(function(e){
+      var ds=e.d||''; if(!inRange(ds)) return;
+      if(!vDays[ds]) vDays[ds]={visits:0,orders:0};
+      vDays[ds].visits+=e.visits||0;
+    });
+    // 결제건수 매핑
     DB.naver.forEach(function(e){
       var ds=e.d||''; if(!inRange(ds)) return;
-      if((e.visits||0)>0){
-        if(!vDays[ds]) vDays[ds]={visits:0,orders:0};
-        vDays[ds].visits+=e.visits||0;
-        vDays[ds].orders+=(parseFloat(e.o)||0);
-      }
+      if(vDays[ds]) vDays[ds].orders+=(parseFloat(e.o)||0);
     });
     var days=Object.keys(vDays).sort();
     if(days.length===0){
-      el.parentElement.querySelector('.csub').textContent='새 양식(sales) 파일 데이터가 쌓이면 표시됩니다';
+      el.parentElement.querySelector('.csub').textContent='방문분석(visit) 경로 파일 데이터가 쌓이면 표시됩니다';
       return;
     }
     var visits=days.map(function(d){return vDays[d].visits;});
@@ -3961,9 +3964,14 @@ function buildSlackMessage(){
   }
   lines.push('');
   lines.push('*'+lbl.sales+'*');
-  // 방문수/전환율 (새 양식 데이터가 있을 때)
+  // 방문수/전환율 — 경로별 방문분석(naverVisit)의 총 방문수 사용
+  // (sales 파일의 방문수는 '판매 발생 상품'만 집계해서 실제 총 방문수와 다름)
   var navVisits=0;
-  DB.naver.forEach(function(e){ if(!inRange(e.d||''))return; navVisits+=(e.visits||0); });
+  (DB.naverVisit||[]).forEach(function(e){ if(!inRange(e.d||''))return; navVisits+=(e.visits||0); });
+  // 방문분석 데이터가 없으면 sales의 방문수로 폴백
+  if(navVisits===0){
+    DB.naver.forEach(function(e){ if(!inRange(e.d||''))return; navVisits+=(e.visits||0); });
+  }
   var navLine='▸ 네이버 '+fmtW(navRev)+'원 (결제 '+Math.round(navOrders)+'건';
   if(navVisits>0){
     var navCvr=(navOrders/navVisits*100).toFixed(1);
