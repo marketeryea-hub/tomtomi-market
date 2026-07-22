@@ -304,6 +304,18 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
         <input id="slk-lbl-top3" type="text" style="flex:1;min-width:200px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--s1);color:var(--text);outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <label style="font-size:11px;color:var(--dim);min-width:90px">유입 섹션</label>
+        <input id="slk-lbl-inflow" type="text" style="flex:1;min-width:200px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--s1);color:var(--text);outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <label style="font-size:11px;color:var(--dim);min-width:90px">검색어 라벨</label>
+        <input id="slk-lbl-keyword" type="text" style="flex:1;min-width:200px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--s1);color:var(--text);outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <label style="font-size:11px;color:var(--dim);min-width:90px">경로 라벨</label>
+        <input id="slk-lbl-path" type="text" style="flex:1;min-width:200px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--s1);color:var(--text);outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <label style="font-size:11px;color:var(--dim);min-width:90px">하단 고정글</label>
         <textarea id="slk-lbl-footer" rows="3" style="flex:1;min-width:200px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--s1);color:var(--text);outline:none;resize:vertical;font-family:'Noto Sans KR',sans-serif;line-height:1.6" placeholder="매일 리포트 아래에 붙는 고정 텍스트 (CRM, 키워드 등)" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"></textarea>
       </div>
@@ -3832,6 +3844,9 @@ var SLACK_LABEL_DEFAULTS = {
   sales: '💰 매출',
   ads: '📣 광고',
   top3: '고매출 상품 TOP3',
+  inflow: '🔍 유입 분석',
+  keyword: '검색어 TOP',
+  path: '주요 경로',
   footer: ''
 };
 
@@ -3850,6 +3865,9 @@ function loadSlackLabels(){
   document.getElementById('slk-lbl-sales').value = lbl.sales;
   document.getElementById('slk-lbl-ads').value = lbl.ads;
   document.getElementById('slk-lbl-top3').value = lbl.top3;
+  document.getElementById('slk-lbl-inflow').value = lbl.inflow;
+  document.getElementById('slk-lbl-keyword').value = lbl.keyword;
+  document.getElementById('slk-lbl-path').value = lbl.path;
   document.getElementById('slk-lbl-footer').value = lbl.footer;
 }
 
@@ -3860,6 +3878,9 @@ function saveSlackLabels(){
     sales: document.getElementById('slk-lbl-sales').value.trim() || SLACK_LABEL_DEFAULTS.sales,
     ads: document.getElementById('slk-lbl-ads').value.trim() || SLACK_LABEL_DEFAULTS.ads,
     top3: document.getElementById('slk-lbl-top3').value.trim() || SLACK_LABEL_DEFAULTS.top3,
+    inflow: document.getElementById('slk-lbl-inflow').value.trim() || SLACK_LABEL_DEFAULTS.inflow,
+    keyword: document.getElementById('slk-lbl-keyword').value.trim() || SLACK_LABEL_DEFAULTS.keyword,
+    path: document.getElementById('slk-lbl-path').value.trim() || SLACK_LABEL_DEFAULTS.path,
     footer: document.getElementById('slk-lbl-footer').value
   };
   try { localStorage.setItem('tomtomi_slack_labels', JSON.stringify(lbl)); } catch(e){}
@@ -4001,21 +4022,24 @@ function buildSlackMessage(){
   var vData=(DB.naverVisit||[]).filter(function(e){return inRange(e.d);});
   if(qData.length>0||vData.length>0){
     lines.push('');
-    lines.push('*🔍 유입 분석*');
-    // 검색어 TOP5
+    lines.push('*'+lbl.inflow+'*');
+    // 검색어 TOP7 (목록형)
     if(qData.length>0){
       var qMap={};
       qData.forEach(function(e){
         if(!qMap[e.query]) qMap[e.query]={visits:0,orders:0,rev:0};
         qMap[e.query].visits+=e.visits; qMap[e.query].orders+=e.orders; qMap[e.query].rev+=e.rev;
       });
-      var qTop=Object.entries(qMap).sort(function(a,b){return b[1].visits-a[1].visits;}).slice(0,5);
-      var qStrs=qTop.map(function(kv){
-        var s=kv[0]+' '+kv[1].visits+'회';
-        if(kv[1].orders>0) s+='→'+kv[1].orders+'건';
-        return s;
+      var qTop=Object.entries(qMap).sort(function(a,b){return b[1].visits-a[1].visits;}).slice(0,7);
+      lines.push('▸ '+lbl.keyword);
+      qTop.forEach(function(kv,i){
+        var s='  '+(i+1)+'. '+kv[0]+' ('+kv[1].visits+'회';
+        if(kv[1].orders>0) s+=' → '+kv[1].orders+'건 '+fmtW(kv[1].rev)+'원';
+        s+=')';
+        lines.push(s);
       });
-      lines.push('▸ 검색어 TOP: '+qStrs.join(' / '));
+    } else {
+      lines.push('▸ '+lbl.keyword+': 데이터 없음 (query 파일 미업로드)');
     }
     // 경로 요약 + 경고
     if(vData.length>0){
@@ -4026,7 +4050,7 @@ function buildSlackMessage(){
         pMap[k].visits+=e.visits; pMap[k].orders+=e.orders;
       });
       var pTop=Object.entries(pMap).sort(function(a,b){return b[1].visits-a[1].visits;}).slice(0,4);
-      lines.push('▸ 주요 경로: '+pTop.map(function(kv){return kv[0]+' '+kv[1].visits;}).join(' / '));
+      lines.push('▸ '+lbl.path+': '+pTop.map(function(kv){return kv[0]+' '+kv[1].visits;}).join(' / '));
       // 경고: 방문 30 이상인데 전환 0
       var warns=Object.entries(pMap).filter(function(kv){return kv[1].visits>=30&&kv[1].orders===0;});
       if(warns.length>0){
