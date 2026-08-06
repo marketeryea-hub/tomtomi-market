@@ -3934,8 +3934,9 @@ function buildSlackMessage(){
     var rev=parseFloat(e.rev||e.r||0);
     if(name&&rev>0){
       var key=name+'|네이버';
-      if(!prodMap[key]) prodMap[key]={name:name,rev:0,platform:'네이버'};
+      if(!prodMap[key]) prodMap[key]={name:name,rev:0,qty:0,platform:'네이버'};
       prodMap[key].rev+=rev;
+      prodMap[key].qty+=parseFloat(e.qty||0);
     }
   });
   DB.coupStock.forEach(function(e){
@@ -3944,8 +3945,9 @@ function buildSlackMessage(){
     var amt=(typeof e.a==='string'?Number(e.a.replace(/,/g,''))||0:Number(e.a)||0);
     if(name&&amt>0&&name.indexOf('톰토미')!==-1){
       var key=name+'|쿠팡';
-      if(!prodMap[key]) prodMap[key]={name:name,rev:0,platform:'쿠팡'};
+      if(!prodMap[key]) prodMap[key]={name:name,rev:0,qty:0,platform:'쿠팡'};
       prodMap[key].rev+=amt;
+      prodMap[key].qty+=parseFloat(e.qty||0);
     }
   });
   DB.other.forEach(function(e){
@@ -3955,8 +3957,9 @@ function buildSlackMessage(){
     if(name&&amt>0){
       var pf=e.m||e.platform||e.market||'기타';
       var key=name+'|'+pf;
-      if(!prodMap[key]) prodMap[key]={name:name,rev:0,platform:pf};
+      if(!prodMap[key]) prodMap[key]={name:name,rev:0,qty:0,platform:pf};
       prodMap[key].rev+=amt;
+      prodMap[key].qty+=parseFloat(e.qty||0);
     }
   });
   var topProducts=Object.values(prodMap).sort(function(a,b){return b.rev-a.rev;}).slice(0,3);
@@ -4016,7 +4019,8 @@ function buildSlackMessage(){
     lines.push('');
     lines.push('*['+lbl.top3+']*');
     topProducts.forEach(function(p,i){
-      lines.push((i+1)+'. '+p.name+' — '+fmtW(p.rev)+'원 ('+p.platform+')');
+      var qtyStr=(p.qty&&p.qty>0)?' · '+Math.round(p.qty)+'개':'';
+      lines.push((i+1)+'. '+p.name+' — '+fmtW(p.rev)+'원'+qtyStr+' ('+p.platform+')');
     });
   }
 
