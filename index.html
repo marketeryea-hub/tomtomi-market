@@ -322,12 +322,14 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button class="fbtn fbtn-pre" onclick="resetSlackLabels()" style="font-size:11px;padding:4px 10px">🔄 기본값</button>
         <button class="fbtn" onclick="saveSlackLabels()" style="font-size:11px;padding:4px 10px;background:var(--accent);color:#fff">💾 저장</button>
+        <button class="fbtn fbtn-pre" onclick="document.getElementById('slack-label-editor').removeAttribute('open')" style="font-size:11px;padding:4px 10px">✕ 닫기</button>
       </div>
     </div>
   </details>
   <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
     <button class="fbtn fbtn-pre" onclick="generateSlackPreview()" style="font-size:11px;padding:5px 12px">🔄 미리보기 생성</button>
     <button class="fbtn fbtn-pre" onclick="generateWeeklyPreview()" style="font-size:11px;padding:5px 12px;border-color:var(--accent);color:var(--accent)">📈 위클리 리포트</button>
+    <button class="fbtn fbtn-pre" onclick="generateCompetitorPreview()" style="font-size:11px;padding:5px 12px;border-color:#e01e5a;color:#e01e5a">⚔️ 경쟁사 리포트</button>
     <button class="fbtn fbtn-pre" onclick="toggleSlackPanel()" style="font-size:11px;padding:5px 12px">✕ 닫기</button>
   </div>
   <textarea id="slack-preview" rows="14" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;color:var(--text);font-size:12px;font-family:'JetBrains Mono','Noto Sans KR',monospace;outline:none;resize:vertical;line-height:1.7" placeholder="🔄 미리보기 생성 버튼을 눌러주세요" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"></textarea>
@@ -3884,6 +3886,7 @@ function saveSlackLabels(){
     footer: document.getElementById('slk-lbl-footer').value
   };
   try { localStorage.setItem('tomtomi_slack_labels', JSON.stringify(lbl)); } catch(e){}
+  var ed=document.getElementById('slack-label-editor'); if(ed) ed.removeAttribute('open');
   showSaveToast('💾 슬랙 라벨 저장 완료!');
 }
 
@@ -4059,6 +4062,14 @@ function buildSlackMessage(){
     }
   }
 
+  // ── SNS 팔로워 (오늘 vs 어제) ──
+  var snsLines=_buildSnsLines();
+  if(snsLines.length>0){
+    lines.push('');
+    lines.push('*📱 SNS 팔로워*');
+    snsLines.forEach(function(l){ lines.push(l); });
+  }
+
   if(lbl.footer && lbl.footer.trim()){
     lines.push('');
     lines.push(lbl.footer);
@@ -4067,12 +4078,33 @@ function buildSlackMessage(){
   return lines.join('\n');
 }
 
-function generateSlackPreview(){
-  var msg = buildSlackMessage();
-  document.getElementById('slack-preview').value = msg;
-  var fromStr = (filterFrom.getMonth()+1)+'/'+filterFrom.getDate();
-  var toStr = (filterTo.getMonth()+1)+'/'+filterTo.getDate();
-  document.getElementById('slack-period-label').textContent = fromStr + ' ~ ' + toStr;
+// SNS 팔로워 라인 생성 (최신 vs 직전)
+function _buildSnsLines(){
+  var crm=ONLINE_DB.crm;
+  if(!crm) return [];
+  var out=[];
+  var meta=[
+    {key:'naver',label:'스마트스토어 알림받기'},
+    {key:'insta',label:'인스타그램'},
+    {key:'tiktok',label:'틱톡'},
+    {key:'threads',label:'스레드'}
+  ];
+  meta.forEach(function(m){
+    var arr=crm[m.key]||[];
+    if(arr.length===0) return;
+    var latest=arr[arr.length-1];
+    var prev=arr.length>1?arr[arr.length-2]:null;
+    var line='▸ '+m.label+': '+latest.val.toLocaleString()+'명';
+    if(prev){
+      var diff=latest.val-prev.val;
+      var pct=prev.val>0?(diff/prev.val*100).toFixed(1):'0';
+      if(diff>0) line+=' ▲'+diff.toLocaleString()+' (+'+pct+'%)';
+      else if(diff<0) line+=' ▼'+Math.abs(diff).toLocaleString()+' ('+pct+'%)';
+      else line+=' (변동 없음)';
+    }
+    out.push(line);
+  });
+  return out;
 }
 
 // ══════════════════════════════════════════
@@ -4081,6 +4113,74 @@ function generateSlackPreview(){
 function generateWeeklyPreview(){
   var msg = buildWeeklyMessage();
   document.getElementById('slack-preview').value = msg;
+}
+
+// ══════════════════════════════════════════
+// 경쟁사 리포트 (월별 경쟁사 키워드 검색량)
+// ══════════════════════════════════════════
+function generateSlackPreview(){
+  var msg = buildSlackMessage();
+  document.getElementById('slack-preview').value = msg;
+  var fromStr = (filterFrom.getMonth()+1)+'/'+filterFrom.getDate();
+  var toStr = (filterTo.getMonth()+1)+'/'+filterTo.getDate();
+  document.getElementById('slack-period-label').textContent = fromStr + ' ~ ' + toStr;
+}
+
+function generateCompetitorPreview(){
+  var msg = buildCompetitorMessage();
+  document.getElementById('slack-preview').value = msg;
+}
+
+function buildCompetitorMessage(){
+  var comp=ONLINE_DB.competitor;
+  if(!comp||Object.keys(comp).length===0){
+    return '⚠️ 경쟁사 데이터가 없습니다.\n온라인 대시보드의 구글시트(competitor)에 데이터가 있는지 확인해주세요.\n(로드에 시간이 걸릴 수 있으니 잠시 후 다시 시도)';
+  }
+  // 모든 브랜드의 최신 월 찾기
+  var allMonths=new Set();
+  Object.values(comp).forEach(function(d){ d.dates.forEach(function(m){allMonths.add(m);}); });
+  var months=[...allMonths].sort();
+  if(months.length===0) return '⚠️ 경쟁사 데이터가 비어있습니다.';
+  var latestMonth=months[months.length-1];
+  var prevMonth=months.length>1?months[months.length-2]:null;
+
+  var lines=[];
+  lines.push('⚔️ *톰토미 경쟁사 키워드 검색량 ('+latestMonth+')*');
+  lines.push('');
+
+  // 브랜드별 최신월 검색량 + 전월 대비
+  var brandData=[];
+  Object.keys(comp).forEach(function(brand){
+    var d=comp[brand];
+    var li=d.dates.indexOf(latestMonth);
+    if(li<0) return;
+    var val=d.vals[li];
+    var pi=prevMonth?d.dates.indexOf(prevMonth):-1;
+    var prevVal=pi>=0?d.vals[pi]:null;
+    brandData.push({brand:brand,val:val,prevVal:prevVal});
+  });
+  // 검색량 순 정렬
+  brandData.sort(function(a,b){return b.val-a.val;});
+
+  brandData.forEach(function(b,i){
+    var line=(i+1)+'. '+b.brand+': '+b.val.toLocaleString();
+    if(b.prevVal!==null&&b.prevVal>0){
+      var diff=b.val-b.prevVal;
+      var pct=(diff/b.prevVal*100).toFixed(1);
+      if(diff>0) line+=' ▲'+diff.toLocaleString()+' (+'+pct+'%)';
+      else if(diff<0) line+=' ▼'+Math.abs(diff).toLocaleString()+' ('+pct+'%)';
+      else line+=' (동일)';
+    }
+    // 톰토미 강조
+    if(b.brand.indexOf('톰토미')!==-1) line='👑 '+line;
+    lines.push(line);
+  });
+
+  if(prevMonth){
+    lines.push('');
+    lines.push('※ '+prevMonth+' 대비 증감');
+  }
+  return lines.join('\n');
 }
 
 function buildWeeklyMessage(){
@@ -4246,6 +4346,100 @@ function _doSlackSend(msg, btn, status){
 // 구글시트 연동 (기타채널) — JSONP 방식 (로컬 file:// 호환)
 // ══════════════════════════════════════════
 var GSHEET_ID = '1yr_sgn3d6odRjF39hdRWadep2oPPc_9IkzK1Mm5N2lU';
+
+// ── 온라인 대시보드 데이터 (SNS 팔로워 + 경쟁사) ──
+var ONLINE_GSHEET_ID = '1vuyz2V0I6KgJ0vrpH2cwJ_5XzOcqj12opLRGM4irtu0';
+var ONLINE_DB = { crm:{naver:[],insta:[],tiktok:[],threads:[]}, competitor:{} };
+
+function _parseCSVLine(r){
+  var result=[],cur='',inQ=false;
+  for(var ci=0;ci<r.length;ci++){
+    var ch=r[ci];
+    if(ch==='"'){inQ=!inQ;}
+    else if(ch===','&&!inQ){result.push(cur.trim());cur='';}
+    else{cur+=ch;}
+  }
+  result.push(cur.trim());
+  return result;
+}
+
+function _fmtDateStr(val){
+  if(!val) return null;
+  var s=String(val).trim();
+  var m=s.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+  if(m) return m[1]+'-'+String(m[2]).padStart(2,'0')+'-'+String(m[3]).padStart(2,'0');
+  return null;
+}
+
+function loadOnlineCRM(){
+  var url='https://docs.google.com/spreadsheets/d/'+ONLINE_GSHEET_ID+'/gviz/tq?tqx=out:csv&sheet='+encodeURIComponent('시트1');
+  return fetch(url).then(function(res){return res.text();}).then(function(text){
+    var rows=text.trim().split('\n').map(_parseCSVLine);
+    if(rows.length<2) return;
+    var hdr=rows[0].map(function(h){return String(h||'').toLowerCase().trim();});
+    var iDate=hdr.findIndex(function(h){return h==='date';});
+    var iNav=hdr.findIndex(function(h){return h==='naver'||h==='알림받기'||h==='smartstore';});
+    var iIns=hdr.findIndex(function(h){return h==='insta'||h==='instagram';});
+    var iTok=hdr.findIndex(function(h){return h==='tiktok'||h==='틱톡';});
+    var iThrd=hdr.findIndex(function(h){return h==='threads'||h==='쓰레드';});
+    var ci={date:iDate>=0?iDate:0,nav:iNav>=0?iNav:1,ins:iIns>=0?iIns:2,tok:iTok>=0?iTok:3,thrd:iThrd>=0?iThrd:4};
+    var naver=[],insta=[],tiktok=[],threads=[];
+    for(var i=1;i<rows.length;i++){
+      var r=rows[i];
+      if(!r[ci.date]) continue;
+      var d=_fmtDateStr(r[ci.date]);
+      if(!d) continue;
+      var vN=parseInt(String(r[ci.nav]||'').replace(/,/g,'')); if(!isNaN(vN)&&vN>0) naver.push({date:d,val:vN});
+      var vI=parseInt(String(r[ci.ins]||'').replace(/,/g,'')); if(!isNaN(vI)&&vI>0) insta.push({date:d,val:vI});
+      var vT=parseInt(String(r[ci.tok]||'').replace(/,/g,'')); if(!isNaN(vT)&&vT>0) tiktok.push({date:d,val:vT});
+      var vH=parseInt(String(r[ci.thrd]||'').replace(/,/g,'')); if(!isNaN(vH)&&vH>0) threads.push({date:d,val:vH});
+    }
+    [naver,insta,tiktok,threads].forEach(function(arr){arr.sort(function(a,b){return a.date<b.date?-1:1;});});
+    ONLINE_DB.crm={naver:naver,insta:insta,tiktok:tiktok,threads:threads};
+    console.log('[온라인] CRM 로드 — 알림 '+naver.length+' 인스타 '+insta.length+' 틱톡 '+tiktok.length+' 스레드 '+threads.length);
+  }).catch(function(e){console.warn('[온라인] CRM 로드 실패:',e.message);});
+}
+
+function loadOnlineCompetitor(){
+  var url='https://docs.google.com/spreadsheets/d/'+ONLINE_GSHEET_ID+'/gviz/tq?tqx=out:csv&sheet=competitor';
+  return fetch(url).then(function(res){return res.text();}).then(function(text){
+    var rows=text.trim().split('\n').map(_parseCSVLine);
+    if(rows.length<2) return;
+    var hdr=rows[0].map(function(h){return String(h||'').toLowerCase().trim();});
+    var iMonth=hdr.findIndex(function(h){return h.includes('month')||h.includes('월');});
+    var iBrand=hdr.findIndex(function(h){return h.includes('brand')||h.includes('브랜드');});
+    var iMO=hdr.findIndex(function(h){return h==='mo'||h==='모바일';});
+    var iPC=hdr.findIndex(function(h){return h==='pc';});
+    var iTotal=hdr.findIndex(function(h){return h.includes('합계')||h==='total';});
+    var ci={month:iMonth>=0?iMonth:0,brand:iBrand>=0?iBrand:1,mo:iMO>=0?iMO:2,pc:iPC>=0?iPC:3,total:iTotal>=0?iTotal:4};
+    var bs={};
+    for(var i=1;i<rows.length;i++){
+      var r=rows[i];
+      var mo0=String(r[ci.month]||'').trim();
+      var mm=mo0.match(/^(\d{4})[-./](\d{1,2})/);
+      var month=mm?mm[1]+'-'+String(mm[2]).padStart(2,'0'):null;
+      var brand=String(r[ci.brand]||'').trim();
+      if(!month||!brand) continue;
+      var mo=parseFloat(String(r[ci.mo]||'').replace(/,/g,''))||0;
+      var pc=parseFloat(String(r[ci.pc]||'').replace(/,/g,''))||0;
+      var total=parseFloat(String(r[ci.total]||'').replace(/,/g,''))||mo+pc;
+      if(!bs[brand]) bs[brand]={dates:[],vals:[]};
+      bs[brand].dates.push(month); bs[brand].vals.push(total);
+    }
+    Object.values(bs).forEach(function(d){
+      var z=d.dates.map(function(dt,i){return {dt:dt,v:d.vals[i]};});
+      z.sort(function(a,b){return a.dt<b.dt?-1:1;});
+      d.dates=z.map(function(x){return x.dt;});
+      d.vals=z.map(function(x){return x.v;});
+    });
+    ONLINE_DB.competitor=bs;
+    console.log('[온라인] 경쟁사 로드 — 브랜드:',Object.keys(bs));
+  }).catch(function(e){console.warn('[온라인] 경쟁사 로드 실패:',e.message);});
+}
+
+// 페이지 로드 시 온라인 데이터도 백그라운드 로드
+setTimeout(function(){ loadOnlineCRM(); loadOnlineCompetitor(); }, 1500);
+
 
 function loadOtherFromGSheet(){
   var url = 'https://docs.google.com/spreadsheets/d/' + GSHEET_ID + '/gviz/tq?tqx=out:json';
