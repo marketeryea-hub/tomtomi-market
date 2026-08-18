@@ -12,11 +12,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
 :root {
-  --bg:#faf8f3; --s1:#f3f0e8; --s2:#ede9de; --s3:#e5e0d2;
-  --border:#d8d2c2; --text:#1a1a1a; --dim:#7a7060; --muted:#c8c0ac;
+  --bg:#f7f7fb; --s1:#f0f0f7; --s2:#e9e9f2; --s3:#e2e2ee;
+  --border:#e6e6f0; --text:#232336; --dim:#8a8aa0; --muted:#c4c4d6;
   --naver:#03c75a; --coupang:#2563eb; --kakao:#c89800; --meta:#0066e0;
-  --accent:#5b4fcf; --a2:#7c6cf8;
-  --green:#0f9e5a; --yellow:#c8920a; --red:#d63030; --orange:#d95f00; --cyan:#0891b2; --pink:#c2185b;
+  --accent:#6c5ce7; --a2:#8b7cf0;
+  --green:#12b76a; --yellow:#c8920a; --red:#e0417a; --orange:#f79009; --cyan:#0891b2; --pink:#c2185b;
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth}
@@ -27,9 +27,9 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* HEADER */
-.hdr{position:sticky;top:0;z-index:300;background:rgba(250,248,243,.97);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);height:56px;display:flex;align-items:center;padding:0 24px;justify-content:space-between}
+.hdr{position:sticky;top:0;z-index:300;background:rgba(247,247,251,.9);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);height:56px;display:flex;align-items:center;padding:0 24px;justify-content:space-between}
 .logo{display:flex;align-items:center;gap:10px}
-.logo-icon{width:32px;height:32px;background:linear-gradient(135deg,var(--naver),#009944);border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;color:#fff}
+.logo-icon{width:32px;height:32px;background:linear-gradient(135deg,#8b7cf0,#6c5ce7);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#fff;letter-spacing:-.5px;box-shadow:0 2px 8px rgba(108,92,231,.25)}
 .logo-text{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;letter-spacing:-.4px}
 .logo-sub{font-size:10px;color:var(--dim);margin-top:-2px}
 .hdr-r{display:flex;align-items:center;gap:12px}
@@ -92,7 +92,8 @@ input[type=date]:focus{border-color:var(--accent)}
 .stitle{font-size:20px;font-weight:700;display:flex;align-items:center;gap:10px}
 .ptag{font-size:12px;font-weight:500;background:rgba(91,79,207,.1);color:var(--accent);padding:2px 10px;border-radius:20px}
 .ssub{font-size:12px;color:var(--dim);margin-top:4px}
-.card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.card{background:#fff;border:1px solid var(--border);border-radius:18px;padding:22px;margin-bottom:16px;box-shadow:0 2px 12px rgba(108,92,231,.05),0 1px 3px rgba(0,0,0,.02);transition:box-shadow .25s,transform .25s}
+.card:hover{box-shadow:0 6px 24px rgba(108,92,231,.09),0 2px 6px rgba(0,0,0,.03)}
 .ctitle{font-size:14px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px}
 .csub{font-size:11px;color:var(--dim);margin-bottom:14px}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
@@ -102,7 +103,8 @@ input[type=date]:focus{border-color:var(--accent)}
 /* KPI */
 .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
 @media(max-width:900px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
-.kpi{background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;position:relative;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.kpi{background:#fff;border:1px solid var(--border);border-radius:18px;padding:20px;position:relative;overflow:hidden;box-shadow:0 2px 12px rgba(108,92,231,.05),0 1px 3px rgba(0,0,0,.02);transition:box-shadow .25s,transform .25s}
+.kpi:hover{box-shadow:0 6px 24px rgba(108,92,231,.09),0 2px 6px rgba(0,0,0,.03);transform:translateY(-2px)}
 .kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--c,var(--accent))}
 .kpi-ico{font-size:22px;margin-bottom:8px}
 .kpi-lbl{font-size:11px;color:var(--dim);font-weight:500;margin-bottom:4px}
@@ -157,7 +159,7 @@ input[type=date]:focus{border-color:var(--accent)}
 <!-- PASSWORD LOCK SCREEN -->
 <div id="lockScreen" style="position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center">
   <div style="text-align:center;max-width:360px;padding:24px">
-    <div style="width:64px;height:64px;background:linear-gradient(135deg,var(--naver),#009944);border-radius:16px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px;color:#fff;margin:0 auto 20px">TT</div>
+    <div style="width:64px;height:64px;background:linear-gradient(135deg,#8b7cf0,#6c5ce7);border-radius:18px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;color:#fff;margin:0 auto 20px;letter-spacing:-.5px;box-shadow:0 4px 16px rgba(108,92,231,.28)">TT</div>
     <h2 style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;margin-bottom:6px">톰토미 마케팅 대시보드</h2>
     <p style="font-size:13px;color:var(--dim);margin-bottom:28px">접근하려면 비밀번호를 입력해주세요</p>
     <div style="position:relative">
@@ -499,6 +501,13 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     <div class="ctitle">🏆 쿠팡 입고 상품 TOP 5 <span class="badge bi">공급가액 기준</span></div>
     <div class="csub">선택 기간 톰토미 SKU 입고금액 기준</div>
     <div id="cp-top5-list" style="margin-top:12px"></div>
+  </div>
+
+  <!-- 쿠팡 전체 SKU별 납품 순위 -->
+  <div class="card gf">
+    <div class="ctitle">📦 SKU별 납품 순위 (전체) <span class="badge ba">선택 기간</span></div>
+    <div class="csub">톰토미 전 SKU 납품금액·수량·입고횟수 — 쿠팡 납품 추세 상세 분석</div>
+    <div id="cp-allsku-list" style="margin-top:12px;max-height:600px;overflow-y:auto"></div>
   </div>
 </section>
 
@@ -2904,11 +2913,12 @@ function renderCoupang(){
   DB.coupStock.forEach(function(e){
     var ds=e.d||''; if(!inRange(ds)) return;
     var name=(e.sku||e.skuName||'기타').replace(/\[.*?\]/g,'').trim();
-    if(!cpProdMap[name]) cpProdMap[name]={amt:0,qty:0};
+    if(!cpProdMap[name]) cpProdMap[name]={amt:0,qty:0,cnt:0};
     var rawA=e.a||e.amount||0;
     cpProdMap[name].amt+=(typeof rawA==='string'?Number(rawA.replace(/,/g,''))||0:Number(rawA)||0);
     var rawQ=e.qty||0;
     cpProdMap[name].qty+=(typeof rawQ==='string'?Number(String(rawQ).replace(/,/g,''))||0:Number(rawQ)||0);
+    cpProdMap[name].cnt+=1;
   });
   var cpTop5=Object.entries(cpProdMap).sort(function(a,b){return b[1].amt-a[1].amt;}).slice(0,5);
   var cpTop5El=document.getElementById('cp-top5-list');
@@ -2923,6 +2933,35 @@ function renderCoupang(){
         '<div style="background:#eee;border-radius:4px;height:6px"><div style="background:var(--coupang);width:'+pct+'%;height:6px;border-radius:4px;transition:width .4s"></div></div>'+
         '</div>';
     }).join('');
+  }
+
+  // 전체 SKU별 납품 순위 (테이블)
+  var cpAllEl=document.getElementById('cp-allsku-list');
+  if(cpAllEl){
+    var allSku=Object.entries(cpProdMap).sort(function(a,b){return b[1].amt-a[1].amt;});
+    if(allSku.length===0){
+      cpAllEl.innerHTML='<div style="color:var(--dim);font-size:12px;padding:8px">선택 기간에 쿠팡 입고 데이터가 없습니다</div>';
+    } else {
+      var totalAmt=allSku.reduce(function(s,e){return s+e[1].amt;},0);
+      var h='<table class="tbl"><thead><tr><th style="text-align:left">#</th><th style="text-align:left">SKU명</th><th>납품금액</th><th>비중</th><th>수량</th><th>입고횟수</th><th>평균단가</th></tr></thead><tbody>';
+      allSku.forEach(function(e,i){
+        var name=e[0], d=e[1];
+        var pct=totalAmt>0?(d.amt/totalAmt*100).toFixed(1):0;
+        var avgUnit=d.qty>0?Math.round(d.amt/d.qty):0;
+        h+='<tr>'+
+          '<td style="color:var(--dim)">'+(i+1)+'</td>'+
+          '<td style="text-align:left;font-size:12px;max-width:320px">'+name+'</td>'+
+          '<td style="font-weight:700;color:var(--coupang)">'+fmtW(d.amt)+'원</td>'+
+          '<td style="font-size:11px;color:var(--dim)">'+pct+'%</td>'+
+          '<td>'+d.qty.toLocaleString()+'개</td>'+
+          '<td>'+d.cnt+'회</td>'+
+          '<td style="font-size:11px">'+fmtW(avgUnit)+'원</td>'+
+          '</tr>';
+      });
+      h+='<tr style="font-weight:700;border-top:2px solid var(--border)"><td></td><td style="text-align:left">합계 ('+allSku.length+'종)</td><td style="color:var(--coupang)">'+fmtW(totalAmt)+'원</td><td>100%</td><td>'+allSku.reduce(function(s,e){return s+e[1].qty;},0).toLocaleString()+'개</td><td>'+allSku.reduce(function(s,e){return s+e[1].cnt;},0)+'회</td><td></td></tr>';
+      h+='</tbody></table>';
+      cpAllEl.innerHTML=h;
+    }
   }
 
 }
