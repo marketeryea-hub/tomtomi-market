@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>톰토미 마케팅 대시보드 v5</title>
+<title>톰토미 마케팅 대시보드 v5.2</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -197,7 +197,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   <div class="logo" onclick="showSec('overview',document.querySelector('.nb'))" style="cursor:pointer">
     <div class="logo-icon">TT</div>
     <div>
-      <div class="logo-text">톰토미 마케팅 대시보드 <span style="font-size:11px;color:var(--accent);font-weight:400">v5</span></div>
+      <div class="logo-text">톰토미 마케팅 대시보드 <span id="ver-chip" style="font-size:11px;color:var(--accent);font-weight:400">v5.2</span></div>
       <div class="logo-sub">네이버 · 쿠팡(입고기준) · 기타마켓 · 광고 ROI 통합 · Supabase 연동
         <span style="cursor:pointer;color:var(--accent);font-weight:600;margin-left:6px" onclick="document.getElementById('fileGuide').style.display=document.getElementById('fileGuide').style.display==='none'?'block':'none'">📁 파일 가이드</span>
       </div>
@@ -350,7 +350,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   <button class="nb" onclick="showSec('ads',this)">🎯 광고 ROAS</button>
   <button class="nb" onclick="showSec('roi',this)">💹 영업이익</button>
   <button class="nb" onclick="showSec('compare',this)">📊 기간 비교</button>
-  <button class="nb" onclick="showSec('settings',this)">⚙️ 가격 보정</button>
+  <button class="nb" onclick="showSec('settings',this)">⚙️ 관리자</button>
 </nav>
 
 <main class="main">
@@ -360,6 +360,12 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   <div class="shd">
     <div class="stitle">전체 개요 <span class="ptag" id="ov-period">-</span></div>
     <div class="ssub">선택 기간 내 전 채널 실적 통합 요약</div>
+  </div>
+  <!-- v5.1 이상신호 감지 -->
+  <div class="card gf" style="margin-bottom:14px">
+    <div class="ctitle">🚨 이상 신호 감지 <span class="badge br">자동 분석</span></div>
+    <div class="csub">직전 7일 평균 대비 급등·급락 자동 감지 — 매출 · 상품 · 방문 · 광고 효율</div>
+    <div id="ov-alerts" style="margin-top:12px"></div>
   </div>
   <div class="kpi-grid">
     <div class="kpi" style="--c:var(--accent)"><div class="kpi-ico">💰</div><div class="kpi-lbl">총 합산 매출</div><div class="kpi-val" id="ov-total">-</div><div class="kpi-badge bi" id="ov-total-sub">-</div></div>
@@ -700,7 +706,20 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
 
 <!-- SETTINGS -->
 <section id="settings" class="section">
-  <div class="shd"><div class="stitle">⚙️ 가격 보정</div><div class="ssub">기타마켓 상품별 원가 수동 입력 (이카운트 상품코드 추가 전 임시)</div></div>
+  <div class="shd"><div class="stitle">⚙️ 관리자</div><div class="ssub">데이터 건강검진 · 가격 보정(원가 매핑) · 데이터 삭제 관리</div></div>
+  <!-- v5.1 데이터 건강검진 (관리자 탭) -->
+  <div class="card gf" style="margin-bottom:14px">
+    <div class="ctitle">📋 데이터 건강검진 <span class="badge ba">자동 점검</span></div>
+    <div class="csub">채널별로 데이터가 며칠까지 들어있는지 항상 표시 (기준: 어제자 데이터)</div>
+    <div id="adm-health" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px"></div>
+    <div id="adm-health-hint" style="margin-top:10px;font-size:12px;color:var(--dim)"></div>
+  </div>
+  <!-- v5.2 버전 관리 (관리자 탭) -->
+  <div class="card gf" style="margin-bottom:14px">
+    <div class="ctitle">🏷️ 버전 관리 <span class="badge ba">현재 <span id="ver-latest">v5.2</span></span></div>
+    <div class="csub">index.html을 새로 받아 적용할 때마다 버전이 올라갑니다 · 아래 표에서 지금 쓰는 버전이 최신인지 확인하세요</div>
+    <div id="ver-table" style="margin-top:12px;overflow-x:auto"></div>
+  </div>
   <div class="card gf">
     <div class="ctitle">상품별 원가 입력</div>
     <div class="csub">입력 후 Enter — 자동 저장됩니다</div>
@@ -2382,7 +2401,187 @@ function renderSection(id){
   else if(id==='other') renderOther();
   else if(id==='roi') renderROI();
   else if(id==='compare') initCompare();
-  else if(id==='settings') buildPriceTable();
+  else if(id==='settings'){ buildPriceTable(); renderHealthCheck(); renderVersionInfo(); }
+}
+
+// ══════════════════════════════════════════
+// v5.2 버전 관리 — index.html 전달 시마다 ver/date/history를 갱신 (제목·로고 표기도 자동 동기화됨)
+var APP_VERSION = {
+  ver: 'v5.2',
+  date: '2026-09-16',
+  history: [
+    {ver:'v5.2', date:'2026-09-16', note:"관리자 탭 개편: 건강검진 카드를 개요→관리자 탭으로 이동 · 버전 관리 섹션 추가 · 제목 버전 표기 자동 동기화"},
+    {ver:'v5.1', date:'2026-09-16', note:"개요 탭에 데이터 건강검진·이상신호 감지 카드 추가 · 슬랙 요약에 특이사항 섹션 추가"},
+    {ver:'v5.0', date:'-', note:"인수인계 원본 (8채널 아카이브 · 가격 보정 · 날짜별 데이터 삭제 등 기존 기능)"}
+  ]
+};
+function renderVersionInfo(){
+  var el=document.getElementById('ver-table'); if(!el) return;
+  var h='<table class="tbl"><thead><tr><th style="text-align:left">버전</th><th style="text-align:left">업데이트일자</th><th style="text-align:left">주요 수정내역</th></tr></thead><tbody>';
+  APP_VERSION.history.forEach(function(v){
+    h+='<tr><td style="font-weight:700;color:var(--accent);white-space:nowrap">'+v.ver+'</td><td style="white-space:nowrap">'+v.date+'</td><td>'+v.note+'</td></tr>';
+  });
+  h+='</tbody></table>';
+  el.innerHTML=h;
+  var chip=document.getElementById('ver-chip'); if(chip) chip.textContent=APP_VERSION.ver;
+  var lt=document.getElementById('ver-latest'); if(lt) lt.textContent=APP_VERSION.ver;
+  document.title='톰토미 마케팅 대시보드 '+APP_VERSION.ver;
+}
+// v5.1 데이터 건강검진 + 이상신호 감지 (2026-09)
+// ══════════════════════════════════════════
+// 감지 기준 — 원하면 이 숫자만 수정하면 됨
+var ALERT_CFG = {
+  revChange: 0.40,     // 매출: 직전 7일 평균 대비 ±40% 이상
+  revMinAvg: 30000,    // 매출 기준선 최소 평균(원) — 작은 값 노이즈 제외
+  prodRatio: 3,        // 상품: 평소의 3배 이상(급등) 또는 1/3 이하(급락)
+  prodMinRev: 30000,   // 상품 급등 판단 최소 금액(원)
+  prodMinAvg: 10000,   // 상품 급락 판단 최소 평균(원)
+  visitChange: 0.50,   // 방문: 평균 대비 ±50% 이상
+  visitMinAvg: 100,    // 방문 기준선 최소 평균(명)
+  roasFloor: 0.50,     // 광고: ROAS 50% 미만이면 효율 저하 알림
+  roasMinCost: 10000   // 광고비 최소 기준(원)
+};
+
+var HEALTH_CHANNELS = [
+  {key:'naver',        label:'네이버 매출', freq:'D'},
+  {key:'naverVisit',   label:'유입경로',    freq:'D'},
+  {key:'naverProdVisit', label:'상품방문',  freq:'D'},
+  {key:'naverQuery',   label:'검색어',      freq:'D'},
+  {key:'naverAd',      label:'네이버SA 광고', freq:'D'},
+  {key:'naverAdBoost', label:'애드부스트',  freq:'D'},
+  {key:'coupStock',    label:'쿠팡 입고',   freq:'D'},
+  {key:'coupAd',       label:'쿠팡 광고',   freq:'D'},
+  {key:'metaAd',       label:'메타 광고',   freq:'D'},
+  {key:'naverCustNew', label:'신규/재구매(주간)', freq:'W'},
+  {key:'naverCustDemo',label:'성/연령(주간)',   freq:'W'}
+];
+
+function _latestDate(rows){
+  var m=''; (rows||[]).forEach(function(e){ var d=e.d||e.date||''; if(d>m) m=d; });
+  return m;
+}
+function _gapDays(lastStr, refStr){
+  if(!lastStr) return 999;
+  var p=lastStr.split('-'), q=refStr.split('-');
+  var a=new Date(+p[0],+p[1]-1,+p[2]), b=new Date(+q[0],+q[1]-1,+q[2]);
+  return Math.round((b-a)/86400000);
+}
+function renderHealthCheck(){
+  var el=document.getElementById('adm-health'); if(!el) return;
+  var now=new Date();
+  var yest=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1);
+  var yStr=toDateStr(yest);
+  var html='', missing=[];
+  HEALTH_CHANNELS.forEach(function(c){
+    var last=_latestDate(DB[c.key]);
+    var gap=_gapDays(last, yStr);
+    var st;
+    if(c.freq==='W'){ st = gap<=7?'🟢':(gap<=13?'🟡':'🔴'); }
+    else { st = gap<=1?'🟢':(gap<=3?'🟡':'🔴'); }
+    if(st==='🔴') missing.push(c.label);
+    html+='<span title="마지막 데이터: '+(last||'없음')+'" style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;background:var(--s2);border:1px solid var(--border);font-size:12px">'+st+' '+c.label+' <b>'+(last?last.slice(5):'없음')+'</b></span>';
+  });
+  el.innerHTML=html;
+  var hint=document.getElementById('adm-health-hint');
+  if(hint){
+    if(missing.length===0){
+      hint.innerHTML='✅ 모든 채널 데이터가 최신입니다.';
+    } else {
+      hint.innerHTML='🔴 데이터가 오래된 채널 <b>'+missing.length+'개</b>: '+missing.join(', ')+' → 상단 파일 드롭 영역에 어제자 파일을 넣어주세요. (주간 채널은 월요일에 넣으면 됩니다)';
+    }
+  }
+}
+
+// 이상신호 감지 — 계산 전용 함수 (슬랙 리포트에서도 재사용)
+function computeAlerts(){
+  var out=[];
+  // 대상일: 네이버 매출 데이터 기준 최신 날짜
+  var naverByDay={}, maxD='';
+  DB.naver.forEach(function(e){
+    var ds=e.d||''; if(!ds) return;
+    naverByDay[ds]=(naverByDay[ds]||0)+(parseFloat(e.r)||0);
+    if(ds>maxD) maxD=ds;
+  });
+  if(!maxD) return {alerts:out, maxD:''};
+  function base7(map){
+    var ds=Object.keys(map).filter(function(d){return d<maxD;}).sort().slice(-7);
+    if(!ds.length) return {avg:0,n:0};
+    var s=0; ds.forEach(function(d){s+=map[d];});
+    return {avg:s/ds.length, n:ds.length};
+  }
+  // 1) 네이버 매출 급등/급락
+  var rb=base7(naverByDay);
+  if(rb.n>=3){
+    var today=naverByDay[maxD]||0;
+    if(rb.avg>=ALERT_CFG.revMinAvg && today>0){
+      var chg=(today-rb.avg)/rb.avg;
+      if(chg>=ALERT_CFG.revChange) out.push({icon:'📈',txt:'네이버 매출 급등 — 어제 '+fmtW(today)+'원, 직전 7일 평균('+fmtW(Math.round(rb.avg))+'원) 대비 +'+Math.round(chg*100)+'%'});
+      else if(chg<=-ALERT_CFG.revChange) out.push({icon:'📉',txt:'네이버 매출 급락 — 어제 '+fmtW(today)+'원, 직전 7일 평균('+fmtW(Math.round(rb.avg))+'원) 대비 '+Math.round(chg*100)+'%'});
+    }
+  }
+  // 2) 상품 급등/급락 (상품성과 기준)
+  var prodByDay={};
+  DB.naverProd.forEach(function(e){
+    var ds=e.d||e.date||''; if(!ds) return;
+    var name=(e.name||'').trim(); if(!name) return;
+    var rev=parseFloat(e.rev||0)||0;
+    if(!prodByDay[name]) prodByDay[name]={};
+    prodByDay[name][ds]=(prodByDay[name][ds]||0)+rev;
+  });
+  var prodAlerts=[];
+  Object.keys(prodByDay).forEach(function(name){
+    var days=prodByDay[name];
+    if(days[maxD]===undefined) return;
+    var todayRev=days[maxD];
+    var ds=Object.keys(days).filter(function(d){return d<maxD;}).sort().slice(-7);
+    var baseSum=0; ds.forEach(function(d){baseSum+=days[d];});
+    var baseAvg=baseSum/7;
+    if(todayRev<ALERT_CFG.prodMinRev) return;
+    if(baseSum===0){
+      prodAlerts.push({txt:'상품 급등(신규) — 「'+name+'」 어제 '+fmtW(todayRev)+'원, 직전 7일 판매 0건에서 갑자기 발생', rev:todayRev, down:false});
+    } else {
+      var ratio=todayRev/baseAvg;
+      if(ratio>=ALERT_CFG.prodRatio) prodAlerts.push({txt:'상품 급등 — 「'+name+'」 어제 '+fmtW(todayRev)+'원, 평소('+fmtW(Math.round(baseAvg))+'원) 대비 '+Math.round(ratio)+'배', rev:todayRev, down:false});
+      else if(ratio<=1/ALERT_CFG.prodRatio && baseAvg>=ALERT_CFG.prodMinAvg) prodAlerts.push({txt:'상품 급락 — 「'+name+'」 어제 '+fmtW(todayRev)+'원, 평소('+fmtW(Math.round(baseAvg))+'원) 수준에서 '+Math.round((1-ratio)*100)+'% 감소', rev:todayRev, down:true});
+    }
+  });
+  prodAlerts.sort(function(a,b){return b.rev-a.rev;});
+  prodAlerts.slice(0,4).forEach(function(a){ out.push({icon:a.down?'📉':'📈', txt:a.txt}); });
+  // 3) 방문 급등/급감
+  var visByDay={};
+  (DB.naverVisit||[]).forEach(function(e){ var ds=e.d||''; if(!ds) return; visByDay[ds]=(visByDay[ds]||0)+(parseFloat(e.visits)||0); });
+  if(Object.keys(visByDay).length){
+    var vb=base7(visByDay), vToday=visByDay[maxD]||0;
+    if(vb.n>=3 && vb.avg>=ALERT_CFG.visitMinAvg && vToday>0){
+      var vc=(vToday-vb.avg)/vb.avg;
+      if(vc>=ALERT_CFG.visitChange) out.push({icon:'👀',txt:'스토어 방문 급증 — 어제 '+vToday.toLocaleString()+'명, 평균('+Math.round(vb.avg).toLocaleString()+'명) 대비 +'+Math.round(vc*100)+'% (검색어·유입경로 확인 추천)'});
+      else if(vc<=-ALERT_CFG.visitChange) out.push({icon:'👻',txt:'스토어 방문 급감 — 어제 '+vToday.toLocaleString()+'명, 평균('+Math.round(vb.avg).toLocaleString()+'명) 대비 '+Math.round(vc*100)+'%'});
+    }
+  }
+  // 4) 네이버 광고 효율 저하
+  var adByDay={};
+  DB.naverAd.forEach(function(e){ var ds=e.d||''; if(!ds) return; adByDay[ds]=adByDay[ds]||{cost:0,rev:0}; adByDay[ds].cost+=e.cost||0; adByDay[ds].rev+=e.rev||0; });
+  var tAd=adByDay[maxD];
+  if(tAd && tAd.cost>=ALERT_CFG.roasMinCost){
+    var roas=tAd.cost>0?tAd.rev/tAd.cost:0;
+    if(roas<ALERT_CFG.roasFloor) out.push({icon:'💸',txt:'네이버 광고 효율 저하 — 어제 광고비 '+fmtW(tAd.cost)+'원에 전환매출 '+fmtW(tAd.rev)+'원 (ROAS '+Math.round(roas*100)+'%). 소재·키워드 점검 추천'});
+  }
+  return {alerts:out, maxD:maxD};
+}
+
+function renderAlerts(){
+  var el=document.getElementById('ov-alerts'); if(!el) return;
+  var r=computeAlerts();
+  var html='';
+  if(!r.alerts.length){
+    html='<div style="font-size:13px;color:var(--dim)">✅ 특이사항 없음 — 최근 7일 평균 범위 안에서 안정적으로 움직이고 있습니다.</div>';
+  } else {
+    r.alerts.forEach(function(a){
+      html+='<div style="padding:10px 14px;border:1px solid var(--border);border-radius:10px;font-size:13px;margin-bottom:6px;line-height:1.6;background:var(--s2)">'+a.icon+' '+a.txt+'</div>';
+    });
+  }
+  html+='<div style="margin-top:8px;font-size:11px;color:var(--dim)">분석 기준일: '+(r.maxD||'-')+' · 판단 기준: 직전 7일 평균 대비 매출 ±40% / 상품 3배 이상 / 방문 ±50% / 광고 ROAS 50% 미만</div>';
+  el.innerHTML=html;
 }
 
 // ══════════════════════════════════════════
@@ -2518,6 +2717,7 @@ function renderOverview(){
   var totalRoas=(nvAdCost+cpAdCost)>0?(totalAdRev/(nvAdCost+cpAdCost)).toFixed(2)+'x':'-';
   document.getElementById('ov-roas-total').textContent=totalRoas;
   document.getElementById('ov-roas-total-cost').textContent='총광고비 '+(totalAdCost>0?fmtW(totalAdCost)+'원':'-');
+  renderAlerts();
 }
 
 
@@ -4029,6 +4229,15 @@ function buildSlackMessage(){
     lines.push('📊 *'+lbl.period+' ('+dateDisplay+' ~ '+toDisplay+')*');
   }
   lines.push('');
+  // v5.1 이상신호 자동 섹션
+  try {
+    var _al=computeAlerts();
+    if(_al.alerts.length>0){
+      lines.push('*🚨 특이사항 (자동 감지)*');
+      _al.alerts.slice(0,5).forEach(function(a){ lines.push('▸ '+a.txt); });
+      lines.push('');
+    }
+  } catch(e){ console.log('[Slack] 특이사항 생성 오류:', e); }
   lines.push('*'+lbl.sales+'*');
   // 방문수/전환율 — 경로별 방문분석(naverVisit)의 총 방문수 사용
   // (sales 파일의 방문수는 '판매 발생 상품'만 집계해서 실제 총 방문수와 다름)
@@ -4613,5 +4822,6 @@ function loadOtherFromGSheet(){
 </div><!-- /mainContent -->
 <script>if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('mainContent').style.display='';}</script>
 
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495" integrity="sha512-iIg7k2xntmwu6/uSb5tpc/hySgZc4eoL31yB29W6tJFo2akwjPWcEqnCEdJvGexCL0KEQwVYv5BlowfhVz26hg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
 </body>
 </html>
