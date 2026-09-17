@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>톰토미 마케팅 대시보드 v5.2</title>
+<title>톰토미 마케팅 대시보드 v5.5</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -197,7 +197,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   <div class="logo" onclick="showSec('overview',document.querySelector('.nb'))" style="cursor:pointer">
     <div class="logo-icon">TT</div>
     <div>
-      <div class="logo-text">톰토미 마케팅 대시보드 <span id="ver-chip" style="font-size:11px;color:var(--accent);font-weight:400">v5.2</span></div>
+      <div class="logo-text">톰토미 마케팅 대시보드 <span id="ver-chip" style="font-size:11px;color:var(--accent);font-weight:400">v5.5</span></div>
       <div class="logo-sub">네이버 · 쿠팡(입고기준) · 기타마켓 · 광고 ROI 통합 · Supabase 연동
         <span style="cursor:pointer;color:var(--accent);font-weight:600;margin-left:6px" onclick="document.getElementById('fileGuide').style.display=document.getElementById('fileGuide').style.display==='none'?'block':'none'">📁 파일 가이드</span>
       </div>
@@ -350,6 +350,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   <button class="nb" onclick="showSec('ads',this)">🎯 광고 ROAS</button>
   <button class="nb" onclick="showSec('roi',this)">💹 영업이익</button>
   <button class="nb" onclick="showSec('compare',this)">📊 기간 비교</button>
+  <button class="nb" onclick="showSec('insights',this)">💡 인사이트</button>
   <button class="nb" onclick="showSec('settings',this)">⚙️ 관리자</button>
 </nav>
 
@@ -716,7 +717,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   </div>
   <!-- v5.2 버전 관리 (관리자 탭) -->
   <div class="card gf" style="margin-bottom:14px">
-    <div class="ctitle">🏷️ 버전 관리 <span class="badge ba">현재 <span id="ver-latest">v5.2</span></span></div>
+    <div class="ctitle">🏷️ 버전 관리 <span class="badge ba">현재 <span id="ver-latest">v5.5</span></span></div>
     <div class="csub">index.html을 새로 받아 적용할 때마다 버전이 올라갑니다 · 아래 표에서 지금 쓰는 버전이 최신인지 확인하세요</div>
     <div id="ver-table" style="margin-top:12px;overflow-x:auto"></div>
   </div>
@@ -754,6 +755,41 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   </div>
 </section>
 
+<section id="insights" class="section">
+  <div class="shd"><div class="stitle">💡 인사이트</div><div class="ssub">경영진 · MD팀 · 마케터 · SCM팀 · 키즈IP팀용 자동 분석 — 기간을 고르면 직전 동일 기간과 자동 비교합니다</div></div>
+  <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
+    <span style="font-size:12px;color:var(--dim);font-weight:700">분석 기간</span>
+    <button class="fbtn" id="ins-p7"  onclick="insSetPeriod(7)">최근 7일</button>
+    <button class="fbtn" id="ins-p30" onclick="insSetPeriod(30)">최근 30일</button>
+    <button class="fbtn" id="ins-p90" onclick="insSetPeriod(90)">최근 90일</button>
+    <span id="ins-range" style="font-size:12px;color:var(--dim)"></span>
+  </div>
+  <div class="card gf" style="margin-bottom:14px">
+    <div class="ctitle">💰 경영진 — 손익·마진 요약</div>
+    <div class="csub">채널별 매출·원가·수수료·광고비를 반영한 영업이익 추정 — 원가 매핑이 없는 상품은 아카이브 이익률 기준 추정치이며, 쿠팡은 B2B 납품금액으로 소비자 매출과 합산하지 않습니다</div>
+    <div id="ins-exec" style="margin-top:12px;overflow-x:auto"></div>
+  </div>
+  <div class="card gf" style="margin-bottom:14px">
+    <div class="ctitle">👩‍🎨 MD팀 — 상품 성과</div>
+    <div class="csub">매출 랭킹 · 급등/급락 상품 (비교 기준: 직전 동일 기간)</div>
+    <div id="ins-md" style="margin-top:12px;overflow-x:auto"></div>
+  </div>
+  <div class="card gf" style="margin-bottom:14px">
+    <div class="ctitle">📣 마케터 — 광고 효율</div>
+    <div class="csub">채널별 광고비·ROAS 추이와 검색어 성과 — 총매출 합산 ROAS 없이 광고 목적별로 분리해 보여줍니다 (스토어 랜딩: 네이버SA·애드부스트·메타 / 쿠팡애즈: 별도)</div>
+    <div id="ins-mkt" style="margin-top:12px;overflow-x:auto"></div>
+  </div>
+  <div class="card gf" style="margin-bottom:14px">
+    <div class="ctitle">📦 SCM팀 — 수급·재고 신호</div>
+    <div class="csub">판매 가속 상품(재고 확인 권장) · 쿠팡 입고 현황 — 입고는 B2B 납품이므로 소비자 매출과 합산되지 않습니다</div>
+    <div id="ins-scm" style="margin-top:12px;overflow-x:auto"></div>
+  </div>
+  <div class="card gf" style="margin-bottom:14px">
+    <div class="ctitle">🧸 키즈IP — 시리즈·테마 동향</div>
+    <div class="csub">상품명 기준 시리즈/테마별 매출 비중과 증감 (기획·콘텐츠 방향 참고)</div>
+    <div id="ins-ip" style="margin-top:12px;overflow-x:auto"></div>
+  </div>
+</section>
 </main>
 
 <div class="toast" id="saveToast">💾 저장됐어요!</div>
@@ -2401,15 +2437,19 @@ function renderSection(id){
   else if(id==='other') renderOther();
   else if(id==='roi') renderROI();
   else if(id==='compare') initCompare();
+  else if(id==='insights'){ renderInsights(); insSetPeriod(INS_PERIOD); }
   else if(id==='settings'){ buildPriceTable(); renderHealthCheck(); renderVersionInfo(); }
 }
 
 // ══════════════════════════════════════════
 // v5.2 버전 관리 — index.html 전달 시마다 ver/date/history를 갱신 (제목·로고 표기도 자동 동기화됨)
 var APP_VERSION = {
-  ver: 'v5.2',
-  date: '2026-09-16',
+  ver: 'v5.5',
+  date: '2026-09-17',
   history: [
+    {ver:'v5.5', date:'2026-09-17', note:"인사이트 탭에 경영진 카드 추가: 채널별 손익·영업이익 추정·마진율 (쿠팡 B2B 분리 표기)"},
+    {ver:'v5.4', date:'2026-09-17', note:"인사이트 탭에 마케터 카드 추가: 채널별 광고비·ROAS(목적별 분리) · 주간 추이 · 검색어/쿠팡애즈 잘 되는 키워드"},
+    {ver:'v5.3', date:'2026-09-17', note:"인사이트 탭 신설: MD팀(매출 랭킹·급등/급락) · SCM팀(판매 가속·쿠팡 입고) · 키즈IP(테마 동향) 자동 분석"},
     {ver:'v5.2', date:'2026-09-16', note:"관리자 탭 개편: 건강검진 카드를 개요→관리자 탭으로 이동 · 버전 관리 섹션 추가 · 제목 버전 표기 자동 동기화"},
     {ver:'v5.1', date:'2026-09-16', note:"개요 탭에 데이터 건강검진·이상신호 감지 카드 추가 · 슬랙 요약에 특이사항 섹션 추가"},
     {ver:'v5.0', date:'-', note:"인수인계 원본 (8채널 아카이브 · 가격 보정 · 날짜별 데이터 삭제 등 기존 기능)"}
@@ -2426,6 +2466,296 @@ function renderVersionInfo(){
   var chip=document.getElementById('ver-chip'); if(chip) chip.textContent=APP_VERSION.ver;
   var lt=document.getElementById('ver-latest'); if(lt) lt.textContent=APP_VERSION.ver;
   document.title='톰토미 마케팅 대시보드 '+APP_VERSION.ver;
+}
+// ═══ v5.3 팀별 인사이트 (MD · SCM · 키즈IP) ═══
+var INS_PERIOD = 30;
+var INS_THEMES = [
+  {key:'위인 시리즈',   kws:['위인']},
+  {key:'동화 시리즈',   kws:['명작동화','동화','설화']},
+  {key:'공룡 테마',     kws:['공룡']},
+  {key:'캐릭터/피규어', kws:['NFC','피규어','와친구들']},
+  {key:'세이펜/액세서리',kws:['세이펜','세이송','세이스티커','펜']},
+  {key:'퍼즐/교구',     kws:['퍼즐','교구','블럭','도미노','보드게임']},
+  {key:'장난감/놀이',   kws:['마이크','스티커북','장난감','노래']}
+];
+function insPickTheme(n){
+  for(var i=0;i<INS_THEMES.length;i++){
+    var kws=INS_THEMES[i].kws;
+    for(var j=0;j<kws.length;j++){ if(n.indexOf(kws[j])>=0) return INS_THEMES[i].key; }
+  }
+  return '기타';
+}
+function insFmt(x){ return Math.round(x).toLocaleString('ko-KR'); }
+function insPct(x){ return (x>=0?'+':'')+(x*100).toFixed(0)+'%'; }
+function insCut(s,n){ s=String(s||''); return s.length>n? s.slice(0,n)+'…' : s; }
+function insSetPeriod(n){
+  INS_PERIOD=n;
+  [7,30,90].forEach(function(v){
+    var b=document.getElementById('ins-p'+v);
+    if(b){ b.style.background = v===n? 'var(--s3)':'';
+           b.style.fontWeight = v===n? '700':'400'; }
+  });
+  renderInsights();
+}
+function renderInsights(){
+  var md=document.getElementById('ins-md'); if(!md) return;
+  var rows=(DB.naverProd||[]).filter(function(e){ return e && e.d && e.name && e.name.replace(/[^가-힣A-Za-z]/g,'').length>1 && (e.rev||e.qty||e.orders); });
+  var stocks=(DB.coupStock||[]).filter(function(e){ return e && e.d && e.div==='발주'; });
+  // 기준일 = 상품 데이터 최신일
+  var anchor=null;
+  rows.forEach(function(e){ if(!anchor||e.d>anchor) anchor=e.d; });
+  if(!anchor){ md.innerHTML='<div style="color:var(--dim);font-size:13px;padding:8px">상품 성과 데이터가 아직 없습니다.</div>';
+    document.getElementById('ins-scm').innerHTML=''; document.getElementById('ins-ip').innerHTML=''; document.getElementById('ins-exec').innerHTML='';
+    document.getElementById('ins-range').textContent=''; return; }
+  var A=new Date(anchor+'T00:00:00');
+  function shift(dt,days){ var t=new Date(dt.getTime()); t.setDate(t.getDate()-days); return t; }
+  function iso(dt){ return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0'); }
+  var curEnd=anchor, curStart=iso(shift(A,INS_PERIOD-1));
+  var prevEnd=iso(shift(A,INS_PERIOD)), prevStart=iso(shift(A,INS_PERIOD*2-1));
+  document.getElementById('ins-range').textContent='데이터 기준일 '+anchor+' · 최근 '+INS_PERIOD+'일('+curStart+'~'+curEnd+') vs 이전 '+INS_PERIOD+'일('+prevStart+'~'+prevEnd+')';
+  function inWin(d,a,b){ return d>=a && d<=b; }
+  // 상품별 집계
+  var agg={};
+  rows.forEach(function(e){
+    if(!inWin(e.d,prevStart,curEnd)) return;
+    var k=e.pid||e.name;
+    var o=agg[k]; if(!o){ o=agg[k]={name:e.name,cur:{rev:0,orders:0,qty:0},prev:{rev:0,orders:0,qty:0}}; }
+    var w=inWin(e.d,curStart,curEnd)? o.cur : o.prev;
+    w.rev+=e.rev||0; w.orders+=e.orders||0; w.qty+=e.qty||0;
+  });
+  var list=Object.keys(agg).map(function(k){ var o=agg[k]; o.k=k; o.total=o.cur.rev+o.prev.rev; return o; }).filter(function(o){ return o.total>0; });
+  var curTotal=0; list.forEach(function(o){ curTotal+=o.cur.rev; });
+  var MINREV=10000;
+  // ── 경영진: 손익·마진 요약 ──
+  function plWin(a,b){
+    var inW=function(d){ return d && inWin(d,a,b); };
+    var nvS=0,nvShip=0;
+    (DB.naver||[]).forEach(function(e){ if(inW(e.d)){ nvS+=(e.r||e.revenue||0); nvShip+=(e.ship||0); } });
+    var nvCost=0;
+    (DB.naverProd||[]).forEach(function(e){
+      if(!inW(e.d||e.date)) return;
+      var rev=e.rev||0, qty=e.qty||0; if(!rev&&!qty) return;
+      var pid=String(e.prodId||e.pid||e.id||'');
+      var ci=pid?getCostByNaverProdId(pid):null;
+      var uc=ci&&ci.cost?ci.cost:0;
+      if(!uc&&rev&&qty) uc=Math.round((rev/qty)*(1-0.388)/1.07);
+      nvCost+=uc*qty;
+    });
+    if(!nvCost&&nvS) nvCost=Math.round(nvS*(1-0.388));
+    var nvFee=Math.round(nvS*0.07);
+    var cpS=0,cpC=0;
+    (DB.coupStock||[]).forEach(function(e){
+      if(!inW(e.d)) return;
+      var supply=toNum(e.a!==undefined?e.a:(e.totalUnit||0)), qty=e.qty||1;
+      if(!supply) return;
+      var sku=String(e.skuNo||e.skuId||'');
+      var ci=sku?getCostByCoupangSKU(sku):null;
+      var uc=ci&&ci.cost?ci.cost:0;
+      if(!uc&&ci&&ci.supply) uc=Math.round(ci.supply*0.622);
+      if(!uc) uc=Math.round(supply/qty*0.622);
+      cpS+=supply; cpC+=uc*qty;
+    });
+    if(!cpC&&cpS) cpC=Math.round(cpS*0.622);
+    var otS=0,otC=0,otFee=0;
+    (DB.other||[]).forEach(function(e){
+      if(!inW(e.d)) return;
+      var amt=toNum(e.a||e.amount||0); if(!amt) return;
+      var qty=e.qty||1, rc=e.cost||0, code=e.code||'';
+      if(!rc&&code&&COST_MAPS.master[code]) rc=Math.round((COST_MAPS.master[code].cost||0)*qty);
+      if(!rc) rc=Math.round(amt*0.56);
+      otS+=amt; otC+=rc; otFee+=Math.round(amt*0.20);
+    });
+    var adN=0,adC=0,adM=0,adB=0;
+    (DB.naverAd||[]).forEach(function(e){ if(inW(e.d)) adN+=e.cost||0; });
+    (DB.coupAd||[]).forEach(function(e){ if(inW(e.d)) adC+=e.cost||0; });
+    (DB.metaAd||[]).forEach(function(e){ if(inW(e.d)) adM+=e.cost||0; });
+    (DB.naverAdBoost||[]).forEach(function(e){ if(inW(e.d)) adB+=e.cost||0; });
+    var ad=adN+adC+adM+adB;
+    var consS=nvS+otS;
+    var opProfit=(nvS-nvCost-nvFee-nvShip-adN-adM-adB)+(otS-otC-otFee)+(cpS-cpC-adC);
+    return {nvS:nvS,nvCost:nvCost,nvFee:nvFee+nvShip,cpS:cpS,cpC:cpC,otS:otS,otC:otC,otFee:otFee,ad:ad,consS:consS,opProfit:opProfit,
+      margin: consS>0? opProfit/consS : 0};
+  }
+  var ec=plWin(curStart,curEnd), ep=plWin(prevStart,prevEnd);
+  function profitColor(x){ return x>=0?'var(--green)':'var(--red)'; }
+  var eh='';
+  eh+='<table class="tbl"><thead><tr><th style="text-align:left">채널</th><th>매출</th><th>원가(추정)</th><th>수수료·배송</th><th>채널이익</th><th>이익률</th></tr></thead><tbody>';
+  eh+='<tr><td style="text-align:left;font-weight:700">🟢 네이버</td><td>'+insFmt(ec.nvS)+'원</td><td>'+insFmt(ec.nvCost)+'원</td><td>'+insFmt(ec.nvFee)+'원</td><td style="font-weight:700;color:'+profitColor(ec.nvS-ec.nvCost-ec.nvFee)+'">'+insFmt(ec.nvS-ec.nvCost-ec.nvFee)+'원</td><td>'+(ec.nvS>0?((ec.nvS-ec.nvCost-ec.nvFee)/ec.nvS*100).toFixed(1):'0')+'%</td></tr>';
+  eh+='<tr><td style="text-align:left;font-weight:700">🔵 쿠팡 <span style="font-size:10px;color:var(--dim)">B2B 납품</span></td><td>'+insFmt(ec.cpS)+'원</td><td>'+insFmt(ec.cpC)+'원</td><td style="color:var(--dim)">—</td><td style="font-weight:700;color:'+profitColor(ec.cpS-ec.cpC)+'">'+insFmt(ec.cpS-ec.cpC)+'원</td><td>'+(ec.cpS>0?((ec.cpS-ec.cpC)/ec.cpS*100).toFixed(1):'0')+'%</td></tr>';
+  eh+='<tr><td style="text-align:left;font-weight:700">🛍️ 기타마켓</td><td>'+insFmt(ec.otS)+'원</td><td>'+insFmt(ec.otC)+'원</td><td>'+insFmt(ec.otFee)+'원</td><td style="font-weight:700;color:'+profitColor(ec.otS-ec.otC-ec.otFee)+'">'+insFmt(ec.otS-ec.otC-ec.otFee)+'원</td><td>'+(ec.otS>0?((ec.otS-ec.otC-ec.otFee)/ec.otS*100).toFixed(1):'0')+'%</td></tr>';
+  eh+='<tr style="background:var(--s1)"><td style="text-align:left;font-weight:700">🎯 광고비 총액</td><td colspan="2">'+insFmt(ec.ad)+'원 <span style="font-size:10px;color:var(--dim)">(네이버SA+애드부스트+메타+쿠팡애즈)</span></td><td style="color:'+(ec.ad<=ep.ad?'var(--green)':'var(--red)')+'">'+(ep.ad>0?insPct(ec.ad/ep.ad-1):'신규')+'</td><td colspan="2" style="color:var(--dim);font-size:11px">이미 각 채널 이익에서 차감됨</td></tr>';
+  var dOp=ep.opProfit!==0? ec.opProfit/Math.abs(ep.opProfit)-1 : null;
+  if(ep.opProfit<0&&ec.opProfit>0) dOp=null;
+  eh+='<tr><td style="text-align:left;font-weight:700;color:var(--accent)">합계: 소비자 매출</td><td style="font-weight:700">'+insFmt(ec.consS)+'원</td><td style="color:var(--dim);font-size:11px">쿠팡 납품 '+insFmt(ec.cpS)+'원 별도</td><td></td><td></td><td></td></tr>';
+  eh+='<tr><td style="text-align:left;font-weight:700;color:var(--accent)">영업이익 (추정)</td><td colspan="3" style="font-weight:800;font-size:14px;color:'+profitColor(ec.opProfit)+'">'+insFmt(ec.opProfit)+'원</td><td style="font-weight:700;color:'+(dOp===null?'var(--dim)':(dOp>=0?'var(--green)':'var(--red)'))+'">'+(dOp===null?'신규':insPct(dOp))+'</td><td></td></tr>';
+  eh+='<tr><td style="text-align:left;font-weight:700;color:var(--accent)">마진율 (소비자 매출 기준)</td><td colspan="3" style="font-weight:800;font-size:14px;color:'+profitColor(ec.margin)+'">'+(ec.margin*100).toFixed(1)+'%</td><td style="color:var(--dim);font-size:11px">이전 '+INS_PERIOD+'일 '+(ep.margin*100).toFixed(1)+'%</td><td></td></tr>';
+  eh+='</tbody></table>';
+  eh+='<div style="font-size:11px;color:var(--dim);margin-top:6px">※ 원가는 상품별 가격보정 매핑 우선, 없는 상품은 아카이브 이익률 기준 추정입니다. 정확한 손익은 회계 마감 수치를 기준으로 하세요.</div>';
+  document.getElementById('ins-exec').innerHTML=eh;
+  function ratio(c,p){ return p>0? c/p-1 : (c>0?1:0); }
+  // ── MD팀 ──
+  var top=list.slice().sort(function(a,b){ return b.cur.rev-a.cur.rev; }).slice(0,10);
+  var up=list.filter(function(o){ return o.cur.rev>=MINREV && o.prev.rev>=MINREV && ratio(o.cur.rev,o.prev.rev)>=0.5; })
+             .sort(function(a,b){ return ratio(b.cur.rev,b.prev.rev)-ratio(a.cur.rev,a.prev.rev); }).slice(0,5);
+  var down=list.filter(function(o){ return o.prev.rev>=MINREV && ratio(o.cur.rev,o.prev.rev)<=-0.4; })
+             .sort(function(a,b){ return ratio(a.cur.rev,a.prev.rev)-ratio(b.cur.rev,b.prev.rev); }).slice(0,5);
+  function revTable(arr,withRatio){
+    var h='<table class="tbl"><thead><tr><th style="text-align:left">상품</th><th>매출</th><th>비중</th><th>주문</th><th>수량</th>'+(withRatio?'<th>전기간 대비</th>':'')+'</tr></thead><tbody>';
+    arr.forEach(function(o){
+      var r=withRatio? ('<td style="color:'+(ratio(o.cur.rev,o.prev.rev)>=0?'var(--green)':'var(--red)')+';font-weight:700">'+insPct(ratio(o.cur.rev,o.prev.rev))+'</td>') : '';
+      h+='<tr><td style="text-align:left">'+insCut(o.name,34)+'</td><td>'+insFmt(o.cur.rev)+'원</td><td>'+(curTotal>0?(o.cur.rev/curTotal*100).toFixed(1):0)+'%</td><td>'+insFmt(o.cur.orders)+'</td><td>'+insFmt(o.cur.qty)+'</td>'+r+'</tr>';
+    });
+    return h+'</tbody></table>';
+  }
+  var mh='';
+  mh+='<div style="font-size:12px;font-weight:700;margin:2px 0 6px">📈 매출 상위 10</div>'+revTable(top,false);
+  mh+='<div style="font-size:12px;font-weight:700;margin:12px 0 6px;color:var(--green)">🚀 급등 상품 Top 5 (전기간 대비 +50% 이상)</div>';
+  mh+= up.length? revTable(up,true) : '<div style="color:var(--dim);font-size:12px">조건에 맞는 급등 상품이 없습니다.</div>';
+  mh+='<div style="font-size:12px;font-weight:700;margin:12px 0 6px;color:var(--red)">📉 급락 상품 Top 5 (전기간 대비 -40% 이상)</div>';
+  mh+= down.length? revTable(down,true) : '<div style="color:var(--dim);font-size:12px">조건에 맞는 급락 상품이 없습니다.</div>';
+  md.innerHTML=mh;
+  // ── 마케터: 채널별 광고 효율 ──
+  function sumAd(arr,win){
+    var s={cost:0,rev:0,clicks:0,imp:0,conv:0,orders:0};
+    (arr||[]).forEach(function(e){
+      if(!e||!e.d||!inWin(e.d,win[0],win[1])) return;
+      s.cost+=e.cost||0; s.rev+=e.rev||0; s.clicks+=e.clicks||0; s.imp+=e.imp||0;
+      s.conv+=e.conv||0; s.orders+=e.orders||0;
+    });
+    return s;
+  }
+  var naverAdCur=sumAd(DB.naverAd,[curStart,curEnd]), naverAdPrev=sumAd(DB.naverAd,[prevStart,prevEnd]);
+  var boostCur=sumAd(DB.naverAdBoost,[curStart,curEnd]), boostPrev=sumAd(DB.naverAdBoost,[prevStart,prevEnd]);
+  var metaCur=sumAd(DB.metaAd,[curStart,curEnd]), metaPrev=sumAd(DB.metaAd,[prevStart,prevEnd]);
+  var coupCur=sumAd(DB.coupAd,[curStart,curEnd]), coupPrev=sumAd(DB.coupAd,[prevStart,prevEnd]);
+  function roas(s){ return s.cost>0? s.rev/s.cost : null; }
+  function chRow(lbl,s,sp,withRev,note){
+    var cpc=s.clicks>0? s.cost/s.clicks : null;
+    var h='<tr><td style="text-align:left;font-weight:700">'+lbl+(note?' <span style="font-size:10px;color:var(--dim)">'+note+'</span>':'')+'</td>';
+    h+='<td>'+insFmt(s.cost)+'원</td>';
+    h+= withRev? '<td>'+insFmt(s.rev)+'원</td>' : '<td style="color:var(--dim)">매출 미연동</td>';
+    var r=roas(s);
+    if(withRev){
+      h+= r===null? '<td style="color:var(--dim)">—</td>' : '<td style="font-weight:700;color:'+(r>=1?'var(--green)':'var(--red)')+'">'+(r*100).toFixed(0)+'%</td>';
+      var rp=roas(sp);
+      h+= r===null? '<td style="color:var(--dim)">—</td>' : '<td style="color:'+((rp!==null&&rp>0&&r>=rp)?'var(--green)':'var(--red)')+'">'+((rp!==null&&rp>0)?insPct(r/rp-1):'신규')+'</td>';
+    } else {
+      h+='<td style="color:var(--dim)">유입 지표로 평가</td><td style="color:'+(s.cost<=sp.cost?'var(--green)':'var(--red)')+'">'+(sp.cost>0?insPct(s.cost/sp.cost-1):'신규')+'</td>';
+    }
+    h+='<td>'+insFmt(s.clicks)+'</td><td>'+(cpc!==null? Math.round(cpc).toLocaleString('ko-KR')+'원':'—')+'</td></tr>';
+    return h;
+  }
+  var kh='<div style="font-size:12px;font-weight:700;margin:2px 0 6px">📊 채널별 광고 효율 (최근 '+INS_PERIOD+'일)</div>';
+  kh+='<table class="tbl"><thead><tr><th style="text-align:left">채널</th><th>광고비</th><th>매출</th><th>ROAS</th><th>전기간 대비</th><th>클릭</th><th>CPC</th></tr></thead><tbody>';
+  kh+=chRow('🟢 네이버 쇼핑검색', naverAdCur, naverAdPrev, true, '스토어 랜딩');
+  kh+=chRow('⚡ 네이버 애드부스트', boostCur, boostPrev, false, '스토어 랜딩');
+  kh+=chRow('🔵 메타(인스타/페북)', metaCur, metaPrev, false, '스토어 랜딩');
+  var landCur={cost:naverAdCur.cost+boostCur.cost+metaCur.cost, clicks:naverAdCur.clicks+boostCur.clicks+metaCur.clicks};
+  var landPrev={cost:naverAdPrev.cost+boostPrev.cost+metaPrev.cost, clicks:naverAdPrev.clicks+boostPrev.clicks+metaPrev.clicks};
+  kh+='<tr style="background:var(--s1)"><td style="text-align:left;font-weight:700">스토어 랜딩 합계</td><td>'+insFmt(landCur.cost)+'원</td><td colspan="2" style="color:var(--dim);font-size:11px">목적: 상세페이지 유입 (매출 직접 귀속 없음)</td><td style="color:'+(landCur.cost<=landPrev.cost?'var(--green)':'var(--red)')+'">'+(landPrev.cost>0?insPct(landCur.cost/landPrev.cost-1):'신규')+'</td><td>'+insFmt(landCur.clicks)+'</td><td>'+(landCur.clicks>0? insFmt(landCur.cost/landCur.clicks)+'원':'—')+'</td></tr>';
+  kh+=chRow('🛒 쿠팡애즈', coupCur, coupPrev, true, '별도 목적');
+  kh+='</tbody></table>';
+  // 주간 추이 (최근 4주)
+  var wkRows='';
+  for(var wi=0;wi<4;wi++){
+    var we=new Date(A.getTime()); we.setDate(we.getDate()-7*wi);
+    var ws=new Date(we.getTime()); ws.setDate(ws.getDate()-6);
+    var wA=iso(ws), wB=iso(we);
+    var nW=sumAd(DB.naverAd,[wA,wB]), cW=sumAd(DB.coupAd,[wA,wB]), mW=sumAd(DB.metaAd,[wA,wB]);
+    var rn=roas(nW), rc=roas(cW);
+    wkRows+='<tr><td style="white-space:nowrap">'+wA+' ~ '+wB+'</td><td>'+insFmt(nW.cost)+'원</td><td style="font-weight:700;color:'+(rn===null?'var(--dim)':(rn>=1?'var(--green)':'var(--red)'))+'">'+(rn===null?'—':(rn*100).toFixed(0)+'%')+'</td><td>'+insFmt(mW.cost)+'원</td><td>'+insFmt(cW.cost)+'원</td><td style="font-weight:700;color:'+(rc===null?'var(--dim)':(rc>=1?'var(--green)':'var(--red)'))+'">'+(rc===null?'—':(rc*100).toFixed(0)+'%')+'</td></tr>';
+  }
+  kh+='<div style="font-size:12px;font-weight:700;margin:12px 0 6px">📈 주간 광고비·ROAS 추이 (최근 4주)</div>';
+  kh+='<table class="tbl"><thead><tr><th style="text-align:left">기간</th><th>네이버SA 비용</th><th>네이버SA ROAS</th><th>메타 비용</th><th>쿠팡애즈 비용</th><th>쿠팡애즈 ROAS</th></tr></thead><tbody>'+wkRows+'</tbody></table>';
+  // 잘 되는 검색어
+  var qs=(DB.naverQuery||[]).filter(function(e){ return e && e.d && e.query && inWin(e.d,curStart,curEnd); });
+  var qAgg={};
+  qs.forEach(function(e){
+    var o=qAgg[e.query]; if(!o) o=qAgg[e.query]={query:e.query,visits:0,orders:0,rev:0};
+    o.visits+=e.visits||0; o.orders+=e.orders||0; o.rev+=e.rev||0;
+  });
+  var qTop=Object.keys(qAgg).map(function(k){ return qAgg[k]; }).filter(function(o){ return o.visits>0||o.rev>0; })
+             .sort(function(a,b){ return (b.rev-b.visits)-(a.rev-a.visits); }).slice(0,8);
+  kh+='<div style="font-size:12px;font-weight:700;margin:12px 0 6px">🔑 잘 되는 검색어 Top 8 (최근 '+INS_PERIOD+'일)</div>';
+  if(qTop.length){
+    kh+='<table class="tbl"><thead><tr><th style="text-align:left">검색어</th><th>방문</th><th>결제</th><th>전환율</th><th>매출</th></tr></thead><tbody>';
+    qTop.forEach(function(o){
+      kh+='<tr><td style="text-align:left;font-weight:700">'+insCut(o.query,26)+'</td><td>'+insFmt(o.visits)+'</td><td>'+insFmt(o.orders)+'</td><td>'+(o.visits>0?(o.orders/o.visits*100).toFixed(1):'0')+'%</td><td style="font-weight:700">'+insFmt(o.rev)+'원</td></tr>';
+    });
+    kh+='</tbody></table>';
+  } else kh+='<div style="color:var(--dim);font-size:12px">검색어 데이터(query_ 파일)가 아직 없습니다 — 네이버 프리미엄 로그에서 검색어 분석 파일을 업로드하면 자동 표시됩니다.</div>';
+  // 잘 되는 쿠팡애즈 광고그룹
+  var gAgg={};
+  (DB.coupAd||[]).forEach(function(e){
+    if(!e||!e.d||!inWin(e.d,curStart,curEnd)) return;
+    var k=e.adgroup||e.campaign||'기타';
+    var o=gAgg[k]; if(!o) o=gAgg[k]={k:k,cost:0,rev:0,orders:0};
+    o.cost+=e.cost||0; o.rev+=e.rev||0; o.orders+=e.orders||0;
+  });
+  var gTop=Object.keys(gAgg).map(function(k){ return gAgg[k]; }).filter(function(o){ return o.cost>=10000; })
+             .sort(function(a,b){ return (b.rev/Math.max(b.cost,1))-(a.rev/Math.max(a.cost,1)); }).slice(0,5);
+  if(gTop.length){
+    kh+='<div style="font-size:12px;font-weight:700;margin:12px 0 6px">🛒 잘 되는 쿠팡애즈 광고 Top 5 (광고비 1만원 이상)</div>';
+    kh+='<table class="tbl"><thead><tr><th style="text-align:left">광고그룹</th><th>광고비</th><th>매출</th><th>ROAS</th><th>주문</th></tr></thead><tbody>';
+    gTop.forEach(function(o){
+      var r=o.cost>0? o.rev/o.cost : 0;
+      kh+='<tr><td style="text-align:left">'+insCut(o.k,28)+'</td><td>'+insFmt(o.cost)+'원</td><td>'+insFmt(o.rev)+'원</td><td style="font-weight:700;color:'+(r>=1?'var(--green)':'var(--red)')+'">'+(r*100).toFixed(0)+'%</td><td>'+insFmt(o.orders)+'</td></tr>';
+    });
+    kh+='</tbody></table>';
+  }
+  document.getElementById('ins-mkt').innerHTML=kh;
+  // ── SCM팀 ──
+  var pd=INS_PERIOD;
+  var acc=list.filter(function(o){ return o.cur.qty>0 && ratio(o.cur.qty/o.cur.orders||0,1)>=0; })
+              .map(function(o){ return {name:o.name, cq:o.cur.qty/pd, pq:o.prev.qty/pd, curQty:o.cur.qty}; })
+              .filter(function(o){ return o.cq>=1 && o.pq>=0.5 && o.cq/o.pq>=1.5; })
+              .sort(function(a,b){ return b.cq-a.cq; }).slice(0,8);
+  var sh='<div style="font-size:12px;font-weight:700;margin:2px 0 6px;color:var(--orange)">⚡ 판매 가속 상품 (일평균 판매수량 1.5배 이상 → 재고 확인 권장)</div>';
+  if(acc.length){
+    sh+='<table class="tbl"><thead><tr><th style="text-align:left">상품</th><th>최근 일평균 판매</th><th>이전 일평균</th><th>증가율</th><th>최근 총 판매수량</th></tr></thead><tbody>';
+    acc.forEach(function(o){
+      sh+='<tr><td style="text-align:left">'+insCut(o.name,34)+' <span class="badge ba">확인</span></td><td style="font-weight:700">'+o.cq.toFixed(1)+'개</td><td>'+o.pq.toFixed(1)+'개</td><td style="color:var(--green);font-weight:700">'+insPct(o.cq/o.pq-1)+'</td><td>'+insFmt(o.curQty)+'개</td></tr>';
+    });
+    sh+='</tbody></table>';
+  } else sh+='<div style="color:var(--dim);font-size:12px">가속 신호가 잡힌 상품이 없습니다.</div>';
+  // 쿠팡 입고 현황
+  var sc={qty:0,amt:0}, sp={qty:0,amt:0}, recent=[];
+  stocks.forEach(function(e){
+    var amt=parseFloat(String(e.a!==undefined?e.a:e.totalUnit||'0').replace(/,/g,''))||0;
+    if(inWin(e.d,curStart,curEnd)){ sc.qty+=e.qty||0; sc.amt+=amt; recent.push(e); }
+    else if(inWin(e.d,prevStart,prevEnd)){ sp.qty+=e.qty||0; sp.amt+=amt; }
+  });
+  recent.sort(function(a,b){ return a.d>b.d?-1:1; });
+  sh+='<div style="font-size:12px;font-weight:700;margin:12px 0 6px">🔵 쿠팡 입고(B2B 납품) 현황</div>';
+  sh+='<table class="tbl"><tbody>';
+  sh+='<tr><td style="text-align:left">최근 '+INS_PERIOD+'일</td><td style="font-weight:700">'+insFmt(sc.qty)+'개 / '+insFmt(sc.amt)+'원</td><td style="text-align:left">이전 '+INS_PERIOD+'일</td><td>'+insFmt(sp.qty)+'개 / '+insFmt(sp.amt)+'원</td><td style="color:'+(sc.amt>=sp.amt?'var(--green)':'var(--red)')+';font-weight:700">금액 '+insPct(ratio(sc.amt,sp.amt))+'</td></tr>';
+  sh+='</tbody></table>';
+  if(recent.length){
+    sh+='<div style="font-size:12px;color:var(--dim);margin-top:6px">최근 발주: '+recent.slice(0,3).map(function(e){ return e.d+' '+insCut(e.sku,20)+' ('+insFmt(e.qty)+'개)'; }).join(' · ')+'</div>';
+  }
+  document.getElementById('ins-scm').innerHTML=sh;
+  // ── 키즈IP ──
+  var themes={};
+  list.forEach(function(o){
+    var t=insPickTheme(o.name);
+    if(!themes[t]) themes[t]={key:t,cur:0,prev:0,top:'',topRev:0};
+    themes[t].cur+=o.cur.rev; themes[t].prev+=o.prev.rev;
+    if(o.cur.rev>themes[t].topRev){ themes[t].topRev=o.cur.rev; themes[t].top=o.name; }
+  });
+  var tl=Object.keys(themes).map(function(k){ return themes[k]; }).filter(function(t){ return t.cur+t.prev>0; })
+            .sort(function(a,b){ return b.cur-a.cur; });
+  var ih='';
+  if(tl.length){
+    ih+='<table class="tbl"><thead><tr><th style="text-align:left">시리즈/테마</th><th>매출</th><th>비중</th><th>전기간 대비</th><th style="text-align:left">기간 1위 상품</th></tr></thead><tbody>';
+    tl.forEach(function(t){
+      var r=ratio(t.cur,t.prev);
+      var hot=(t.prev>0&&r>=0.5)||(t.prev===0&&t.cur>=MINREV);
+      ih+='<tr><td style="text-align:left;font-weight:700;color:'+(t.key==='기타'?'var(--dim)':'var(--accent)')+'">'+t.key+(hot?' <span class="badge ba">↑ 인기 상승</span>':'')+'</td><td>'+insFmt(t.cur)+'원</td><td>'+(curTotal>0?(t.cur/curTotal*100).toFixed(1):0)+'%</td><td style="color:'+(r>=0?'var(--green)':'var(--red)')+';font-weight:700">'+insPct(r)+'</td><td style="text-align:left">'+insCut(t.top,30)+'</td></tr>';
+    });
+    ih+='</tbody></table>';
+    ih+='<div style="font-size:12px;color:var(--dim);margin-top:6px">테마 분류는 상품명 키워드 기준 자동 추정입니다. 매출 비중과 증감을 참고해 기획·수급 우선순위를 정하세요.</div>';
+  } else ih='<div style="color:var(--dim);font-size:13px;padding:8px">테마 분석 가능한 상품 데이터가 없습니다.</div>';
+  document.getElementById('ins-ip').innerHTML=ih;
 }
 // v5.1 데이터 건강검진 + 이상신호 감지 (2026-09)
 // ══════════════════════════════════════════
