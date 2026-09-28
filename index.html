@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>톰토미 마케팅 대시보드 v5.15</title>
+<title>톰토미 마케팅 대시보드 v5.16</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -197,7 +197,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   <div class="logo" onclick="showSec('overview',document.querySelector('.nb'))" style="cursor:pointer">
     <div class="logo-icon">TT</div>
     <div>
-      <div class="logo-text">톰토미 마케팅 대시보드 <span id="ver-chip" style="font-size:11px;color:var(--accent);font-weight:400">v5.15</span></div>
+      <div class="logo-text">톰토미 마케팅 대시보드 <span id="ver-chip" style="font-size:11px;color:var(--accent);font-weight:400">v5.16</span></div>
       <div class="logo-sub">네이버 · 쿠팡(입고기준) · 기타마켓 · 광고 ROI 통합 · Supabase 연동
         <span style="cursor:pointer;color:var(--accent);font-weight:600;margin-left:6px" onclick="document.getElementById('fileGuide').style.display=document.getElementById('fileGuide').style.display==='none'?'block':'none'">📁 파일 가이드</span>
       </div>
@@ -718,7 +718,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   </div>
   <!-- v5.2 버전 관리 (관리자 탭) -->
   <div class="card gf" style="margin-bottom:14px">
-    <div class="ctitle">🏷️ 버전 관리 <span class="badge ba">현재 <span id="ver-latest">v5.15</span></span></div>
+    <div class="ctitle">🏷️ 버전 관리 <span class="badge ba">현재 <span id="ver-latest">v5.16</span></span></div>
     <div class="csub">index.html을 새로 받아 적용할 때마다 버전이 올라갑니다 · 아래 표에서 지금 쓰는 버전이 최신인지 확인하세요</div>
     <div id="ver-table" style="margin-top:12px;overflow-x:auto"></div>
   </div>
@@ -792,7 +792,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   </div>
 </section>
 <section id="prods" class="section">
-  <div class="shd"><div class="stitle">📦 상품 분석</div><div class="ssub">원천 리소스 품목명(C열) 기준 통합 분석 — 원가 엑셀 품목명과 채널별 상품명을 함께 매핑해 기간·채널별 판매추이, 채널별 실적, 요일별 매출, 네이버 유입/전환을 비교합니다 (쿠팡은 B2B 입고 기준 별도 분리)</div></div>
+  <div class="shd"><div class="stitle">📦 상품 분석</div><div class="ssub">원천 리소스 품목명(C열) 기준 통합 분석 — 원가 엑셀 품목명과 채널별 상품명을 함께 매핑해 기간·채널별 판매추이, 채널별 실적, 요일별 매출을 비교합니다 (쿠팡은 B2B 입고 기준 별도 분리)</div></div>
   <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
     <span style="font-size:12px;color:var(--dim);font-weight:700">기간</span>
     <button class="fbtn" id="pa-t7" onclick="paSetPeriod(7)">7일</button>
@@ -831,7 +831,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   </div>
   <div class="card gf" style="margin-bottom:14px">
     <div class="ctitle">상품 성과 요약</div>
-    <div class="csub">기준 상품 1개의 채널별 실적, 판매추이, 요일별 매출, 네이버 유입/전환을 한 번에 확인합니다 — 쿠팡은 B2B 입고(납품) 기준 별도 집계</div>
+    <div class="csub">원천 리소스 품목명 1개의 채널별 실적, 판매추이, 요일별 매출을 한 번에 확인합니다 — 쿠팡은 B2B 입고(납품) 기준 별도 집계</div>
     <div id="pa-detail"></div>
   </div>
   <div class="card gf" style="margin-bottom:14px">
@@ -2533,10 +2533,10 @@ function renderSection(id){
 // ══════════════════════════════════════════
 // v5.2 버전 관리 — index.html 전달 시마다 ver/date/history를 갱신 (제목·로고 표기도 자동 동기화됨)
 var APP_VERSION = {
-  ver: 'v5.14',
+  ver: 'v5.16',
   date: '2026-09-28',
   history: [
-    {ver:'v5.15',date:'2026-09-28',note:'원천 품목명 기준 정렬: 업로드한 원가 엑셀의 C열 품목명을 기준 상품명으로 사용하고, 원천 리소스 품목명·채널 상품명을 함께 alias로 묶어 대시보드 판단/표시에 동일 기준을 적용'},{ver:'v5.14',date:'2026-09-28',note:'상품 분석 개편: 막대 차트 금액 툴팁을 마우스/터치로 직접 표시하도록 수정, 상품 분석 문구를 분석형 용어로 정리, 상품ID·SKU뿐 아니라 원본 상품명도 함께 기준 상품코드/기준 상품명에 저장하는 alias 매핑 추가'},{ver:'v5.13',date:'2026-09-28',note:'매출 상이 오류 수정: sales_*.xlsx의 기간 합계행(예: 2026-09-22~2026-09-27)이 시작일 매출로 잘못 합산되던 버그 수정 — 9/22 표시 1,347,100원을 실제 185,250원으로 바로잡음, 기존 오기입 데이터 자동 정리, 완전중복 행 제거'},{ver:'v5.12',date:'2026-09-22',note:'매칭 편집 저장 강화: 내보내기가 전체 매핑 스냅샷(자동+수동 전체, 저장일·버전 포함)을 JSON으로 저장, 가져오기로 그대로 복원 — 기기 이동·공유 시 동일 매핑 보장, 구버전 파일도 호환'},{ver:'v5.11',date:'2026-09-22',note:'상품 매칭 편집 기능: 상품 분석 탭 [매칭 편집] 모달 — 상품별 코드 수동 지정/해제(드롭다운), 자동 매칭 실패만 보기 필터, 브라우저 저장+내보내기/가져오기(JSON) 공유, 변경 즉시 차트 반영'},{ver:'v5.10',date:'2026-09-22',note:'상품 매칭 고도화: ID 미매칭 시 이름 정규화 유사 매칭(SET/세트·풀세트 통합, 배지/규격 토큰 제거) + 단가 검증으로 오매칭 방지 — 사운드북+위인카드 SET/세트 등 표기 변형 자동 통합'},{ver:'v5.9',date:'2026-09-22',note:'상품 분석: 전체 현황 표에 상품코드 열 추가(순위 다음), 상품명은 상품코드 기준 통일명(COST_MAPS 마스터명) 표기, 검색 추천에도 코드 표시, 매핑 검증 리포트 병행 제공'},{ver:'v5.8',date:'2026-09-22',note:'상품 분석: 상품코드 기반 채널 매칭 — 네이버 pid·쿠팡 skuNo ID 직결(20/20 SKU), 기타마켓 이름 매핑, 코드 칩 표시, 채널 필터 오류 수정'},{ver:'v5.7', date:'2026-09-22', note:"상품 분석 개선: 기간·채널 필터, 상품 검색(드롭다운 대체), 전체 현황 상위 10개, 쿠팡 입고(B2B) 채널 추가 — SKU명 규칙 자동 매칭(입고량 93%), 미매칭 SKU는 [쿠팡] 행"},
+    {ver:'v5.16',date:'2026-09-28',note:'상품 분석 상세 개선: 요일별 매출을 월~일 순서의 1원 단위 데이터 카드로 재구성하고, 네이버 유입/전환 섹션을 제거했으며, 전체 채널 선택 시 쿠팡 B2B 입고도 판매추이에 포함되도록 일별 집계를 명확히 분리'},{ver:'v5.15',date:'2026-09-28',note:'원천 품목명 기준 정렬: 업로드한 원가 엑셀의 C열 품목명을 기준 상품명으로 사용하고, 원천 리소스 품목명·채널 상품명을 함께 alias로 묶어 대시보드 판단/표시에 동일 기준을 적용'},{ver:'v5.14',date:'2026-09-28',note:'상품 분석 개편: 막대 차트 금액 툴팁을 마우스/터치로 직접 표시하도록 수정, 상품 분석 문구를 분석형 용어로 정리, 상품ID·SKU뿐 아니라 원본 상품명도 함께 기준 상품코드/기준 상품명에 저장하는 alias 매핑 추가'},{ver:'v5.13',date:'2026-09-28',note:'매출 상이 오류 수정: sales_*.xlsx의 기간 합계행(예: 2026-09-22~2026-09-27)이 시작일 매출로 잘못 합산되던 버그 수정 — 9/22 표시 1,347,100원을 실제 185,250원으로 바로잡음, 기존 오기입 데이터 자동 정리, 완전중복 행 제거'},{ver:'v5.12',date:'2026-09-22',note:'매칭 편집 저장 강화: 내보내기가 전체 매핑 스냅샷(자동+수동 전체, 저장일·버전 포함)을 JSON으로 저장, 가져오기로 그대로 복원 — 기기 이동·공유 시 동일 매핑 보장, 구버전 파일도 호환'},{ver:'v5.11',date:'2026-09-22',note:'상품 매칭 편집 기능: 상품 분석 탭 [매칭 편집] 모달 — 상품별 코드 수동 지정/해제(드롭다운), 자동 매칭 실패만 보기 필터, 브라우저 저장+내보내기/가져오기(JSON) 공유, 변경 즉시 차트 반영'},{ver:'v5.10',date:'2026-09-22',note:'상품 매칭 고도화: ID 미매칭 시 이름 정규화 유사 매칭(SET/세트·풀세트 통합, 배지/규격 토큰 제거) + 단가 검증으로 오매칭 방지 — 사운드북+위인카드 SET/세트 등 표기 변형 자동 통합'},{ver:'v5.9',date:'2026-09-22',note:'상품 분석: 전체 현황 표에 상품코드 열 추가(순위 다음), 상품명은 상품코드 기준 통일명(COST_MAPS 마스터명) 표기, 검색 추천에도 코드 표시, 매핑 검증 리포트 병행 제공'},{ver:'v5.8',date:'2026-09-22',note:'상품 분석: 상품코드 기반 채널 매칭 — 네이버 pid·쿠팡 skuNo ID 직결(20/20 SKU), 기타마켓 이름 매핑, 코드 칩 표시, 채널 필터 오류 수정'},{ver:'v5.7', date:'2026-09-22', note:"상품 분석 개선: 기간·채널 필터, 상품 검색(드롭다운 대체), 전체 현황 상위 10개, 쿠팡 입고(B2B) 채널 추가 — SKU명 규칙 자동 매칭(입고량 93%), 미매칭 SKU는 [쿠팡] 행"},
     {ver:'v5.6', date:'2026-09-22', note:"상품 분석 탭 신설: 상품별 채널(네이버/기타마켓) 성과 · 일별·요일별 판매 패턴 · 방문·전환율 · 전체 상품 증감 현황"},
     {ver:'v5.5', date:'2026-09-17', note:"인사이트 탭에 경영진 카드 추가: 채널별 손익·영업이익 추정·마진율 (쿠팡 B2B 분리 표기)"},
     {ver:'v5.4', date:'2026-09-17', note:"인사이트 탭에 마케터 카드 추가: 채널별 광고비·ROAS(목적별 분리) · 주간 추이 · 검색어/쿠팡애즈 잘 되는 키워드"},
@@ -3272,35 +3272,36 @@ function paRenderDetail(){
   var o=PA_ITEMS[PA_SEL], R=PA_RANGE;
   function inW(d,a,b){ return d>=a&&d<=b; }
   var dow={};
-  ['일','월','화','수','목','금','토'].forEach(function(d,i){ dow[i]={rev:0,qty:0}; });
+  [0,1,2,3,4,5,6].forEach(function(i){ dow[i]={rev:0,qty:0}; });
   function agg(rows,useCh){
     var cur={rev:0,qty:0,orders:0}, prev={rev:0,qty:0,orders:0};
+    if(!useCh||!paChOn(useCh)) return {cur:cur,prev:prev};
     (rows||[]).forEach(function(e){
       var di=(new Date(e.d+'T00:00:00')).getDay();
       if(inW(e.d,paShift(R.anchor,89),R.anchor)){ dow[di].rev+=e.rev||0; dow[di].qty+=e.qty||0; }
-      if(!useCh||!paChOn(useCh)) return;
       if(inW(e.d,R.curStart,R.anchor)){ cur.rev+=e.rev||0; cur.qty+=e.qty||0; cur.orders+=e.orders||0; }
       else if(inW(e.d,R.prevStart,R.prevEnd)){ prev.rev+=e.rev||0; prev.qty+=e.qty||0; prev.orders+=e.orders||0; }
     });
     return {cur:cur,prev:prev};
   }
   var nA=agg(o.navRows,'naver'), oA=agg(o.othRows,'other'), cA=agg(o.coupRows,'coup');
-  var daily={};
-  function addDaily(rows,useCh){
+  var dailyN={}, dailyO={}, dailyC={};
+  function addDaily(dst,rows,useCh){
     if(!useCh||!paChOn(useCh)) return;
-    (rows||[]).forEach(function(e){ if(inW(e.d,R.curStart,R.anchor)) daily[e.d]=(daily[e.d]||0)+(e.rev||0); });
+    (rows||[]).forEach(function(e){ if(inW(e.d,R.curStart,R.anchor)) dst[e.d]=(dst[e.d]||0)+(e.rev||0); });
   }
-  addDaily(o.navRows,'naver'); addDaily(o.othRows,'other'); addDaily(o.coupRows,'coup');
+  addDaily(dailyN,o.navRows,'naver');
+  addDaily(dailyO,o.othRows,'other');
+  addDaily(dailyC,o.coupRows,'coup');
   var consCur=nA.cur.rev+oA.cur.rev, consPrev=nA.prev.rev+oA.prev.rev;
   var trend=consPrev>0? consCur/consPrev-1 : (consCur>0?1:0);
-  var coupTrend=cA.prev.rev>0? cA.cur.rev/cA.prev.rev-1 : (cA.cur.rev>0?1:0);
   var h='<div style="font-size:14px;font-weight:800;margin-bottom:6px">'+(o.code?'<span style="font-size:12px;font-weight:700;color:var(--accent);background:var(--s2);border-radius:4px;padding:2px 8px;vertical-align:middle;margin-right:8px">'+o.code+'</span>':'')+insCut(o.name,40)+'</div>';
   h+='<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:10px">';
   if(PA_CH==='all'){
     h+='<div><div style="font-size:11px;color:var(--dim)">소비자 매출 (네이버+기타)</div><div style="font-size:18px;font-weight:800">'+insFmt(consCur)+'원 <span style="font-size:12px;color:'+(trend>=0?'var(--green)':'var(--red)')+'">'+insPct(trend)+'</span></div></div>';
     h+='<div><div style="font-size:11px;color:var(--dim)">🔵 쿠팡 입고 (B2B, 별도)</div><div style="font-size:18px;font-weight:800">'+insFmt(cA.cur.rev)+'원</div></div>';
-    h+='<div><div style="font-size:11px;color:var(--dim)">판매수량</div><div style="font-size:18px;font-weight:800">'+insFmt(nA.cur.qty+oA.cur.qty)+'개</div></div>';
-    h+='<div><div style="font-size:11px;color:var(--dim)">주문건수</div><div style="font-size:18px;font-weight:800">'+insFmt(nA.cur.orders+oA.cur.orders)+'</div></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">소비자 판매수량</div><div style="font-size:18px;font-weight:800">'+insFmt(nA.cur.qty+oA.cur.qty)+'개</div></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">소비자 주문건수</div><div style="font-size:18px;font-weight:800">'+insFmt(nA.cur.orders+oA.cur.orders)+'</div></div>';
     h+='<div><div style="font-size:11px;color:var(--dim)">채널 비중</div><div style="font-size:13px;font-weight:700;margin-top:4px">'+(consCur>0?'🟢 '+(nA.cur.rev/consCur*100).toFixed(0)+'% · 🛍️ '+(oA.cur.rev/consCur*100).toFixed(0)+'%':'—')+(cA.cur.rev>0?' · 🔵 입고 '+insFmt(cA.cur.qty)+'개':'')+'</div></div>';
   } else {
     var lbl=PA_CH==='naver'?'🟢 네이버 매출':(PA_CH==='other'?'🛍️ 기타마켓 매출':'🔵 쿠팡 입고 (B2B)');
@@ -3309,9 +3310,8 @@ function paRenderDetail(){
     h+='<div><div style="font-size:11px;color:var(--dim)">'+lbl+' (최근 '+PA_PERIOD+'일)</div><div style="font-size:18px;font-weight:800">'+insFmt(A_.cur.rev)+'원 <span style="font-size:12px;color:'+(tr>=0?'var(--green)':'var(--red)')+'">'+insPct(tr)+'</span></div></div>';
     h+='<div><div style="font-size:11px;color:var(--dim)">수량</div><div style="font-size:18px;font-weight:800">'+insFmt(A_.cur.qty)+'개</div></div>';
     h+='<div><div style="font-size:11px;color:var(--dim)">건수</div><div style="font-size:18px;font-weight:800">'+insFmt(A_.cur.orders)+'</div></div>';
-   }
+  }
   h+='</div>';
-  // 채널별 표 (필터와 무관하게 전 채널 비교)
   h+='<div style="font-size:12px;font-weight:700;margin:10px 0 6px">채널별 실적 비교</div>';
   h+='<table class="tbl"><thead><tr><th style="text-align:left">채널</th><th>최근 '+PA_PERIOD+'일</th><th>이전 '+PA_PERIOD+'일</th><th>증감</th><th>수량</th><th>건수</th></tr></thead><tbody>';
   function chTR(lbl,c,pr,note){
@@ -3325,38 +3325,34 @@ function paRenderDetail(){
     h+='<tr><td style="text-align:left;padding-left:18px;color:var(--dim)">↳ '+insCut(m,18)+'</td><td>'+insFmt(o.och[m].rev)+'원</td><td colspan="4" style="color:var(--dim)">'+insFmt(o.och[m].qty)+'개</td></tr>';
   });
   h+='</tbody></table>';
-  // 일별 추이
-  h+='<div style="font-size:12px;font-weight:700;margin:14px 0 2px">판매추이 (일별 '+(PA_CH==='coup'?'쿠팡 입고금액':'소비자 매출')+' (최근 '+PA_PERIOD+'일)</div>';
-  var dvals=[], dkeys=[];
-  for(var i=PA_PERIOD-1;i>=0;i--){ var d=paShift(R.anchor,i); dkeys.push(d); dvals.push(daily[d]||0); }
-  h+=paBars(dvals,'var(--accent)',Math.ceil(PA_PERIOD/6),dkeys);
-  var peakIdx=0,sumDaily=0,actDays=0; dvals.forEach(function(v,ix){ sumDaily+=v; if(v>0) actDays++; if(v>dvals[peakIdx]) peakIdx=ix; });
-  h+='<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:10px;color:var(--dim);margin-top:6px"><span>막대에 <b>마우스 또는 터치</b>하면 금액이 보입니다</span><span>최고 매출일 <b>'+(dkeys[peakIdx]||'-')+'</b> · '+insFmt(dvals[peakIdx]||0)+'원</span><span>일평균 '+insFmt(Math.round(sumDaily/Math.max(PA_PERIOD,1)))+'원 · 판매 발생일 '+actDays+'일</span></div>';
-  // 요일별
+  var dvals=[], dkeys=[], trendLabel='';
+  for(var i=PA_PERIOD-1;i>=0;i--){
+    var d=paShift(R.anchor,i), nv=dailyN[d]||0, ov=dailyO[d]||0, cv=dailyC[d]||0, amt=0;
+    dkeys.push(d);
+    if(PA_CH==='naver'){ amt=nv; trendLabel='네이버 매출'; }
+    else if(PA_CH==='other'){ amt=ov; trendLabel='기타마켓 매출'; }
+    else if(PA_CH==='coup'){ amt=cv; trendLabel='쿠팡 입고금액'; }
+    else { amt=nv+ov+cv; trendLabel='전체 채널 실적'; }
+    dvals.push(amt);
+  }
+  h+='<div style="font-size:12px;font-weight:700;margin:14px 0 2px">판매추이 (일별 '+trendLabel+' · 최근 '+PA_PERIOD+'일)</div>';
+  h+=paBars(dvals,'var(--accent)',0,dkeys);
+  var peakIdx=0,sumDaily=0,actDays=0;
+  dvals.forEach(function(v,ix){ sumDaily+=v; if(v>0) actDays++; if(v>dvals[peakIdx]) peakIdx=ix; });
+  h+='<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:10px;color:var(--dim);margin-top:6px"><span>막대에 <b>마우스 또는 터치</b>하면 금액이 보입니다</span><span>최고 매출일 <b>'+(dkeys[peakIdx]||'-')+'</b> · '+insFmt(dvals[peakIdx]||0)+'원</span><span>일평균 '+insFmt(Math.round(sumDaily/Math.max(PA_PERIOD,1)))+'원 · 실적 발생일 '+actDays+'일</span>'+(PA_CH==='all'&&cA.cur.rev>0?'<span>※ 전체 채널 선택 시 쿠팡 B2B 입고 포함</span>':'')+'</div>';
   h+='<div style="font-size:12px;font-weight:700;margin:14px 0 2px">요일별 매출 (최근 90일)</div>';
-  var maxDow=Math.max.apply(null,Object.keys(dow).map(function(k){ return dow[k].rev; }).concat([1]));
-  var best=0,worst=0;
-  Object.keys(dow).forEach(function(k){ if(dow[k].rev>dow[best].rev) best=Number(k); if(dow[k].rev<dow[worst].rev) worst=Number(k); });
-  var DL=['일','월','화','수','목','금','토'];
-  h+='<div style="display:flex;gap:8px;align-items:flex-end;height:80px;margin-top:8px">';
-  Object.keys(dow).forEach(function(k){
-    var pct=dow[k].rev>0?Math.max(dow[k].rev/maxDow*100,3):2;
-    h+='<div style="flex:1;text-align:center"><div style="font-size:10px;color:var(--dim)">'+(dow[k].rev>0?insFmt(dow[k].rev/1000)+'k':'-')+'</div><div style="background:'+(Number(k)===best?'var(--green)':(Number(k)===worst?'var(--red)':'var(--s3)'))+';height:'+pct+'%;border-radius:4px 4px 0 0;margin-top:3px"></div><div style="font-size:11px;font-weight:700;margin-top:3px">'+DL[k]+'</div></div>';
+  var maxDow=Math.max.apply(null,[dow[0].rev,dow[1].rev,dow[2].rev,dow[3].rev,dow[4].rev,dow[5].rev,dow[6].rev,1]);
+  var order=[1,2,3,4,5,6,0], DL=['일','월','화','수','목','금','토'];
+  var best=order[0], worst=order[0];
+  order.forEach(function(k){ if(dow[k].rev>dow[best].rev) best=k; if(dow[k].rev<dow[worst].rev) worst=k; });
+  h+='<div style="display:grid;grid-template-columns:repeat(7,minmax(88px,1fr));gap:8px;margin-top:8px">';
+  order.forEach(function(k){
+    var pct=dow[k].rev>0?Math.max(dow[k].rev/maxDow*100,8):4;
+    var tone=(k===best?'var(--green)':(k===worst?'var(--red)':'var(--s3)'));
+    h+='<div style="border:1px solid var(--border);border-radius:10px;padding:10px 8px;background:#fff;text-align:center"><div style="font-size:12px;font-weight:800">'+DL[k]+'</div><div style="font-size:11px;margin-top:5px;line-height:1.35">'+insFmt(dow[k].rev)+'원</div><div style="height:56px;display:flex;align-items:flex-end;margin-top:8px"><div style="width:100%;background:'+tone+';height:'+pct+'%;border-radius:6px 6px 0 0"></div></div></div>';
   });
   h+='</div>';
-  h+='<div style="font-size:11px;color:var(--dim);margin-top:4px">매출 상위 요일 <b style="color:var(--green)">'+DL[best]+'</b> · 매출 하위 요일 <b style="color:var(--red)">'+DL[worst]+'</b> (최근 90일 합계 기준)</div>';
-  // 네이버 방문·전환
-  if(paChOn('naver')){
-    var vis={visits:0,orders:0,rev:0};
-    (DB.naverProdVisit||[]).forEach(function(e){
-      if(!e||!e.d||!inW(e.d,R.curStart,R.anchor)) return;
-      var vk=(e.pid&&PA_PID_KEY[String(e.pid)])||PA_NAME_KEY[paNorm(e.name)]; if(vk&&vk===o.key){ vis.visits+=e.visits||0; vis.orders+=e.orders||0; vis.rev+=e.rev||0; }
-    });
-    if(vis.visits>0){
-      h+='<div style="font-size:12px;font-weight:700;margin:14px 0 6px">네이버 유입/전환 (최근 '+PA_PERIOD+'일)</div>';
-      h+='<table class="tbl"><tbody><tr><td style="text-align:left">방문수</td><td style="font-weight:700">'+insFmt(vis.visits)+'</td><td style="text-align:left">결제건수</td><td style="font-weight:700">'+insFmt(vis.orders)+'</td><td style="text-align:left">전환율</td><td style="font-weight:700;color:'+(vis.orders/vis.visits>=0.03?'var(--green)':'var(--orange)')+'">'+(vis.visits>0?(vis.orders/vis.visits*100).toFixed(1):'0')+'%</td></tr></tbody></table>';
-    }
-  }
+  h+='<div style="font-size:11px;color:var(--dim);margin-top:6px">월요일부터 일요일 순으로 표시 · 매출 상위 요일 <b style="color:var(--green)">'+DL[best]+'</b> · 매출 하위 요일 <b style="color:var(--red)">'+DL[worst]+'</b> (최근 90일 합계 기준)</div>';
   el.innerHTML=h;
 }
 function paRenderTable(){
