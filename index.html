@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>톰토미 마케팅 대시보드 v5.14</title>
+<title>톰토미 마케팅 대시보드 v5.15</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -197,7 +197,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   <div class="logo" onclick="showSec('overview',document.querySelector('.nb'))" style="cursor:pointer">
     <div class="logo-icon">TT</div>
     <div>
-      <div class="logo-text">톰토미 마케팅 대시보드 <span id="ver-chip" style="font-size:11px;color:var(--accent);font-weight:400">v5.14</span></div>
+      <div class="logo-text">톰토미 마케팅 대시보드 <span id="ver-chip" style="font-size:11px;color:var(--accent);font-weight:400">v5.15</span></div>
       <div class="logo-sub">네이버 · 쿠팡(입고기준) · 기타마켓 · 광고 ROI 통합 · Supabase 연동
         <span style="cursor:pointer;color:var(--accent);font-weight:600;margin-left:6px" onclick="document.getElementById('fileGuide').style.display=document.getElementById('fileGuide').style.display==='none'?'block':'none'">📁 파일 가이드</span>
       </div>
@@ -718,7 +718,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   </div>
   <!-- v5.2 버전 관리 (관리자 탭) -->
   <div class="card gf" style="margin-bottom:14px">
-    <div class="ctitle">🏷️ 버전 관리 <span class="badge ba">현재 <span id="ver-latest">v5.14</span></span></div>
+    <div class="ctitle">🏷️ 버전 관리 <span class="badge ba">현재 <span id="ver-latest">v5.15</span></span></div>
     <div class="csub">index.html을 새로 받아 적용할 때마다 버전이 올라갑니다 · 아래 표에서 지금 쓰는 버전이 최신인지 확인하세요</div>
     <div id="ver-table" style="margin-top:12px;overflow-x:auto"></div>
   </div>
@@ -792,7 +792,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   </div>
 </section>
 <section id="prods" class="section">
-  <div class="shd"><div class="stitle">📦 상품 분석</div><div class="ssub">상품코드·기준 상품명 기준 통합 분석 — 기간·채널별 판매추이, 채널별 실적, 요일별 매출, 네이버 유입/전환을 비교합니다 (쿠팡은 B2B 입고 기준 별도 분리)</div></div>
+  <div class="shd"><div class="stitle">📦 상품 분석</div><div class="ssub">원천 리소스 품목명(C열) 기준 통합 분석 — 원가 엑셀 품목명과 채널별 상품명을 함께 매핑해 기간·채널별 판매추이, 채널별 실적, 요일별 매출, 네이버 유입/전환을 비교합니다 (쿠팡은 B2B 입고 기준 별도 분리)</div></div>
   <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
     <span style="font-size:12px;color:var(--dim);font-weight:700">기간</span>
     <button class="fbtn" id="pa-t7" onclick="paSetPeriod(7)">7일</button>
@@ -805,15 +805,15 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     <button class="fbtn" id="pa-c-coup" onclick="paSetCh('coup')">🔵 쿠팡 입고</button>
   </div>
   <div style="position:relative;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-    <input id="pa-search" placeholder="상품코드 또는 기준 상품명 검색 — 입력하면 후보가 표시됩니다" oninput="paSuggest()" onfocus="paSuggest()" onkeydown="if(event.key==='Enter')paPick(0)" onblur="setTimeout(function(){var el=document.getElementById('pa-suggest'); if(el) el.style.display='none';},200)" style="flex:1;min-width:280px;max-width:560px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);font-size:13px;outline:none">
-    <button class="fbtn" onclick="paOpenMap()" title="기준 상품 매핑 관리" style="white-space:nowrap">기준 상품 매핑</button>
+    <input id="pa-search" placeholder="상품코드 또는 품목명(C열 기준) 검색 — 입력하면 후보가 표시됩니다" oninput="paSuggest()" onfocus="paSuggest()" onkeydown="if(event.key==='Enter')paPick(0)" onblur="setTimeout(function(){var el=document.getElementById('pa-suggest'); if(el) el.style.display='none';},200)" style="flex:1;min-width:280px;max-width:560px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);font-size:13px;outline:none">
+    <button class="fbtn" onclick="paOpenMap()" title="원천 품목명 기준 매핑 관리" style="white-space:nowrap">품목명 매핑</button>
     <span id="pa-range" style="font-size:12px;color:var(--dim)"></span>
     <div id="pa-suggest" style="display:none;position:absolute;top:42px;left:0;z-index:50;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:420px;max-height:280px;overflow-y:auto"></div>
   </div>
   <div id="paMapModal" onclick="if(event.target===this)paCloseMap()" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(15,23,42,.45);align-items:center;justify-content:center">
     <div style="background:var(--bg,#fff);width:min(880px,94vw);max-height:86vh;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.25)">
       <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <div><div style="font-size:15px;font-weight:800">기준 상품 매핑 관리</div><div style="font-size:11px;color:var(--dim);margin-top:2px">상품ID·SKU·원본 상품명을 기준 상품코드·기준 상품명에 함께 연결합니다 (변경 즉시 저장·반영)</div></div>
+        <div><div style="font-size:15px;font-weight:800">원천 품목명 기준 매핑 관리</div><div style="font-size:11px;color:var(--dim);margin-top:2px">원가 엑셀 C열 품목명(원천 리소스)과 채널별 상품명을 같은 품목코드에 연결합니다 (변경 즉시 저장·반영)</div></div>
         <div style="display:flex;gap:6px;white-space:nowrap">
           <button class="fbtn" onclick="paExportMap()">⬇️ 내보내기</button>
           <button class="fbtn" onclick="document.getElementById('paMapFile').click()">⬆️ 가져오기</button>
@@ -2536,7 +2536,7 @@ var APP_VERSION = {
   ver: 'v5.14',
   date: '2026-09-28',
   history: [
-    {ver:'v5.14',date:'2026-09-28',note:'상품 분석 개편: 막대 차트 금액 툴팁을 마우스/터치로 직접 표시하도록 수정, 상품 분석 문구를 분석형 용어로 정리, 상품ID·SKU뿐 아니라 원본 상품명도 함께 기준 상품코드/기준 상품명에 저장하는 alias 매핑 추가'},{ver:'v5.13',date:'2026-09-28',note:'매출 상이 오류 수정: sales_*.xlsx의 기간 합계행(예: 2026-09-22~2026-09-27)이 시작일 매출로 잘못 합산되던 버그 수정 — 9/22 표시 1,347,100원을 실제 185,250원으로 바로잡음, 기존 오기입 데이터 자동 정리, 완전중복 행 제거'},{ver:'v5.12',date:'2026-09-22',note:'매칭 편집 저장 강화: 내보내기가 전체 매핑 스냅샷(자동+수동 전체, 저장일·버전 포함)을 JSON으로 저장, 가져오기로 그대로 복원 — 기기 이동·공유 시 동일 매핑 보장, 구버전 파일도 호환'},{ver:'v5.11',date:'2026-09-22',note:'상품 매칭 편집 기능: 상품 분석 탭 [매칭 편집] 모달 — 상품별 코드 수동 지정/해제(드롭다운), 자동 매칭 실패만 보기 필터, 브라우저 저장+내보내기/가져오기(JSON) 공유, 변경 즉시 차트 반영'},{ver:'v5.10',date:'2026-09-22',note:'상품 매칭 고도화: ID 미매칭 시 이름 정규화 유사 매칭(SET/세트·풀세트 통합, 배지/규격 토큰 제거) + 단가 검증으로 오매칭 방지 — 사운드북+위인카드 SET/세트 등 표기 변형 자동 통합'},{ver:'v5.9',date:'2026-09-22',note:'상품 분석: 전체 현황 표에 상품코드 열 추가(순위 다음), 상품명은 상품코드 기준 통일명(COST_MAPS 마스터명) 표기, 검색 추천에도 코드 표시, 매핑 검증 리포트 병행 제공'},{ver:'v5.8',date:'2026-09-22',note:'상품 분석: 상품코드 기반 채널 매칭 — 네이버 pid·쿠팡 skuNo ID 직결(20/20 SKU), 기타마켓 이름 매핑, 코드 칩 표시, 채널 필터 오류 수정'},{ver:'v5.7', date:'2026-09-22', note:"상품 분석 개선: 기간·채널 필터, 상품 검색(드롭다운 대체), 전체 현황 상위 10개, 쿠팡 입고(B2B) 채널 추가 — SKU명 규칙 자동 매칭(입고량 93%), 미매칭 SKU는 [쿠팡] 행"},
+    {ver:'v5.15',date:'2026-09-28',note:'원천 품목명 기준 정렬: 업로드한 원가 엑셀의 C열 품목명을 기준 상품명으로 사용하고, 원천 리소스 품목명·채널 상품명을 함께 alias로 묶어 대시보드 판단/표시에 동일 기준을 적용'},{ver:'v5.14',date:'2026-09-28',note:'상품 분석 개편: 막대 차트 금액 툴팁을 마우스/터치로 직접 표시하도록 수정, 상품 분석 문구를 분석형 용어로 정리, 상품ID·SKU뿐 아니라 원본 상품명도 함께 기준 상품코드/기준 상품명에 저장하는 alias 매핑 추가'},{ver:'v5.13',date:'2026-09-28',note:'매출 상이 오류 수정: sales_*.xlsx의 기간 합계행(예: 2026-09-22~2026-09-27)이 시작일 매출로 잘못 합산되던 버그 수정 — 9/22 표시 1,347,100원을 실제 185,250원으로 바로잡음, 기존 오기입 데이터 자동 정리, 완전중복 행 제거'},{ver:'v5.12',date:'2026-09-22',note:'매칭 편집 저장 강화: 내보내기가 전체 매핑 스냅샷(자동+수동 전체, 저장일·버전 포함)을 JSON으로 저장, 가져오기로 그대로 복원 — 기기 이동·공유 시 동일 매핑 보장, 구버전 파일도 호환'},{ver:'v5.11',date:'2026-09-22',note:'상품 매칭 편집 기능: 상품 분석 탭 [매칭 편집] 모달 — 상품별 코드 수동 지정/해제(드롭다운), 자동 매칭 실패만 보기 필터, 브라우저 저장+내보내기/가져오기(JSON) 공유, 변경 즉시 차트 반영'},{ver:'v5.10',date:'2026-09-22',note:'상품 매칭 고도화: ID 미매칭 시 이름 정규화 유사 매칭(SET/세트·풀세트 통합, 배지/규격 토큰 제거) + 단가 검증으로 오매칭 방지 — 사운드북+위인카드 SET/세트 등 표기 변형 자동 통합'},{ver:'v5.9',date:'2026-09-22',note:'상품 분석: 전체 현황 표에 상품코드 열 추가(순위 다음), 상품명은 상품코드 기준 통일명(COST_MAPS 마스터명) 표기, 검색 추천에도 코드 표시, 매핑 검증 리포트 병행 제공'},{ver:'v5.8',date:'2026-09-22',note:'상품 분석: 상품코드 기반 채널 매칭 — 네이버 pid·쿠팡 skuNo ID 직결(20/20 SKU), 기타마켓 이름 매핑, 코드 칩 표시, 채널 필터 오류 수정'},{ver:'v5.7', date:'2026-09-22', note:"상품 분석 개선: 기간·채널 필터, 상품 검색(드롭다운 대체), 전체 현황 상위 10개, 쿠팡 입고(B2B) 채널 추가 — SKU명 규칙 자동 매칭(입고량 93%), 미매칭 SKU는 [쿠팡] 행"},
     {ver:'v5.6', date:'2026-09-22', note:"상품 분석 탭 신설: 상품별 채널(네이버/기타마켓) 성과 · 일별·요일별 판매 패턴 · 방문·전환율 · 전체 상품 증감 현황"},
     {ver:'v5.5', date:'2026-09-17', note:"인사이트 탭에 경영진 카드 추가: 채널별 손익·영업이익 추정·마진율 (쿠팡 B2B 분리 표기)"},
     {ver:'v5.4', date:'2026-09-17', note:"인사이트 탭에 마케터 카드 추가: 채널별 광고비·ROAS(목적별 분리) · 주간 추이 · 검색어/쿠팡애즈 잘 되는 키워드"},
@@ -2870,22 +2870,130 @@ var PA_SKU_SUPPLEMENT = { // COST_MAPS.coupang에 없는 skuNo 보강 (SKU명이
   '54707922':'SOMD-0014',  // 톰토미 NEW 봉제인형 화이트 300mm → 뉴 봉제인형
   '67321412':'SOMD-0020'   // 사운드북+위인카드 세트 → 풀세트
 };
-var PA_NAME_CODE = { // 기타마켓 상품명(paNorm 적용) → 상품코드
-  '톰토미 공룡 마이크':'SOMD-0015',
-  '톰토미 노래하는 공룡 아기 스티커북 세이펜 호환':'SOMD-0006',
-  '톰토미 노래하는 동물 아기 스티커북 세이펜 호환':'SOMD-0007',
-  '톰토미 노래하는 특이한생물 아기 스티커북 세이펜 호환':'SOMD-0008',
-  '톰토미 노래하는 아기 스티커북 탈것 세이펜 호환 한국어 영어':'SOMD-0009',
-  '톰토미 노래하는 스티커북 - 공룡':'SOMD-0006',
-  '톰토미 노래하는 스티커북:공룡-1개':'SOMD-0006',
-  '톰토미 노래하는 스티커북:특이한생물-1개':'SOMD-0008',
-  '톰토미 노래하는 스티커북 - 5종 세트 (공룡, 동물, 마트, 탈것, 특이한 생물)':'SOMD-0016',
-  '톰토미 스티커북 5종 세트':'SOMD-0016',
-  '톰토미 명작동화 (3CD)':'SOCD-0318',
-  '톰토미 빅 도미노 블럭 - 공룡+동물 (100pcs)':'EDST-85008',
-  '한국을 빛낸 100명의 위인들 사운드북':'SOMD-0018',
-  '한국을 빛낸 100명의 위인들 위인카드':'SOMD-0019'
-};
+var PA_SOURCE_NAME = {
+  "SOMD-0001": "톰토미 말랑 데코 스티커",
+  "SOMD-0002": "톰토미 봉제인형 30cm",
+  "SOMD-0003": "톰토미 모찌쿠션",
+  "SOMD-0004": "톰토미 어깨끈 가방",
+  "SOMD-0005": "톰토미 조리개형 가방",
+  "SOMD-0006": "톰토미 노래하는 스티커북 (공룡)",
+  "SOMD-0007": "톰토미 노래하는 스티커북 (동물)",
+  "SOMD-0008": "톰토미 노래하는 스티커북 (특이한 생물)",
+  "SOMD-0009": "톰토미 노래하는 스티커북 (탈것)",
+  "SOMD-0010": "톰토미 노래하는 스티커북 (마트)",
+  "SOMD-0011": "다다 뉴 봉제인형",
+  "SOMD-0012": "루나 뉴 봉제인형",
+  "SOMD-0013": "톰토미 봉제 미니키링",
+  "SOMD-0014": "톰토미 뉴 봉제인형",
+  "SOMD-0015": "톰토미 공룡 마이크",
+  "SOMD-0016": "톰토미 스티커북 5종 세트",
+  "SOMD-0017": "톰토미 스틱풍선",
+  "SOMD-0018": "한국을 빛낸 100명의 위인들 사운드북",
+  "SOMD-0019": "한국을 빛낸 100명의 위인들 위인카드",
+  "SOMD-0020": "한국을 빛낸 100명의 위인들 사운드북 + 위인카드 풀세트",
+  "SOMD-0021": "톰토미 스마트 피규어",
+  "SOMD-0022": "루나 스마트 피규어",
+  "SOMD-0023": "다다 스마트 피규어",
+  "SOMD-0024": "지니 스마트 피규어",
+  "SOMD-0025": "리오 스마트 피규어",
+  "SOMD-0026": "톰토미와 친구들 스마트 피규어 풀세트",
+  "SOCD-0318": "톰토미 명작동화 3CD",
+  "SOCD-0319": "톰토미 명작동화   + 톰토미 말랑 데코 스티커",
+  "SOCD-0320": "톰토미 크리스마스 캐롤 2CD",
+  "SPTE-0001": "세이펜 톰토미 에디션 (Red)",
+  "SPTE-0002": "세이펜 톰토미 에디션 (Pink)",
+  "SPTE-0003": "세이펜 톰토미 에디션 (Blue)",
+  "EDST-85008": "톰토미 빅도미노블럭100 공룡+동물",
+  "EDST-85009": "톰토미 빅도미노블럭 50 공룡",
+  "EDST-85010": "톰토미 빅도미노블럭 50 동물",
+  "163471": "톰토미 스티커 색칠놀이",
+  "163488": "톰토미 스티커 놀이북",
+  "164959": "톰토미 한글 튼튼",
+  "164966": "톰토미 숫자 튼튼",
+  "154673": "톰토미 미니 스티커북",
+  "154932": "톰토미 IQ가방퍼즐",
+  "166076": "톰토미 두들색칠북",
+  "155410": "톰토미 IQ영재퍼즐",
+  "155069": "톰토미 빅롤 색칠 스티커(공룡)",
+  "155052": "톰토미 빅롤 색칠 스티커(동물)",
+  "155076": "톰토미 빅롤 색칠 스티커 (바다동물)",
+  "172800": "톰토미 놀면서 배우는 학습 놀이북 - 동물탐험대",
+  "172817": "톰토미 놀면서 배우는 학습 놀이북 - 안전 습관 히어로",
+  "(N임시)SOMD-STKB3": "톰토미 스티커북 3종 세트",
+  "(N임시)SOMD-006/7/8/9/10": "톰토미 스티커북 택 1",
+  "(N임시)155052/155069/155076": "톰토미 빅 롤 스티커 바다동물, 동물, 공룡 택 1",
+  "(N임시)163471/163488": "톰토미 스티커 색칠놀이, 스티커 놀이북 택1",
+  "(N임시) 164959/164966": "톰토미 한글튼튼, 숫자튼튼 택1",
+  "SOMD-0006 / SOMD-0015": "공룡마이크 + 노래하는 스티커북 공룡"
+}; // 원가 엑셀 C열 품목명(원천 리소스)
+var PA_NAME_CODE = {
+  "톰토미 공룡 마이크": "SOMD-0015",
+  "톰토미 명작동화 (3CD)": "SOCD-0318",
+  "톰토미 명작동화 3CD": "SOCD-0318",
+  "톰토미 한국을 빛낸 100명의 위인들 사운드북+위인카드 SET 북극곰": "SOMD-0020",
+  "톰토미 한국을 빛낸 100명의 위인들 사운드북+위인카드 세트 북극곰": "SOMD-0020",
+  "한국을 빛낸 100명의 위인들 사운드북+위인카드 SET 북극곰": "SOMD-0020",
+  "한국을 빛낸 100명의 위인들 사운드북 + 위인카드 풀세트": "SOMD-0020",
+  "톰토미 말랑 데코 스티커": "SOMD-0001",
+  "톰토미 봉제인형 30cm": "SOMD-0002",
+  "톰토미 모찌쿠션": "SOMD-0003",
+  "톰토미 어깨끈 가방": "SOMD-0004",
+  "톰토미 조리개형 가방": "SOMD-0005",
+  "톰토미 노래하는 스티커북 (공룡)": "SOMD-0006",
+  "톰토미 노래하는 스티커북 (동물)": "SOMD-0007",
+  "톰토미 노래하는 스티커북 (특이한 생물)": "SOMD-0008",
+  "톰토미 노래하는 스티커북 (탈것)": "SOMD-0009",
+  "톰토미 노래하는 스티커북 (마트)": "SOMD-0010",
+  "다다 뉴 봉제인형": "SOMD-0011",
+  "루나 뉴 봉제인형": "SOMD-0012",
+  "톰토미 봉제 미니키링": "SOMD-0013",
+  "톰토미 뉴 봉제인형": "SOMD-0014",
+  "톰토미 스티커북 5종 세트": "SOMD-0016",
+  "톰토미 스틱풍선": "SOMD-0017",
+  "한국을 빛낸 100명의 위인들 사운드북": "SOMD-0018",
+  "한국을 빛낸 100명의 위인들 위인카드": "SOMD-0019",
+  "톰토미 스마트 피규어": "SOMD-0021",
+  "루나 스마트 피규어": "SOMD-0022",
+  "다다 스마트 피규어": "SOMD-0023",
+  "지니 스마트 피규어": "SOMD-0024",
+  "리오 스마트 피규어": "SOMD-0025",
+  "톰토미와 친구들 스마트 피규어 풀세트": "SOMD-0026",
+  "톰토미 명작동화   + 톰토미 말랑 데코 스티커": "SOCD-0319",
+  "톰토미 크리스마스 캐롤 2CD": "SOCD-0320",
+  "세이펜 톰토미 에디션 (Red)": "SPTE-0001",
+  "세이펜 톰토미 에디션 (Pink)": "SPTE-0002",
+  "세이펜 톰토미 에디션 (Blue)": "SPTE-0003",
+  "톰토미 빅도미노블럭100 공룡+동물": "EDST-85008",
+  "톰토미 빅도미노블럭 50 공룡": "EDST-85009",
+  "톰토미 빅도미노블럭 50 동물": "EDST-85010",
+  "톰토미 스티커 색칠놀이": "163471",
+  "톰토미 스티커 놀이북": "163488",
+  "톰토미 한글 튼튼": "164959",
+  "톰토미 숫자 튼튼": "164966",
+  "톰토미 미니 스티커북": "154673",
+  "톰토미 IQ가방퍼즐": "154932",
+  "톰토미 두들색칠북": "166076",
+  "톰토미 IQ영재퍼즐": "155410",
+  "톰토미 빅롤 색칠 스티커(공룡)": "155069",
+  "톰토미 빅롤 색칠 스티커(동물)": "155052",
+  "톰토미 빅롤 색칠 스티커 (바다동물)": "155076",
+  "톰토미 놀면서 배우는 학습 놀이북 - 동물탐험대": "172800",
+  "톰토미 놀면서 배우는 학습 놀이북 - 안전 습관 히어로": "172817",
+  "톰토미 스티커북 3종 세트": "(N임시)SOMD-STKB3",
+  "톰토미 스티커북 택 1": "(N임시)SOMD-006/7/8/9/10",
+  "톰토미 빅 롤 스티커 바다동물, 동물, 공룡 택 1": "(N임시)155052/155069/155076",
+  "톰토미 스티커 색칠놀이, 스티커 놀이북 택1": "(N임시)163471/163488",
+  "톰토미 한글튼튼, 숫자튼튼 택1": "(N임시) 164959/164966",
+  "공룡마이크 + 노래하는 스티커북 공룡": "SOMD-0006 / SOMD-0015",
+  "톰토미 노래하는 아기 스티커북 마트 세이펜 호환 유아장난감": "SOMD-0010",
+  "톰토미 노래하는 스티커북 5종 세트 아기 유아 장난감 스티커북": "SOMD-0016",
+  "톰토미 노래하는 스티커북 세이펜호환 아기스티커북": "SOMD-0006",
+  "톰토미 노래하는 아기 스티커북 탈것 세이펜 호환 한국어 영어": "SOMD-0009",
+  "톰토미 노래하는 특이한생물 아기 스티커북 세이펜 호환": "SOMD-0008",
+  "톰토미 노래하는 동물 아기 스티커북 세이펜 호환": "SOMD-0007",
+  "톰토미 노래하는 공룡 아기 스티커북 세이펜 호환": "SOMD-0006",
+  "톰토미 노래하는 역할놀이 스티커북 5종 세트 세이펜 연동 아기스티커북": "SOMD-0016"
+}; // 원천 리소스 품목명 + 채널별 상품명(alias) → 상품코드
 var PA_NAME_KEY={}, PA_PID_KEY={}; // 방문 데이터(naverProdVisit) 조인용: 상품명/pid → 그룹키
 
 function paClean(n){
@@ -2928,6 +3036,7 @@ function paFindCode(nm,unit){ // 이름→코드 후보 탐색. unit(단가) 있
   return cands[0];
 }
 function paDisplayName(code,fb){
+  if(PA_SOURCE_NAME[code]) return String(PA_SOURCE_NAME[code]).replace(/\s+/g,' ');
   if(PA_CODE_NAME[code]) return PA_CODE_NAME[code];
   var m=COST_MAPS.master[code];
   return (m&&m.name)?String(m.name).replace(/\s+/g,' '):(fb||code);
@@ -2939,9 +3048,8 @@ function paBuild(){
   // 🟢 네이버 — pid → 상품코드 (코드 없으면 상품명 키)
   (DB.naverProd||[]).forEach(function(e){
     if(!e||!e.d||!e.name||!(e.rev||e.qty||e.orders)) return;
-    var nm=paNorm(e.name), pidS=String(e.pid||''), c=pidS?(PA_OVERRIDES.naver[pidS]||(COST_MAPS.naver[pidS]||null)):null;
+    var nm=paNorm(e.name), pidS=String(e.pid||''), c=paCurCode('naver',pidS,e.name);
     if(c) c=String(c).trim();
-    if(!c) c=paFindCode(e.name);
     var o=c?ensure('C:'+c,paDisplayName(c,nm),c):ensure('N:'+nm,nm);
     if(e.pid) PA_PID_KEY[String(e.pid)]=o.key;
     if(!PA_NAME_KEY[nm]) PA_NAME_KEY[nm]=o.key;
@@ -2951,7 +3059,7 @@ function paBuild(){
   // 🛍️ 기타마켓 — 상품명 → 상품코드
   (DB.other||[]).forEach(function(e){
     if(!e||!e.d||!e.product||!e.a) return;
-    var nm=paNorm(e.product), c=PA_OVERRIDES.other[nm]||PA_NAME_CODE[nm]||paFindCode(e.product);
+    var nm=paNorm(e.product), c=paCurCode('other',nm,e.product);
     var o=c?ensure('C:'+c,paDisplayName(c,nm),c):ensure('O:'+nm,nm);
     o.other.rev+=e.a||0; o.other.qty+=e.qty||0; o.other.orders+=1;
     var m=e.m||'기타'; if(!o.och[m]) o.och[m]={rev:0,qty:0};
@@ -2961,11 +3069,8 @@ function paBuild(){
   // 🔵 쿠팡 입고(B2B) — skuNo(쿠팡 상품ID) → 상품코드, 미매칭은 [쿠팡] 별도 행
   (DB.coupStock||[]).forEach(function(e){
     if(!e||!e.d||e.div!=='발주') return;
-    var sku=String(e.sku||''), skuNo=String(e.skuNo||''), c=null;
-    var cm=COST_MAPS.coupang[skuNo]; if(cm&&cm.code) c=String(cm.code);
-    if(!c) c=PA_OVERRIDES.coup[skuNo]||null;
-    var rev=toNum(e.a!==undefined?e.a:e.totalUnit), qty=e.qty||0;
-    if(!c) c=PA_SKU_SUPPLEMENT[skuNo]||paFindCode(sku, qty>0?rev/qty:0);
+    var sku=String(e.sku||''), skuNo=String(e.skuNo||''), rev=toNum(e.a!==undefined?e.a:e.totalUnit), qty=e.qty||0;
+    var c=paCurCode('coup',skuNo,sku)||paFindCode(sku, qty>0?rev/qty:0);
     if(!c&&!sku) return;
     var o;
     if(c) o=ensure('C:'+c,paDisplayName(c,sku),c);
@@ -3045,7 +3150,7 @@ function paCloseMap(){ var m=document.getElementById('paMapModal'); if(m) m.styl
 function paMapFilter(v){ PA_MAP_VIEW=v; paRenderMap(); }
 function paMapOpts(cur){
   var h='<option value=""'+(cur?'':' selected')+'>— 미매칭 —</option>';
-  Object.keys(COST_MAPS.master).forEach(function(c){ var n=(COST_MAPS.master[c]&&COST_MAPS.master[c].name)||''; h+='<option value="'+c+'"'+(c===cur?' selected':'')+'>'+c+' · '+insCut(String(n).replace(/\s+/g,' '),22)+'</option>'; });
+  Object.keys(COST_MAPS.master).forEach(function(c){ var n=paDisplayName(c,(COST_MAPS.master[c]&&COST_MAPS.master[c].name)||''); h+='<option value="'+c+'"'+(c===cur?' selected':'')+'>'+c+' · '+insCut(String(n).replace(/\s+/g,' '),22)+'</option>'; });
   Object.keys(PA_CODE_NAME).forEach(function(c){ h+='<option value="'+c+'"'+(c===cur?' selected':'')+'>'+c+' · '+insCut(PA_CODE_NAME[c],22)+'</option>'; });
   return h;
 }
@@ -3059,13 +3164,13 @@ function paRenderMap(){
   var b1=document.getElementById('paMap-all'), b2=document.getElementById('paMap-un');
   if(b1){ b1.style.background=PA_MAP_VIEW==='all'?'var(--s3)':''; b1.style.fontWeight=PA_MAP_VIEW==='all'?'700':'400'; }
   if(b2){ b2.style.background=PA_MAP_VIEW==='un'?'var(--s3)':''; b2.style.fontWeight=PA_MAP_VIEW==='un'?'700':'400'; }
-  el.innerHTML='<table class="tbl" style="margin-top:6px"><thead><tr><th style="text-align:left">채널</th><th style="text-align:left">원본 데이터</th><th style="text-align:left;width:300px">기준 상품코드 지정</th><th style="text-align:left">현재 기준 상품</th></tr></thead><tbody>'+
+  el.innerHTML='<table class="tbl" style="margin-top:6px"><thead><tr><th style="text-align:left">채널</th><th style="text-align:left">채널 상품명 / ID</th><th style="text-align:left;width:300px">품목코드 지정</th><th style="text-align:left">원천 품목명(C열)</th></tr></thead><tbody>'+
     (view.map(function(r){
       var sel='<select onchange="paSetMap('+r.ri+',this.value)" style="width:100%;padding:5px 6px;border:1px solid var(--border);border-radius:6px;font-size:11px;background:#fff">'+paMapOpts(r.cur)+'</select>';
       var base=r.cur?paDisplayName(r.cur,r.nm):'';
       return '<tr><td style="white-space:nowrap;font-weight:700">'+CH_LBL[r.ch]+'</td><td style="text-align:left"><div style="font-size:12px">'+insCut(r.nm,42)+'</div><div style="font-size:10px;color:var(--dim)">'+insCut(String(r.id),38)+'</div></td><td>'+sel+'</td><td style="text-align:left">'+(r.cur?'<div style="color:var(--green);font-weight:700">'+r.cur+'</div><div style="font-size:11px;color:var(--dim);margin-top:2px">'+insCut(base,30)+'</div>':'<span style="color:var(--orange);font-weight:700">⚠️ 미매칭</span>')+'</td></tr>';
     }).join('')||'<tr><td colspan="4" style="color:var(--dim);padding:14px">표시할 항목이 없습니다</td></tr>')+'</tbody></table>'+
-    '<div style="font-size:11px;color:var(--dim);margin-top:8px">변경 즉시 저장·차트에 반영됩니다. 한 번 지정하면 <b>ID/SKU</b>뿐 아니라 같은 <b>원본 상품명 alias</b>도 함께 저장되어 채널마다 이름이 달라도 동일 기준 상품으로 묶입니다. <b>⬇️ 내보내기</b>는 전체 매핑 스냅샷(자동+수동 전체, 저장일 포함)을 JSON 파일로 저장하고, <b>⬆️ 가져오기</b>는 그 파일을 그대로 복원합니다.</div>';
+    '<div style="font-size:11px;color:var(--dim);margin-top:8px">변경 즉시 저장·차트에 반영됩니다. 한 번 지정하면 <b>ID/SKU</b>뿐 아니라 같은 <b>채널 상품명 alias</b>도 함께 저장되어, 채널명이 달라도 모두 <b>원가 엑셀 C열 품목명</b> 기준으로 묶입니다. <b>⬇️ 내보내기</b>는 전체 매핑 스냅샷(자동+수동 전체, 저장일 포함)을 JSON 파일로 저장하고, <b>⬆️ 가져오기</b>는 그 파일을 그대로 복원합니다.</div>';
 }
 function paSetMap(ri,code){
   var r=PA_MAP_ROWS[ri]; if(!r) return;
@@ -3268,7 +3373,7 @@ function paRenderTable(){
   }).filter(function(r){ return r.cur>0||r.prev>0||r.cc>0||r.cp>0; })
     .sort(function(a,b){ return (b.cur-b.prev)-(a.cur-a.prev) || b.cur-a.cur; })
     .sort(function(a,b){ return (b.cur+b.cc)-(a.cur+a.cc) || (b.cur-a.cur); });
-  var h='<table class="tbl"><thead><tr><th style="text-align:left">#</th><th style="text-align:left">상품코드</th><th style="text-align:left">기준 상품명</th><th>채널</th><th>최근 '+PA_PERIOD+'일</th><th>이전 '+PA_PERIOD+'일</th><th>증감률</th><th>쿠팡 입고(B2B)</th><th>판정</th></tr></thead><tbody>';
+  var h='<table class="tbl"><thead><tr><th style="text-align:left">#</th><th style="text-align:left">상품코드</th><th style="text-align:left">품목명(C열)</th><th>채널</th><th>최근 '+PA_PERIOD+'일</th><th>이전 '+PA_PERIOD+'일</th><th>증감률</th><th>쿠팡 입고(B2B)</th><th>판정</th></tr></thead><tbody>';
   rows.slice(0,10).forEach(function(r,i){
     var t=r.prev>0? r.cur/r.prev-1 : (r.cur>0?1:0);
     var st,sc;
@@ -3282,7 +3387,7 @@ function paRenderTable(){
     h+='<tr><td>'+(i+1)+'</td><td style="text-align:left;font-weight:700;font-size:11px;color:var(--accent)">'+(r.o.code||'<span style="color:var(--dim)">-</span>')+'</td><td style="text-align:left">'+insCut(r.o.name,32)+'</td><td style="white-space:nowrap">'+ic+'</td><td style="font-weight:700">'+insFmt(r.cur)+'원</td><td>'+insFmt(r.prev)+'원</td><td style="color:'+(t>=0?'var(--green)':'var(--red)')+'">'+insPct(t)+'</td><td style="color:var(--cyan);font-weight:700">'+insFmt(r.cc)+'원</td><td style="color:'+sc+';font-weight:700;white-space:nowrap">'+st+'</td></tr>';
   });
   h+='</tbody></table>';
-  h+='<div style="font-size:11px;color:var(--dim);margin-top:6px">전체 '+rows.length+'개 기준 상품 중 소비자 매출 상위 10개 표시 · 매출 열은 네이버+기타마켓 소비자 매출, 쿠팡 입고는 B2B 납품금액(공급가)으로 별도 집계 · 상품코드와 원본 상품명을 함께 기준 상품 마스터에 연결하며, 미매칭은 "-" 또는 "[쿠팡]" 행으로 남깁니다</div>';
+  h+='<div style="font-size:11px;color:var(--dim);margin-top:6px">전체 '+rows.length+'개 품목 중 소비자 매출 상위 10개 표시 · 매출 열은 네이버+기타마켓 소비자 매출, 쿠팡 입고는 B2B 납품금액(공급가)으로 별도 집계 · 상품코드 판단과 화면 표시는 원가 엑셀 C열 품목명을 우선 사용하며, 채널별 상품명은 alias로 같은 품목에 연결합니다 · 미매칭은 "-" 또는 "[쿠팡]" 행으로 남깁니다</div>';
   el.innerHTML=h;
 }
 
