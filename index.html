@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>톰토미 마케팅 대시보드 v5.5</title>
+<title>톰토미 마케팅 대시보드 v5.12</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -197,7 +197,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   <div class="logo" onclick="showSec('overview',document.querySelector('.nb'))" style="cursor:pointer">
     <div class="logo-icon">TT</div>
     <div>
-      <div class="logo-text">톰토미 마케팅 대시보드 <span id="ver-chip" style="font-size:11px;color:var(--accent);font-weight:400">v5.5</span></div>
+      <div class="logo-text">톰토미 마케팅 대시보드 <span id="ver-chip" style="font-size:11px;color:var(--accent);font-weight:400">v5.12</span></div>
       <div class="logo-sub">네이버 · 쿠팡(입고기준) · 기타마켓 · 광고 ROI 통합 · Supabase 연동
         <span style="cursor:pointer;color:var(--accent);font-weight:600;margin-left:6px" onclick="document.getElementById('fileGuide').style.display=document.getElementById('fileGuide').style.display==='none'?'block':'none'">📁 파일 가이드</span>
       </div>
@@ -351,6 +351,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   <button class="nb" onclick="showSec('roi',this)">💹 영업이익</button>
   <button class="nb" onclick="showSec('compare',this)">📊 기간 비교</button>
   <button class="nb" onclick="showSec('insights',this)">💡 인사이트</button>
+  <button class="nb" onclick="showSec('prods',this)">📦 상품 분석</button>
   <button class="nb" onclick="showSec('settings',this)">⚙️ 관리자</button>
 </nav>
 
@@ -717,7 +718,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   </div>
   <!-- v5.2 버전 관리 (관리자 탭) -->
   <div class="card gf" style="margin-bottom:14px">
-    <div class="ctitle">🏷️ 버전 관리 <span class="badge ba">현재 <span id="ver-latest">v5.5</span></span></div>
+    <div class="ctitle">🏷️ 버전 관리 <span class="badge ba">현재 <span id="ver-latest">v5.12</span></span></div>
     <div class="csub">index.html을 새로 받아 적용할 때마다 버전이 올라갑니다 · 아래 표에서 지금 쓰는 버전이 최신인지 확인하세요</div>
     <div id="ver-table" style="margin-top:12px;overflow-x:auto"></div>
   </div>
@@ -788,6 +789,55 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     <div class="ctitle">🧸 키즈IP — 시리즈·테마 동향</div>
     <div class="csub">상품명 기준 시리즈/테마별 매출 비중과 증감 (기획·콘텐츠 방향 참고)</div>
     <div id="ins-ip" style="margin-top:12px;overflow-x:auto"></div>
+  </div>
+</section>
+<section id="prods" class="section">
+  <div class="shd"><div class="stitle">📦 상품 분석</div><div class="ssub">상품별 성과 — 기간·채널 필터와 상품 검색으로 어떤 상품이, 언제(일별·요일별), 어느 채널에서 잘 팔리는지 분석합니다 (쿠팡은 B2B 입고 기준 별도 표시)</div></div>
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+    <span style="font-size:12px;color:var(--dim);font-weight:700">기간</span>
+    <button class="fbtn" id="pa-t7" onclick="paSetPeriod(7)">7일</button>
+    <button class="fbtn" id="pa-t30" onclick="paSetPeriod(30)">30일</button>
+    <button class="fbtn" id="pa-t90" onclick="paSetPeriod(90)">90일</button>
+    <span style="font-size:12px;color:var(--dim);font-weight:700;margin-left:10px">채널</span>
+    <button class="fbtn" id="pa-c-all" onclick="paSetCh('all')">전체</button>
+    <button class="fbtn" id="pa-c-naver" onclick="paSetCh('naver')">🟢 네이버</button>
+    <button class="fbtn" id="pa-c-other" onclick="paSetCh('other')">🛍️ 기타마켓</button>
+    <button class="fbtn" id="pa-c-coup" onclick="paSetCh('coup')">🔵 쿠팡 입고</button>
+  </div>
+  <div style="position:relative;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <input id="pa-search" placeholder="상품명 검색 — 입력하면 후보가 표시됩니다" oninput="paSuggest()" onfocus="paSuggest()" onkeydown="if(event.key==='Enter')paPick(0)" onblur="setTimeout(function(){var el=document.getElementById('pa-suggest'); if(el) el.style.display='none';},200)" style="flex:1;min-width:280px;max-width:560px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);font-size:13px;outline:none">
+    <button class="fbtn" onclick="paOpenMap()" title="상품 매칭 수동 편집" style="white-space:nowrap">🔗 매칭 편집</button>
+    <span id="pa-range" style="font-size:12px;color:var(--dim)"></span>
+    <div id="pa-suggest" style="display:none;position:absolute;top:42px;left:0;z-index:50;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:420px;max-height:280px;overflow-y:auto"></div>
+  </div>
+  <div id="paMapModal" onclick="if(event.target===this)paCloseMap()" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(15,23,42,.45);align-items:center;justify-content:center">
+    <div style="background:var(--bg,#fff);width:min(880px,94vw);max-height:86vh;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div><div style="font-size:15px;font-weight:800">🔗 상품 매칭 편집</div><div style="font-size:11px;color:var(--dim);margin-top:2px">상품ID·SKU·상품명 → 상품코드 매핑을 직접 지정합니다 (변경 즉시 저장·반영)</div></div>
+        <div style="display:flex;gap:6px;white-space:nowrap">
+          <button class="fbtn" onclick="paExportMap()">⬇️ 내보내기</button>
+          <button class="fbtn" onclick="document.getElementById('paMapFile').click()">⬆️ 가져오기</button>
+          <input type="file" id="paMapFile" style="display:none" onchange="paImportMap(this.files[0])">
+          <button class="fbtn" onclick="paCloseMap()">닫기</button>
+        </div>
+      </div>
+      <div style="padding:8px 18px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center">
+        <button class="fbtn" id="paMap-all" onclick="paMapFilter('all')">전체</button>
+        <button class="fbtn" id="paMap-un" onclick="paMapFilter('un')">⚠️ 자동 매칭 실패만</button>
+        <span id="paMapCnt" style="font-size:11px;color:var(--dim)"></span>
+      </div>
+      <div id="paMapBody" style="overflow-y:auto;padding:6px 18px 16px"></div>
+    </div>
+  </div>
+  <div class="card gf" style="margin-bottom:14px">
+    <div class="ctitle">🔍 선택 상품 상세</div>
+    <div class="csub">채널별 판매 · 일별 추이 · 요일별 패턴 · 네이버 방문·전환 — 쿠팡은 B2B 입고(납품) 기준으로 별도 집계됩니다</div>
+    <div id="pa-detail"></div>
+  </div>
+  <div class="card gf" style="margin-bottom:14px">
+    <div class="ctitle">📋 전체 상품 현황</div>
+    <div class="csub">최근 기간 소비자 매출 상위 10개 · 전기간 대비 증감 — 쿠팡은 B2B 입고금액(공급가)으로 별도 열 표시</div>
+    <div id="pa-table" style="overflow-x:auto"></div>
   </div>
 </section>
 </main>
@@ -2438,15 +2488,18 @@ function renderSection(id){
   else if(id==='roi') renderROI();
   else if(id==='compare') initCompare();
   else if(id==='insights'){ renderInsights(); insSetPeriod(INS_PERIOD); }
+  else if(id==='prods'){ renderProdAnalysis(); }
   else if(id==='settings'){ buildPriceTable(); renderHealthCheck(); renderVersionInfo(); }
 }
 
 // ══════════════════════════════════════════
 // v5.2 버전 관리 — index.html 전달 시마다 ver/date/history를 갱신 (제목·로고 표기도 자동 동기화됨)
 var APP_VERSION = {
-  ver: 'v5.5',
-  date: '2026-09-17',
+  ver: 'v5.7',
+  date: '2026-09-22',
   history: [
+    {ver:'v5.12',date:'2026-09-22',note:'매칭 편집 저장 강화: 내보내기가 전체 매핑 스냅샷(자동+수동 전체, 저장일·버전 포함)을 JSON으로 저장, 가져오기로 그대로 복원 — 기기 이동·공유 시 동일 매핑 보장, 구버전 파일도 호환'},{ver:'v5.11',date:'2026-09-22',note:'상품 매칭 편집 기능: 상품 분석 탭 [매칭 편집] 모달 — 상품별 코드 수동 지정/해제(드롭다운), 자동 매칭 실패만 보기 필터, 브라우저 저장+내보내기/가져오기(JSON) 공유, 변경 즉시 차트 반영'},{ver:'v5.10',date:'2026-09-22',note:'상품 매칭 고도화: ID 미매칭 시 이름 정규화 유사 매칭(SET/세트·풀세트 통합, 배지/규격 토큰 제거) + 단가 검증으로 오매칭 방지 — 사운드북+위인카드 SET/세트 등 표기 변형 자동 통합'},{ver:'v5.9',date:'2026-09-22',note:'상품 분석: 전체 현황 표에 상품코드 열 추가(순위 다음), 상품명은 상품코드 기준 통일명(COST_MAPS 마스터명) 표기, 검색 추천에도 코드 표시, 매핑 검증 리포트 병행 제공'},{ver:'v5.8',date:'2026-09-22',note:'상품 분석: 상품코드 기반 채널 매칭 — 네이버 pid·쿠팡 skuNo ID 직결(20/20 SKU), 기타마켓 이름 매핑, 코드 칩 표시, 채널 필터 오류 수정'},{ver:'v5.7', date:'2026-09-22', note:"상품 분석 개선: 기간·채널 필터, 상품 검색(드롭다운 대체), 전체 현황 상위 10개, 쿠팡 입고(B2B) 채널 추가 — SKU명 규칙 자동 매칭(입고량 93%), 미매칭 SKU는 [쿠팡] 행"},
+    {ver:'v5.6', date:'2026-09-22', note:"상품 분석 탭 신설: 상품별 채널(네이버/기타마켓) 성과 · 일별·요일별 판매 패턴 · 방문·전환율 · 전체 상품 증감 현황"},
     {ver:'v5.5', date:'2026-09-17', note:"인사이트 탭에 경영진 카드 추가: 채널별 손익·영업이익 추정·마진율 (쿠팡 B2B 분리 표기)"},
     {ver:'v5.4', date:'2026-09-17', note:"인사이트 탭에 마케터 카드 추가: 채널별 광고비·ROAS(목적별 분리) · 주간 추이 · 검색어/쿠팡애즈 잘 되는 키워드"},
     {ver:'v5.3', date:'2026-09-17', note:"인사이트 탭 신설: MD팀(매출 랭킹·급등/급락) · SCM팀(판매 가속·쿠팡 입고) · 키즈IP(테마 동향) 자동 분석"},
@@ -2757,6 +2810,413 @@ function renderInsights(){
   } else ih='<div style="color:var(--dim);font-size:13px;padding:8px">테마 분석 가능한 상품 데이터가 없습니다.</div>';
   document.getElementById('ins-ip').innerHTML=ih;
 }
+// ═══ v5.6 상품 분석 (어떤 상품이 · 언제 · 어느 채널) ═══
+var PA_ITEMS=[], PA_MAP={}, PA_RANGE=null, PA_SEL=0, PA_SUGG=[], PA_PERIOD=30, PA_CH='all';
+function paNorm(n){ return String(n||'').replace(/\[[^\]]*\]/g,' ').replace(/\s+/g,' ').trim(); }
+function paShift(ds,days){ var pr=ds.split('-').map(Number); var t=new Date(pr[0],pr[1]-1,pr[2]); t.setDate(t.getDate()-days); return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0'); }
+function paChOn(ch){ return PA_CH==='all'||PA_CH===ch; }
+// ═══ v5.8 상품코드 기반 채널 매칭 ═══
+// 상품코드(SOMD-xxxx 등, COST_MAPS.master)를 공통 키로 채널별 상품을 묶는다.
+//  - 네이버: pid → COST_MAPS.naver 코드 (복합코드 '(N임시)...' 포함)
+//  - 쿠팡: skuNo(쿠팡 상품ID) → COST_MAPS.coupang 코드 — 이름 규칙 매칭 대체, ID 직결
+//  - 기타마켓: 마켓 상품ID가 데이터에 없어 상품명 → PA_NAME_CODE 매핑 사용
+var PA_CODE_NAME = { // 마스터에 없는/복합 코드의 표시명
+  '(N임시)SOMD-STKB3':'톰토미 스티커북 3종 세트',
+  '(N임시)SOMD-0006/7/8/9/10':'톰토미 노래하는 스티커북 택1',
+  '(N임시)155052/155069/155076':'톰토미 빅 롤 스티커 택1',
+  '(N임시)163471/163488':'톰토미 스티커 색칠놀이/놀이북 택1',
+  '(N임시) 164959/164966':'톰토미 한글/숫자 튼튼 택1',
+  'SOCD-0319':'톰토미 명작동화 (쿠팡 전용)'
+};
+var PA_SKU_SUPPLEMENT = { // COST_MAPS.coupang에 없는 skuNo 보강 (SKU명이 명확한 것만)
+  '54707922':'SOMD-0014',  // 톰토미 NEW 봉제인형 화이트 300mm → 뉴 봉제인형
+  '67321412':'SOMD-0020'   // 사운드북+위인카드 세트 → 풀세트
+};
+var PA_NAME_CODE = { // 기타마켓 상품명(paNorm 적용) → 상품코드
+  '톰토미 공룡 마이크':'SOMD-0015',
+  '톰토미 노래하는 공룡 아기 스티커북 세이펜 호환':'SOMD-0006',
+  '톰토미 노래하는 동물 아기 스티커북 세이펜 호환':'SOMD-0007',
+  '톰토미 노래하는 특이한생물 아기 스티커북 세이펜 호환':'SOMD-0008',
+  '톰토미 노래하는 아기 스티커북 탈것 세이펜 호환 한국어 영어':'SOMD-0009',
+  '톰토미 노래하는 스티커북 - 공룡':'SOMD-0006',
+  '톰토미 노래하는 스티커북:공룡-1개':'SOMD-0006',
+  '톰토미 노래하는 스티커북:특이한생물-1개':'SOMD-0008',
+  '톰토미 노래하는 스티커북 - 5종 세트 (공룡, 동물, 마트, 탈것, 특이한 생물)':'SOMD-0016',
+  '톰토미 스티커북 5종 세트':'SOMD-0016',
+  '톰토미 명작동화 (3CD)':'SOCD-0318',
+  '톰토미 빅 도미노 블럭 - 공룡+동물 (100pcs)':'EDST-85008',
+  '한국을 빛낸 100명의 위인들 사운드북':'SOMD-0018',
+  '한국을 빛낸 100명의 위인들 위인카드':'SOMD-0019'
+};
+var PA_NAME_KEY={}, PA_PID_KEY={}; // 방문 데이터(naverProdVisit) 조인용: 상품명/pid → 그룹키
+
+function paClean(n){
+  var s=String(n||'').toLowerCase();
+  s=s.replace(/\[[^\]]*\]/g,' ');
+  s=s.replace(/set/g,'세트').replace(/풀세트/g,'세트');
+  s=s.replace(/(톰토미블루|세이펜\s*호환|세이펜\s*연동|한국어\s*영어|단품|1ea|1개)/g,' ');
+  s=s.replace(/[^0-9가-힣a-z]/g,'');
+  return s;
+}
+function paFindCode(nm,unit){ // 이름→코드 후보 탐색. unit(단가) 있으면 이상 단가 후보 제외
+  var q=paClean(nm); if(q.length<6) return null;
+  var cands=[], seen={};
+  function add(k){ if(k&&!seen[k]){seen[k]=1;cands.push(k);} }
+  var k,c;
+  for(k in PA_NAME_CODE){ if(paClean(k)===q) add(PA_NAME_CODE[k]); }
+  for(k in COST_MAPS.master){ var mn=COST_MAPS.master[k]&&COST_MAPS.master[k].name; if(mn&&paClean(mn)===q) add(k); }
+  if(!cands.length){
+    for(k in COST_MAPS.master){
+      var mn2=COST_MAPS.master[k]&&COST_MAPS.master[k].name; if(!mn2) continue;
+      var cc=paClean(mn2);
+      if(cc.length>=10&&(q.indexOf(cc)>=0||cc.indexOf(q)>=0)) add(k);
+    }
+    for(k in PA_NAME_CODE){
+      var cc2=paClean(k);
+      if(cc2.length>=10&&(q.indexOf(cc2)>=0||cc2.indexOf(q)>=0)) add(PA_NAME_CODE[k]);
+    }
+  }
+  if(!cands.length) return null;
+  if(cands.length===1) return cands[0];
+  cands.sort(function(a,b){ // 더 긴(구체적인) 이름 우선
+    var la=(COST_MAPS.master[a]&&COST_MAPS.master[a].name)?paClean(COST_MAPS.master[a].name).length:0;
+    var lb=(COST_MAPS.master[b]&&COST_MAPS.master[b].name)?paClean(COST_MAPS.master[b].name).length:0;
+    return lb-la;
+  });
+  if(unit>0){ // 단가 검증: 원가의 0.5~5배 밖이면 제외
+    var ok=cands.filter(function(x){ var m=COST_MAPS.master[x]; return !(m&&m.cost>0&&(unit<m.cost*0.5||unit>m.cost*5)); });
+    if(ok.length) return ok[0];
+  }
+  return cands[0];
+}
+function paDisplayName(code,fb){
+  if(PA_CODE_NAME[code]) return PA_CODE_NAME[code];
+  var m=COST_MAPS.master[code];
+  return (m&&m.name)?String(m.name).replace(/\s+/g,' '):(fb||code);
+}
+function paBuild(){
+  var map={};
+  PA_NAME_KEY={}; PA_PID_KEY={};
+  function ensure(k,nm,code){ if(!map[k]) map[k]={key:k,name:nm,code:code||null,naver:{rev:0,qty:0,orders:0},other:{rev:0,qty:0,orders:0},coup:{rev:0,qty:0,orders:0},och:{},navRows:[],othRows:[],coupRows:[],coupOnly:false}; return map[k]; }
+  // 🟢 네이버 — pid → 상품코드 (코드 없으면 상품명 키)
+  (DB.naverProd||[]).forEach(function(e){
+    if(!e||!e.d||!e.name||!(e.rev||e.qty||e.orders)) return;
+    var nm=paNorm(e.name), pidS=String(e.pid||''), c=pidS?(PA_OVERRIDES.naver[pidS]||(COST_MAPS.naver[pidS]||null)):null;
+    if(c) c=String(c).trim();
+    if(!c) c=paFindCode(e.name);
+    var o=c?ensure('C:'+c,paDisplayName(c,nm),c):ensure('N:'+nm,nm);
+    if(e.pid) PA_PID_KEY[String(e.pid)]=o.key;
+    if(!PA_NAME_KEY[nm]) PA_NAME_KEY[nm]=o.key;
+    o.naver.rev+=e.rev||0; o.naver.qty+=e.qty||0; o.naver.orders+=e.orders||0;
+    o.navRows.push({d:e.d,rev:e.rev||0,qty:e.qty||0,orders:e.orders||0});
+  });
+  // 🛍️ 기타마켓 — 상품명 → 상품코드
+  (DB.other||[]).forEach(function(e){
+    if(!e||!e.d||!e.product||!e.a) return;
+    var nm=paNorm(e.product), c=PA_OVERRIDES.other[nm]||PA_NAME_CODE[nm]||paFindCode(e.product);
+    var o=c?ensure('C:'+c,paDisplayName(c,nm),c):ensure('O:'+nm,nm);
+    o.other.rev+=e.a||0; o.other.qty+=e.qty||0; o.other.orders+=1;
+    var m=e.m||'기타'; if(!o.och[m]) o.och[m]={rev:0,qty:0};
+    o.och[m].rev+=e.a||0; o.och[m].qty+=e.qty||0;
+    o.othRows.push({d:e.d,rev:e.a||0,qty:e.qty||0,orders:1});
+  });
+  // 🔵 쿠팡 입고(B2B) — skuNo(쿠팡 상품ID) → 상품코드, 미매칭은 [쿠팡] 별도 행
+  (DB.coupStock||[]).forEach(function(e){
+    if(!e||!e.d||e.div!=='발주') return;
+    var sku=String(e.sku||''), skuNo=String(e.skuNo||''), c=null;
+    var cm=COST_MAPS.coupang[skuNo]; if(cm&&cm.code) c=String(cm.code);
+    if(!c) c=PA_OVERRIDES.coup[skuNo]||null;
+    var rev=toNum(e.a!==undefined?e.a:e.totalUnit), qty=e.qty||0;
+    if(!c) c=PA_SKU_SUPPLEMENT[skuNo]||paFindCode(sku, qty>0?rev/qty:0);
+    if(!c&&!sku) return;
+    var o;
+    if(c) o=ensure('C:'+c,paDisplayName(c,sku),c);
+    else { o=ensure('X:'+sku,'[쿠팡] '+sku); o.coupOnly=true; }
+    o.coup.rev+=rev; o.coup.qty+=qty; o.coup.orders+=1;
+    o.coupRows.push({d:e.d,rev:rev,qty:qty,orders:1});
+  });
+  PA_MAP=map;
+  PA_ITEMS=Object.keys(map).map(function(k){ return map[k]; });
+  PA_ITEMS.sort(function(a,b){ return (b.naver.rev+b.other.rev+b.coup.rev)-(a.naver.rev+a.other.rev+a.coup.rev); });
+}
+
+function paStyleBtns(){
+  [7,30,90].forEach(function(v){
+    var b=document.getElementById('pa-t'+v);
+    if(b){ b.style.background=v===PA_PERIOD?'var(--s3)':''; b.style.fontWeight=v===PA_PERIOD?'700':'400'; }
+  });
+  [['all','pa-c-all'],['naver','pa-c-naver'],['other','pa-c-other'],['coup','pa-c-coup']].forEach(function(x){
+    var b=document.getElementById(x[1]);
+    if(b){ b.style.background=PA_CH===x[0]?'var(--s3)':''; b.style.fontWeight=PA_CH===x[0]?'700':'400'; }
+  });
+}
+function renderProdAnalysis(){
+  var inp=document.getElementById('pa-search'); if(!inp) return;
+  paBuild();
+  var anchor=null;
+  (DB.naverProd||[]).forEach(function(e){ if(e&&e.d&&(!anchor||e.d>anchor)) anchor=e.d; });
+  (DB.other||[]).forEach(function(e){ if(e&&e.d&&(!anchor||e.d>anchor)) anchor=e.d; });
+  (DB.coupStock||[]).forEach(function(e){ if(e&&e.d&&e.div==='발주'&&(!anchor||e.d>anchor)) anchor=e.d; });
+  if(PA_SEL>=PA_ITEMS.length) PA_SEL=0;
+  if(PA_ITEMS.length) inp.value=PA_ITEMS[PA_SEL].name; else inp.value='';
+  if(anchor){
+    PA_RANGE={anchor:anchor,curStart:paShift(anchor,PA_PERIOD-1),prevStart:paShift(anchor,PA_PERIOD),prevEnd:paShift(anchor,PA_PERIOD*2-1)};
+    document.getElementById('pa-range').textContent='데이터 기준일 '+anchor+' · 최근 '+PA_PERIOD+'일('+PA_RANGE.curStart+'~'+anchor+') vs 이전 '+PA_PERIOD+'일('+PA_RANGE.prevStart+'~'+PA_RANGE.prevEnd+')';
+  } else { PA_RANGE=null; document.getElementById('pa-range').textContent=''; }
+  paStyleBtns();
+  paRenderDetail();
+  paRenderTable();
+}
+function paSetPeriod(n){ PA_PERIOD=n; if(PA_RANGE){ PA_RANGE.curStart=paShift(PA_RANGE.anchor,PA_PERIOD-1); PA_RANGE.prevStart=paShift(PA_RANGE.anchor,PA_PERIOD); PA_RANGE.prevEnd=paShift(PA_RANGE.anchor,PA_PERIOD*2-1); document.getElementById('pa-range').textContent='데이터 기준일 '+PA_RANGE.anchor+' · 최근 '+PA_PERIOD+'일('+PA_RANGE.curStart+'~'+PA_RANGE.anchor+') vs 이전 '+PA_PERIOD+'일('+PA_RANGE.prevStart+'~'+PA_RANGE.prevEnd+')'; } paStyleBtns(); paRenderDetail(); paRenderTable(); }
+function paSetCh(ch){ PA_CH=ch; paStyleBtns(); paRenderDetail(); paRenderTable(); }
+// ── v5.11 매핑 수동 편집(오버라이드) ──
+var PA_OVERRIDES={naver:{},coup:{},other:{}};
+(function(){ try{ var sv=localStorage.getItem('tt_match_overrides'); if(sv){ var o=JSON.parse(sv); if(o){ PA_OVERRIDES.naver=o.naver||{}; PA_OVERRIDES.coup=o.coup||{}; PA_OVERRIDES.other=o.other||{}; } } }catch(e){} })();
+function paSaveOverrides(){ try{ localStorage.setItem('tt_match_overrides',JSON.stringify(PA_OVERRIDES)); }catch(e){} }
+function paCurCode(ch,id,raw){ // 현재 유효 코드 (수동 지정 → 자동 순)
+  if(ch==='naver'){
+    if(PA_OVERRIDES.naver[id]) return PA_OVERRIDES.naver[id];
+    var c=COST_MAPS.naver[id]; if(c) return String(c).trim();
+    return paFindCode(raw);
+  }
+  if(ch==='coup'){
+    if(PA_OVERRIDES.coup[id]) return PA_OVERRIDES.coup[id];
+    var m=COST_MAPS.coupang[id]; if(m&&m.code) return String(m.code);
+    if(PA_SKU_SUPPLEMENT[id]) return PA_SKU_SUPPLEMENT[id];
+    return paFindCode(raw,0);
+  }
+  if(PA_OVERRIDES.other[id]) return PA_OVERRIDES.other[id];
+  if(PA_NAME_CODE[id]) return PA_NAME_CODE[id];
+  return paFindCode(raw);
+}
+var PA_MAP_ROWS=[], PA_MAP_VIEW='all', CH_LBL={naver:'🟢 네이버',coup:'🔵 쿠팡',other:'🛍️ 기타'};
+function paMapRows(){
+  var rows=[], sn={}, sc={}, so={};
+  (DB.naverProd||[]).forEach(function(e){ if(!e||!e.name) return; var pid=String(e.pid||''); if(!pid||sn[pid]) return; sn[pid]=1; rows.push({ch:'naver',id:pid,nm:String(e.name)}); });
+  (DB.coupStock||[]).forEach(function(e){ if(!e||e.div!=='발주') return; var sku=String(e.skuNo||''); if(!sku||sc[sku]) return; sc[sku]=1; rows.push({ch:'coup',id:sku,nm:String(e.sku||'')}); });
+  (DB.other||[]).forEach(function(e){ if(!e||!e.product) return; var nm=paNorm(e.product); if(!nm||so[nm]) return; so[nm]=1; rows.push({ch:'other',id:nm,nm:String(e.product)}); });
+  return rows;
+}
+function paOpenMap(){ PA_MAP_ROWS=paMapRows(); PA_MAP_VIEW='all'; var m=document.getElementById('paMapModal'); if(m) m.style.display='flex'; paRenderMap(); }
+function paCloseMap(){ var m=document.getElementById('paMapModal'); if(m) m.style.display='none'; renderProdAnalysis(); }
+function paMapFilter(v){ PA_MAP_VIEW=v; paRenderMap(); }
+function paMapOpts(cur){
+  var h='<option value=""'+(cur?'':' selected')+'>— 미매칭 —</option>';
+  Object.keys(COST_MAPS.master).forEach(function(c){ var n=(COST_MAPS.master[c]&&COST_MAPS.master[c].name)||''; h+='<option value="'+c+'"'+(c===cur?' selected':'')+'>'+c+' · '+insCut(String(n).replace(/\s+/g,' '),22)+'</option>'; });
+  Object.keys(PA_CODE_NAME).forEach(function(c){ h+='<option value="'+c+'"'+(c===cur?' selected':'')+'>'+c+' · '+insCut(PA_CODE_NAME[c],22)+'</option>'; });
+  return h;
+}
+function paRenderMap(){
+  var el=document.getElementById('paMapBody'); if(!el) return;
+  var rows=PA_MAP_ROWS.map(function(r,i){ r.ri=i; r.cur=paCurCode(r.ch,r.id,r.nm); return r; });
+  rows.sort(function(a,b){ return (a.cur?1:0)-(b.cur?1:0) || a.ch.localeCompare(b.ch) || a.id.localeCompare(b.id); });
+  var un=rows.filter(function(r){ return !r.cur; }).length;
+  var view=rows.filter(function(r){ return PA_MAP_VIEW==='all'||!r.cur; });
+  var cnt=document.getElementById('paMapCnt'); if(cnt) cnt.textContent='총 '+rows.length+'개 · 자동 매칭 실패 '+(un?un+'개 ⚠️':'0개 ✅');
+  var b1=document.getElementById('paMap-all'), b2=document.getElementById('paMap-un');
+  if(b1){ b1.style.background=PA_MAP_VIEW==='all'?'var(--s3)':''; b1.style.fontWeight=PA_MAP_VIEW==='all'?'700':'400'; }
+  if(b2){ b2.style.background=PA_MAP_VIEW==='un'?'var(--s3)':''; b2.style.fontWeight=PA_MAP_VIEW==='un'?'700':'400'; }
+  el.innerHTML='<table class="tbl" style="margin-top:6px"><thead><tr><th style="text-align:left">채널</th><th style="text-align:left">대상 (ID / SKU / 상품명)</th><th style="text-align:left;width:300px">상품코드 매핑</th><th>상태</th></tr></thead><tbody>'+
+    (view.map(function(r){
+      var sel='<select onchange="paSetMap('+r.ri+',this.value)" style="width:100%;padding:5px 6px;border:1px solid var(--border);border-radius:6px;font-size:11px;background:#fff">'+paMapOpts(r.cur)+'</select>';
+      return '<tr><td style="white-space:nowrap;font-weight:700">'+CH_LBL[r.ch]+'</td><td style="text-align:left"><div style="font-size:12px">'+insCut(r.nm,42)+'</div><div style="font-size:10px;color:var(--dim)">'+insCut(String(r.id),38)+'</div></td><td>'+sel+'</td><td style="white-space:nowrap">'+(r.cur?'<span style="color:var(--green);font-weight:700">✓ '+r.cur+'</span>':'<span style="color:var(--orange);font-weight:700">⚠️ 미매칭</span>')+'</td></tr>';
+    }).join('')||'<tr><td colspan="4" style="color:var(--dim);padding:14px">표시할 항목이 없습니다 🎉</td></tr>')+'</tbody></table>'+
+    '<div style="font-size:11px;color:var(--dim);margin-top:8px">변경 즉시 저장·차트에 반영됩니다. <b>⬇️ 내보내기</b>는 전체 매핑 스냅샷(자동+수동 전체, 저장일 포함)을 JSON 파일로 받고, <b>⬆️ 가져오기</b>는 그 파일을 그대로 복원합니다 — 다른 PC·다른 브라우저에서도 동일한 매핑이 적용됩니다. 자동 매칭이 틀렸을 때만 고치면 됩니다.</div>';
+}
+function paSetMap(ri,code){
+  var r=PA_MAP_ROWS[ri]; if(!r) return;
+  if(code) PA_OVERRIDES[r.ch][r.id]=code; else delete PA_OVERRIDES[r.ch][r.id];
+  paSaveOverrides();
+  PA_MAP_ROWS=paMapRows(); paRenderMap(); renderProdAnalysis();
+}
+function paExportMap(){
+  try{
+    var snap=paMapRows().map(function(r){ return {ch:r.ch,id:r.id,nm:r.nm,code:paCurCode(r.ch,r.id,r.nm)||null}; });
+    var today=new Date().toISOString().slice(0,10);
+    var data={type:'tt_match_overrides',version:2,exportedAt:today,app:APP_VERSION.ver,overrides:PA_OVERRIDES,snapshot:snap};
+    var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='tt_match_overrides_'+today+'.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href);
+  }catch(e){ alert('내보내기 실패: '+e.message); }
+}
+function paImportMap(file){
+  if(!file) return;
+  var rd=new FileReader();
+  rd.onload=function(e){
+    try{
+      var o=JSON.parse(e.target.result);
+      PA_OVERRIDES.naver={}; PA_OVERRIDES.coup={}; PA_OVERRIDES.other={};
+      var cnt=0;
+      if(o&&o.type==='tt_match_overrides'&&o.snapshot&&o.snapshot.length){
+        o.snapshot.forEach(function(r){ if(r&&r.ch&&r.id&&r.code){ PA_OVERRIDES[r.ch][r.id]=r.code; cnt++; } });
+        if(o.overrides){ ['naver','coup','other'].forEach(function(k){ var src=o.overrides[k]||{}; for(var id in src){ PA_OVERRIDES[k][id]=src[id]; cnt++; } }); }
+        alert('✅ 매핑 스냅샷을 불러왔습니다 ('+cnt+'건 · 저장일 '+(o.exportedAt||'?')+')');
+      } else if(o&&o.naver){
+        ['naver','coup','other'].forEach(function(k){ var src=o[k]||{}; for(var id in src){ PA_OVERRIDES[k][id]=src[id]; cnt++; } });
+        alert('✅ 매핑을 가져왔습니다 ('+cnt+'건)');
+      } else { alert('❌ 매핑 파일 형식이 아닙니다 (내보낸 JSON을 선택해주세요)'); return; }
+      paSaveOverrides(); PA_MAP_ROWS=paMapRows(); paRenderMap(); renderProdAnalysis();
+    }catch(err){ alert('❌ JSON 파일을 읽을 수 없어요: '+err.message); }
+  };
+  rd.readAsText(file);
+}
+function paSuggest(){
+  var inp=document.getElementById('pa-search'), el=document.getElementById('pa-suggest');
+  if(!inp||!el) return;
+  var q=paNorm(inp.value).toLowerCase();
+  var list=[];
+  PA_ITEMS.forEach(function(o,i){ if(!q||paNorm(o.name).toLowerCase().indexOf(q)>=0) list.push({o:o,i:i}); });
+  list=list.slice(0,8);
+  PA_SUGG=list.map(function(x){ return x.i; });
+  if(!PA_ITEMS.length){ el.innerHTML='<div style="padding:10px;color:var(--dim);font-size:12px">상품 데이터가 없습니다</div>'; el.style.display='block'; return; }
+  el.innerHTML=list.map(function(x,si){
+    var o=x.o;
+    return '<div onclick="paPick('+si+')" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:12px;display:flex;justify-content:space-between;gap:10px;align-items:center" onmouseover="this.style.background=\'var(--s1)\'" onmouseout="this.style.background=\'\'"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(o.naver.rev>0?'🟢':'')+(o.other.rev>0?'🛍️':'')+(o.coup.rev>0?'🔵':'')+' '+(o.code?o.code+' · ':'')+insCut(o.name,26)+'</span><b style="white-space:nowrap">'+insFmt(o.naver.rev+o.other.rev)+'원</b></div>';
+  }).join('')||'<div style="padding:10px;color:var(--dim);font-size:12px">일치하는 상품이 없습니다</div>';
+  el.style.display='block';
+}
+function paPick(si){
+  if(PA_SUGG[si]!==undefined){
+    PA_SEL=PA_SUGG[si];
+    var inp=document.getElementById('pa-search');
+    if(inp&&PA_ITEMS[PA_SEL]) inp.value=PA_ITEMS[PA_SEL].name;
+  }
+  var el=document.getElementById('pa-suggest'); if(el) el.style.display='none';
+  paRenderDetail();
+}
+function paBars(vals,color,labelEvery){
+  var mx=Math.max.apply(null,vals.concat([1]));
+  var h='<div style="display:flex;align-items:flex-end;gap:3px;height:90px;margin-top:8px">';
+  vals.forEach(function(v,i){
+    var pct=mx>0?Math.max(v/mx*100,v>0?4:1):1;
+    h+='<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%" title="'+insFmt(v)+'원"><div style="width:100%;background:'+(v>0?color:'var(--s2)')+';height:'+pct+'%;border-radius:3px 3px 0 0"></div>';
+    h+='<div style="font-size:9px;color:var(--dim);margin-top:3px;white-space:nowrap">'+((labelEvery&&i%labelEvery===0)?v:'')+'</div></div>';
+  });
+  return h+'</div>';
+}
+function paRenderDetail(){
+  var el=document.getElementById('pa-detail'); if(!el) return;
+  if(!PA_RANGE||!PA_ITEMS.length||!PA_ITEMS[PA_SEL]){ el.innerHTML='<div style="color:var(--dim);font-size:13px;padding:8px">상품 데이터가 아직 없습니다.</div>'; return; }
+  var o=PA_ITEMS[PA_SEL], R=PA_RANGE;
+  function inW(d,a,b){ return d>=a&&d<=b; }
+  var dow={};
+  ['일','월','화','수','목','금','토'].forEach(function(d,i){ dow[i]={rev:0,qty:0}; });
+  function agg(rows,useCh){
+    var cur={rev:0,qty:0,orders:0}, prev={rev:0,qty:0,orders:0};
+    (rows||[]).forEach(function(e){
+      var di=(new Date(e.d+'T00:00:00')).getDay();
+      if(inW(e.d,paShift(R.anchor,89),R.anchor)){ dow[di].rev+=e.rev||0; dow[di].qty+=e.qty||0; }
+      if(!useCh||!paChOn(useCh)) return;
+      if(inW(e.d,R.curStart,R.anchor)){ cur.rev+=e.rev||0; cur.qty+=e.qty||0; cur.orders+=e.orders||0; }
+      else if(inW(e.d,R.prevStart,R.prevEnd)){ prev.rev+=e.rev||0; prev.qty+=e.qty||0; prev.orders+=e.orders||0; }
+    });
+    return {cur:cur,prev:prev};
+  }
+  var nA=agg(o.navRows,'naver'), oA=agg(o.othRows,'other'), cA=agg(o.coupRows,'coup');
+  var daily={};
+  function addDaily(rows,useCh){
+    if(!useCh||!paChOn(useCh)) return;
+    (rows||[]).forEach(function(e){ if(inW(e.d,R.curStart,R.anchor)) daily[e.d]=(daily[e.d]||0)+(e.rev||0); });
+  }
+  addDaily(o.navRows,'naver'); addDaily(o.othRows,'other'); addDaily(o.coupRows,'coup');
+  var consCur=nA.cur.rev+oA.cur.rev, consPrev=nA.prev.rev+oA.prev.rev;
+  var trend=consPrev>0? consCur/consPrev-1 : (consCur>0?1:0);
+  var coupTrend=cA.prev.rev>0? cA.cur.rev/cA.prev.rev-1 : (cA.cur.rev>0?1:0);
+  var h='<div style="font-size:14px;font-weight:800;margin-bottom:6px">'+(o.code?'<span style="font-size:12px;font-weight:700;color:var(--accent);background:var(--s2);border-radius:4px;padding:2px 8px;vertical-align:middle;margin-right:8px">'+o.code+'</span>':'')+insCut(o.name,40)+'</div>';
+  h+='<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:10px">';
+  if(PA_CH==='all'){
+    h+='<div><div style="font-size:11px;color:var(--dim)">소비자 매출 (네이버+기타)</div><div style="font-size:18px;font-weight:800">'+insFmt(consCur)+'원 <span style="font-size:12px;color:'+(trend>=0?'var(--green)':'var(--red)')+'">'+insPct(trend)+'</span></div></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">🔵 쿠팡 입고 (B2B, 별도)</div><div style="font-size:18px;font-weight:800">'+insFmt(cA.cur.rev)+'원</div></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">판매수량</div><div style="font-size:18px;font-weight:800">'+insFmt(nA.cur.qty+oA.cur.qty)+'개</div></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">주문건수</div><div style="font-size:18px;font-weight:800">'+insFmt(nA.cur.orders+oA.cur.orders)+'</div></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">채널 비중</div><div style="font-size:13px;font-weight:700;margin-top:4px">'+(consCur>0?'🟢 '+(nA.cur.rev/consCur*100).toFixed(0)+'% · 🛍️ '+(oA.cur.rev/consCur*100).toFixed(0)+'%':'—')+(cA.cur.rev>0?' · 🔵 입고 '+insFmt(cA.cur.qty)+'개':'')+'</div></div>';
+  } else {
+    var lbl=PA_CH==='naver'?'🟢 네이버 매출':(PA_CH==='other'?'🛍️ 기타마켓 매출':'🔵 쿠팡 입고 (B2B)');
+    var A_=PA_CH==='naver'?nA:(PA_CH==='other'?oA:cA);
+    var tr=A_.prev.rev>0? A_.cur.rev/A_.prev.rev-1 : (A_.cur.rev>0?1:0);
+    h+='<div><div style="font-size:11px;color:var(--dim)">'+lbl+' (최근 '+PA_PERIOD+'일)</div><div style="font-size:18px;font-weight:800">'+insFmt(A_.cur.rev)+'원 <span style="font-size:12px;color:'+(tr>=0?'var(--green)':'var(--red)')+'">'+insPct(tr)+'</span></div></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">수량</div><div style="font-size:18px;font-weight:800">'+insFmt(A_.cur.qty)+'개</div></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">건수</div><div style="font-size:18px;font-weight:800">'+insFmt(A_.cur.orders)+'</div></div>';
+   }
+  h+='</div>';
+  // 채널별 표 (필터와 무관하게 전 채널 비교)
+  h+='<div style="font-size:12px;font-weight:700;margin:10px 0 6px">🛒 어느 채널에서 팔리나</div>';
+  h+='<table class="tbl"><thead><tr><th style="text-align:left">채널</th><th>최근 '+PA_PERIOD+'일</th><th>이전 '+PA_PERIOD+'일</th><th>증감</th><th>수량</th><th>건수</th></tr></thead><tbody>';
+  function chTR(lbl,c,pr,note){
+    var r=pr.rev>0? c.rev/pr.rev-1 : (c.rev>0?1:0);
+    return '<tr><td style="text-align:left;font-weight:700">'+lbl+(note?' <span style="font-size:10px;color:var(--dim)">'+note+'</span>':'')+'</td><td>'+insFmt(c.rev)+'원</td><td>'+insFmt(pr.rev)+'원</td><td style="color:'+(r>=0?'var(--green)':'var(--red)')+';font-weight:700">'+insPct(r)+'</td><td>'+insFmt(c.qty)+'</td><td>'+insFmt(c.orders)+'</td></tr>';
+  }
+  h+=chTR('🟢 네이버',nA.cur,nA.prev);
+  h+=chTR('🛍️ 기타마켓',oA.cur,oA.prev);
+  h+=chTR('🔵 쿠팡 입고',cA.cur,cA.prev,'B2B 납품');
+  Object.keys(o.och).sort(function(a,b){ return o.och[b].rev-o.och[a].rev; }).slice(0,4).forEach(function(m){
+    h+='<tr><td style="text-align:left;padding-left:18px;color:var(--dim)">↳ '+insCut(m,18)+'</td><td>'+insFmt(o.och[m].rev)+'원</td><td colspan="4" style="color:var(--dim)">'+insFmt(o.och[m].qty)+'개</td></tr>';
+  });
+  h+='</tbody></table>';
+  // 일별 추이
+  h+='<div style="font-size:12px;font-weight:700;margin:14px 0 2px">📈 언제 팔리나 — 일별 '+(PA_CH==='coup'?'쿠팡 입고금액':'소비자 매출')+' (최근 '+PA_PERIOD+'일)</div>';
+  var dvals=[];
+  for(var i=PA_PERIOD-1;i>=0;i--){ var d=paShift(R.anchor,i); dvals.push(daily[d]||0); }
+  h+=paBars(dvals,'var(--accent)',Math.ceil(PA_PERIOD/6));
+  h+='<div style="font-size:10px;color:var(--dim);text-align:right">막대에 마우스를 올리면 금액이 보입니다</div>';
+  // 요일별
+  h+='<div style="font-size:12px;font-weight:700;margin:14px 0 2px">📅 요일별 패턴 (최근 90일)</div>';
+  var maxDow=Math.max.apply(null,Object.keys(dow).map(function(k){ return dow[k].rev; }).concat([1]));
+  var best=0,worst=0;
+  Object.keys(dow).forEach(function(k){ if(dow[k].rev>dow[best].rev) best=Number(k); if(dow[k].rev<dow[worst].rev) worst=Number(k); });
+  var DL=['일','월','화','수','목','금','토'];
+  h+='<div style="display:flex;gap:8px;align-items:flex-end;height:80px;margin-top:8px">';
+  Object.keys(dow).forEach(function(k){
+    var pct=dow[k].rev>0?Math.max(dow[k].rev/maxDow*100,3):2;
+    h+='<div style="flex:1;text-align:center"><div style="font-size:10px;color:var(--dim)">'+(dow[k].rev>0?insFmt(dow[k].rev/1000)+'k':'-')+'</div><div style="background:'+(Number(k)===best?'var(--green)':(Number(k)===worst?'var(--red)':'var(--s3)'))+';height:'+pct+'%;border-radius:4px 4px 0 0;margin-top:3px"></div><div style="font-size:11px;font-weight:700;margin-top:3px">'+DL[k]+'</div></div>';
+  });
+  h+='</div>';
+  h+='<div style="font-size:11px;color:var(--dim);margin-top:4px">잘 팔리는 요일: <b style="color:var(--green)">'+DL[best]+'</b> · 가장 약한 요일: <b style="color:var(--red)">'+DL[worst]+'</b> (데이터 기준 자동 계산)</div>';
+  // 네이버 방문·전환
+  if(paChOn('naver')){
+    var vis={visits:0,orders:0,rev:0};
+    (DB.naverProdVisit||[]).forEach(function(e){
+      if(!e||!e.d||!inW(e.d,R.curStart,R.anchor)) return;
+      var vk=(e.pid&&PA_PID_KEY[String(e.pid)])||PA_NAME_KEY[paNorm(e.name)]; if(vk&&vk===o.key){ vis.visits+=e.visits||0; vis.orders+=e.orders||0; vis.rev+=e.rev||0; }
+    });
+    if(vis.visits>0){
+      h+='<div style="font-size:12px;font-weight:700;margin:14px 0 6px">👀 네이버 방문·전환 (최근 '+PA_PERIOD+'일)</div>';
+      h+='<table class="tbl"><tbody><tr><td style="text-align:left">방문수</td><td style="font-weight:700">'+insFmt(vis.visits)+'</td><td style="text-align:left">결제건수</td><td style="font-weight:700">'+insFmt(vis.orders)+'</td><td style="text-align:left">전환율</td><td style="font-weight:700;color:'+(vis.orders/vis.visits>=0.03?'var(--green)':'var(--orange)')+'">'+(vis.visits>0?(vis.orders/vis.visits*100).toFixed(1):'0')+'%</td></tr></tbody></table>';
+    }
+  }
+  el.innerHTML=h;
+}
+function paRenderTable(){
+  var el=document.getElementById('pa-table'); if(!el) return;
+  if(!PA_RANGE||!PA_ITEMS.length){ el.innerHTML='<div style="color:var(--dim);font-size:13px;padding:8px">상품 데이터가 아직 없습니다.</div>'; return; }
+  var R=PA_RANGE;
+  function inW(d,a,b){ return d>=a&&d<=b; }
+  var rows=PA_ITEMS.map(function(o){
+    var cur=0,prev=0,cc=0,cp=0;
+    o.navRows.forEach(function(e){ if(inW(e.d,R.curStart,R.anchor)) cur+=e.rev; else if(inW(e.d,R.prevStart,R.prevEnd)) prev+=e.rev; });
+    o.othRows.forEach(function(e){ if(inW(e.d,R.curStart,R.anchor)) cur+=e.rev; else if(inW(e.d,R.prevStart,R.prevEnd)) prev+=e.rev; });
+    o.coupRows.forEach(function(e){ if(inW(e.d,R.curStart,R.anchor)) cc+=e.rev; else if(inW(e.d,R.prevStart,R.prevEnd)) cp+=e.rev; });
+    return {o:o,cur:cur,prev:prev,cc:cc,cp:cp};
+  }).filter(function(r){ return r.cur>0||r.prev>0||r.cc>0||r.cp>0; })
+    .sort(function(a,b){ return (b.cur-b.prev)-(a.cur-a.prev) || b.cur-a.cur; })
+    .sort(function(a,b){ return (b.cur+b.cc)-(a.cur+a.cc) || (b.cur-a.cur); });
+  var h='<table class="tbl"><thead><tr><th style="text-align:left">#</th><th style="text-align:left">상품코드</th><th style="text-align:left">상품</th><th>채널</th><th>최근 매출</th><th>이전</th><th>증감</th><th>🔵 쿠팡 입고</th><th>상태</th></tr></thead><tbody>';
+  rows.slice(0,10).forEach(function(r,i){
+    var t=r.prev>0? r.cur/r.prev-1 : (r.cur>0?1:0);
+    var st,sc;
+    if(r.cur===0&&r.prev===0&&r.cc>0){ st='🔵 B2B'; sc='var(--cyan)'; }
+    else if(r.prev===0&&r.cur>0){ st='🆕 신규'; sc='var(--cyan)'; }
+    else if(t>=0.5){ st='🚀 급등'; sc='var(--green)'; }
+    else if(t<=-0.4){ st='📉 급락'; sc='var(--red)'; }
+    else if(r.cur===0){ st='⚠️ 판매 정지'; sc='var(--orange)'; }
+    else { st='유지'; sc='var(--dim)'; }
+    var ic=(r.o.naver.rev>0?'🟢 ':'')+(r.o.other.rev>0?'🛍️ ':'')+(r.o.coup.rev>0?'🔵':'');
+    h+='<tr><td>'+(i+1)+'</td><td style="text-align:left;font-weight:700;font-size:11px;color:var(--accent)">'+(r.o.code||'<span style="color:var(--dim)">-</span>')+'</td><td style="text-align:left">'+insCut(r.o.name,32)+'</td><td style="white-space:nowrap">'+ic+'</td><td style="font-weight:700">'+insFmt(r.cur)+'원</td><td>'+insFmt(r.prev)+'원</td><td style="color:'+(t>=0?'var(--green)':'var(--red)')+'">'+insPct(t)+'</td><td style="color:var(--cyan);font-weight:700">'+insFmt(r.cc)+'원</td><td style="color:'+sc+';font-weight:700;white-space:nowrap">'+st+'</td></tr>';
+  });
+  h+='</tbody></table>';
+  h+='<div style="font-size:11px;color:var(--dim);margin-top:6px">전체 '+rows.length+'개 상품 중 소비자 매출 상위 10개 표시 · 매출 열은 네이버+기타마켓 소비자 매출, 쿠팡 입고는 B2B 납품금액(공급가)으로 별도 집계 · 상품코드(SOMD 등) 기준으로 채널 간 상품 매칭·상품명 통일(COST_MAPS 마스터명), 미매칭은 "-" 표기 또는 "[쿠팡]" 접두어 행</div>';
+  el.innerHTML=h;
+}
+
 // v5.1 데이터 건강검진 + 이상신호 감지 (2026-09)
 // ══════════════════════════════════════════
 // 감지 기준 — 원하면 이 숫자만 수정하면 됨
