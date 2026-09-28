@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>톰토미 마케팅 대시보드 v5.12</title>
+<title>톰토미 마케팅 대시보드 v5.13</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -197,7 +197,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   <div class="logo" onclick="showSec('overview',document.querySelector('.nb'))" style="cursor:pointer">
     <div class="logo-icon">TT</div>
     <div>
-      <div class="logo-text">톰토미 마케팅 대시보드 <span id="ver-chip" style="font-size:11px;color:var(--accent);font-weight:400">v5.12</span></div>
+      <div class="logo-text">톰토미 마케팅 대시보드 <span id="ver-chip" style="font-size:11px;color:var(--accent);font-weight:400">v5.13</span></div>
       <div class="logo-sub">네이버 · 쿠팡(입고기준) · 기타마켓 · 광고 ROI 통합 · Supabase 연동
         <span style="cursor:pointer;color:var(--accent);font-weight:600;margin-left:6px" onclick="document.getElementById('fileGuide').style.display=document.getElementById('fileGuide').style.display==='none'?'block':'none'">📁 파일 가이드</span>
       </div>
@@ -718,7 +718,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   </div>
   <!-- v5.2 버전 관리 (관리자 탭) -->
   <div class="card gf" style="margin-bottom:14px">
-    <div class="ctitle">🏷️ 버전 관리 <span class="badge ba">현재 <span id="ver-latest">v5.12</span></span></div>
+    <div class="ctitle">🏷️ 버전 관리 <span class="badge ba">현재 <span id="ver-latest">v5.13</span></span></div>
     <div class="csub">index.html을 새로 받아 적용할 때마다 버전이 올라갑니다 · 아래 표에서 지금 쓰는 버전이 최신인지 확인하세요</div>
     <div id="ver-table" style="margin-top:12px;overflow-x:auto"></div>
   </div>
@@ -1917,6 +1917,8 @@ function parseNewSales(wb, filename){
 
   for(var i=1;i<rows.length;i++){
     var r=rows[i];
+    var rawDate=String(r[iDate]==null?'':r[iDate]);
+    if(/[~〜–—]/.test(rawDate)) continue; // v5.13: 기간 합계행(예: 2026-09-22~2026-09-27) 스킵 — 시작일 매출로 오합산되던 버그
     var ds=normalizeDate(r[iDate]);
     if(!ds) continue;
     var name=String(r[iName]||'');
@@ -1982,7 +1984,43 @@ function parseNewSales(wb, filename){
     DB.naverProd.push.apply(DB.naverProd, prodEntries);
     prodEntries.forEach(function(e){ markTouched('naverProd',e.d); });
   }
+  healNaverTotals();
   return naverEntries.length>0 || prodEntries.length>0;
+}
+
+// v5.13: 기존에 잘못 흡수된 '기간 합계행' 자동 정리 — 같은 날짜의 newSales 행들에서
+// 결제건수/매출/방문이 나머지 합계보다 모두 크면 기간합계 행으로 판단해 제거, 완전중복도 제거
+function healNaverTotals(){
+  try{
+    var byD={};
+    (DB.naver||[]).forEach(function(e,i){ if(e&&e.src==='newSales'&&e.d){ (byD[e.d]=byD[e.d]||[]).push(i); } });
+    var drop={};
+    Object.keys(byD).forEach(function(d){
+      var idx=byD[d]; if(idx.length<2) return;
+      var seen={};
+      idx.forEach(function(i){
+        var e=DB.naver[i];
+        var k=[e.o,e.r,e.visits,e.refund].join('|');
+        if(seen[k]!==undefined){ drop[i]=1; } else seen[k]=i;
+      });
+      var rest=idx.filter(function(i){ return !drop[i]; });
+      if(rest.length<2) return;
+      rest.forEach(function(i){
+        var x=DB.naver[i];
+        var so=0,sr=0,sg=0,sv=0;
+        rest.forEach(function(j){ if(j!==i){ var y=DB.naver[j]; so+=y.o||0; sr+=y.r||0; sg+=y.rev_gross||0; sv+=y.visits||0; } });
+        if((x.o||0)>so&&(x.r||0)>sr&&(x.rev_gross||0)>sg&&(x.visits||0)>sv) drop[i]=1;
+      });
+    });
+    var n=Object.keys(drop).map(Number).filter(function(i){ return !isNaN(i)&&drop[i]; });
+    if(n.length){
+      DB.naver=DB.naver.filter(function(e,i){ return !drop[i]; });
+      console.log('[v5.13] 기간합계 오기입 행 자동 정리:',n.length,'건');
+      if(typeof renderAll==='function'){ try{ renderAll(); }catch(e){} }
+      return n.length;
+    }
+    return 0;
+  }catch(err){ console.error('healNaverTotals:',err); return 0; }
 }
 
 // 상품별/경로별 방문분석 (visit) — 컬럼 기반 자동 구분
@@ -2498,7 +2536,7 @@ var APP_VERSION = {
   ver: 'v5.7',
   date: '2026-09-22',
   history: [
-    {ver:'v5.12',date:'2026-09-22',note:'매칭 편집 저장 강화: 내보내기가 전체 매핑 스냅샷(자동+수동 전체, 저장일·버전 포함)을 JSON으로 저장, 가져오기로 그대로 복원 — 기기 이동·공유 시 동일 매핑 보장, 구버전 파일도 호환'},{ver:'v5.11',date:'2026-09-22',note:'상품 매칭 편집 기능: 상품 분석 탭 [매칭 편집] 모달 — 상품별 코드 수동 지정/해제(드롭다운), 자동 매칭 실패만 보기 필터, 브라우저 저장+내보내기/가져오기(JSON) 공유, 변경 즉시 차트 반영'},{ver:'v5.10',date:'2026-09-22',note:'상품 매칭 고도화: ID 미매칭 시 이름 정규화 유사 매칭(SET/세트·풀세트 통합, 배지/규격 토큰 제거) + 단가 검증으로 오매칭 방지 — 사운드북+위인카드 SET/세트 등 표기 변형 자동 통합'},{ver:'v5.9',date:'2026-09-22',note:'상품 분석: 전체 현황 표에 상품코드 열 추가(순위 다음), 상품명은 상품코드 기준 통일명(COST_MAPS 마스터명) 표기, 검색 추천에도 코드 표시, 매핑 검증 리포트 병행 제공'},{ver:'v5.8',date:'2026-09-22',note:'상품 분석: 상품코드 기반 채널 매칭 — 네이버 pid·쿠팡 skuNo ID 직결(20/20 SKU), 기타마켓 이름 매핑, 코드 칩 표시, 채널 필터 오류 수정'},{ver:'v5.7', date:'2026-09-22', note:"상품 분석 개선: 기간·채널 필터, 상품 검색(드롭다운 대체), 전체 현황 상위 10개, 쿠팡 입고(B2B) 채널 추가 — SKU명 규칙 자동 매칭(입고량 93%), 미매칭 SKU는 [쿠팡] 행"},
+    {ver:'v5.13',date:'2026-09-28',note:'매출 상이 오류 수정: sales_*.xlsx의 기간 합계행(예: 2026-09-22~2026-09-27)이 시작일 매출로 잘못 합산되던 버그 수정 — 9/22 표시 1,347,100원을 실제 185,250원으로 바로잡음, 기존 오기입 데이터 자동 정리, 완전중복 행 제거'},{ver:'v5.12',date:'2026-09-22',note:'매칭 편집 저장 강화: 내보내기가 전체 매핑 스냅샷(자동+수동 전체, 저장일·버전 포함)을 JSON으로 저장, 가져오기로 그대로 복원 — 기기 이동·공유 시 동일 매핑 보장, 구버전 파일도 호환'},{ver:'v5.11',date:'2026-09-22',note:'상품 매칭 편집 기능: 상품 분석 탭 [매칭 편집] 모달 — 상품별 코드 수동 지정/해제(드롭다운), 자동 매칭 실패만 보기 필터, 브라우저 저장+내보내기/가져오기(JSON) 공유, 변경 즉시 차트 반영'},{ver:'v5.10',date:'2026-09-22',note:'상품 매칭 고도화: ID 미매칭 시 이름 정규화 유사 매칭(SET/세트·풀세트 통합, 배지/규격 토큰 제거) + 단가 검증으로 오매칭 방지 — 사운드북+위인카드 SET/세트 등 표기 변형 자동 통합'},{ver:'v5.9',date:'2026-09-22',note:'상품 분석: 전체 현황 표에 상품코드 열 추가(순위 다음), 상품명은 상품코드 기준 통일명(COST_MAPS 마스터명) 표기, 검색 추천에도 코드 표시, 매핑 검증 리포트 병행 제공'},{ver:'v5.8',date:'2026-09-22',note:'상품 분석: 상품코드 기반 채널 매칭 — 네이버 pid·쿠팡 skuNo ID 직결(20/20 SKU), 기타마켓 이름 매핑, 코드 칩 표시, 채널 필터 오류 수정'},{ver:'v5.7', date:'2026-09-22', note:"상품 분석 개선: 기간·채널 필터, 상품 검색(드롭다운 대체), 전체 현황 상위 10개, 쿠팡 입고(B2B) 채널 추가 — SKU명 규칙 자동 매칭(입고량 93%), 미매칭 SKU는 [쿠팡] 행"},
     {ver:'v5.6', date:'2026-09-22', note:"상품 분석 탭 신설: 상품별 채널(네이버/기타마켓) 성과 · 일별·요일별 판매 패턴 · 방문·전환율 · 전체 상품 증감 현황"},
     {ver:'v5.5', date:'2026-09-17', note:"인사이트 탭에 경영진 카드 추가: 채널별 손익·영업이익 추정·마진율 (쿠팡 B2B 분리 표기)"},
     {ver:'v5.4', date:'2026-09-17', note:"인사이트 탭에 마케터 카드 추가: 채널별 광고비·ROAS(목적별 분리) · 주간 추이 · 검색어/쿠팡애즈 잘 되는 키워드"},
@@ -5481,6 +5519,8 @@ function loadOnlineCompetitor(){
 
 // 페이지 로드 시 온라인 데이터도 백그라운드 로드
 setTimeout(function(){ loadOnlineCRM(); loadOnlineCompetitor(); }, 1500);
+// v5.13: 기존 오기입(기간합계) 데이터 정리 — 데이터 로드가 끝난 뒤 최대 30초까지 재시도
+(function(){ var t=0; var iv=setInterval(function(){ t++; var n=healNaverTotals(); if(n>0||t>=10) clearInterval(iv); },3000); })();
 
 
 function loadOtherFromGSheet(){
