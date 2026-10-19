@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>톰토미 마케팅 대시보드 v5.22</title>
+<title>톰토미 마케팅 대시보드 v5.23</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -197,7 +197,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   <div class="logo" onclick="showSec('overview',document.querySelector('.nb'))" style="cursor:pointer">
     <div class="logo-icon">TT</div>
     <div>
-      <div class="logo-text">톰토미 마케팅 대시보드 <span id="ver-chip" style="font-size:11px;color:var(--accent);font-weight:400">v5.22</span></div>
+      <div class="logo-text">톰토미 마케팅 대시보드 <span id="ver-chip" style="font-size:11px;color:var(--accent);font-weight:400">v5.23</span></div>
       <div class="logo-sub">네이버 · 쿠팡(입고기준) · 기타마켓 · 광고 ROI 통합 · Supabase 연동
         <span style="cursor:pointer;color:var(--accent);font-weight:600;margin-left:6px" onclick="document.getElementById('fileGuide').style.display=document.getElementById('fileGuide').style.display==='none'?'block':'none'">📁 파일 가이드</span>
       </div>
@@ -671,7 +671,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   </div>
   <!-- v5.2 버전 관리 (관리자 탭) -->
   <div class="card gf" style="margin-bottom:14px">
-    <div class="ctitle">🏷️ 버전 관리 <span class="badge ba">현재 <span id="ver-latest">v5.22</span></span></div>
+    <div class="ctitle">🏷️ 버전 관리 <span class="badge ba">현재 <span id="ver-latest">v5.23</span></span></div>
     <div class="csub">index.html을 새로 받아 적용할 때마다 버전이 올라갑니다 · 아래 표에서 지금 쓰는 버전이 최신인지 확인하세요</div>
     <div id="ver-table" style="margin-top:12px;overflow-x:auto"></div>
   </div>
@@ -679,7 +679,22 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     <div class="ctitle">상품별 원가 입력</div>
     <div class="csub">입력 후 Enter — 자동 저장됩니다</div>
     <div id="price-table" style="margin-top:12px"></div>
-    <button class="fbtn fbtn-pre" onclick="resetPriceTable()" style="margin-top:12px">초기화</button>
+'    <button class="fbtn fbtn-pre" onclick="resetPriceTable()" style="margin-top:12px">초기화</button>
+  </div>
+
+  <!-- v5.23 상품 매칭 관리 (관리자 탭) -->
+  <div class="card gf" style="margin-top:16px">
+    <div class="ctitle">🔗 상품 매칭 관리 <span class="badge ba">실시간 반영</span> · <span id="admMatchCnt" style="font-size:12px;color:var(--dim)"></span></div>
+    <div class="csub">채널 상품명 → 자사 품목명(상품코드) 매칭. 드롭다운으로 지정하면 즉시 저장되고 전체 대시보드에 반영됩니다. 대량 수정은 엑셀 양식을 내려받아 수정한 뒤 올리세요.</div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center">
+      <button class="fbtn" onclick="admMatchFilter('all')" id="admMatch-all" style="padding:6px 14px">전체</button>
+      <button class="fbtn" onclick="admMatchFilter('un')" id="admMatch-un" style="padding:6px 14px">미매칭만</button>
+      <span style="flex:1"></span>
+      <button class="fbtn fbtn-pre" onclick="mtExportExcel()" style="padding:6px 14px">⬇️ 엑셀 양식 내려받기</button>
+      <button class="fbtn fbtn-pre" onclick="document.getElementById('mt-xlsx').click()" style="padding:6px 14px">⬆️ 엑셀 일괄 적용</button>
+      <input type="file" id="mt-xlsx" accept=".xlsx,.xls" style="display:none" onchange="mtImportExcel(this.files[0]); this.value='';">
+    </div>
+    <div id="admMatchBody" style="margin-top:10px;overflow-x:auto;max-height:520px"></div>
   </div>
 
   <!-- 데이터 삭제 관리 -->
@@ -2505,16 +2520,16 @@ function renderSection(id){
   else if(id==='compare') initCompare();
   else if(id==='insights'){ renderInsights(); insSetPeriod(INS_PERIOD); }
   else if(id==='prods'){ renderProdAnalysis(); }
-  else if(id==='settings'){ buildPriceTable(); renderHealthCheck(); renderVersionInfo(); }
+  else if(id==='settings'){ if(typeof admRenderMatch==='function'){ try{ admRenderMatch(); }catch(e){} } buildPriceTable(); renderHealthCheck(); renderVersionInfo(); }
 }
 
 // ══════════════════════════════════════════
 // v5.2 버전 관리 — index.html 전달 시마다 ver/date/history를 갱신 (제목·로고 표기도 자동 동기화됨)
 var APP_VERSION = {
-  ver: 'v5.22',
+  ver: 'v5.23',
   date: '2026-09-28',
   history: [
-    {ver:'v5.22',date:'2026-10-16',note:'치명적 버그 수정: 브라우저 저장(기타마켓 등) 데이터에 날짜 형식이 아닌 행이 섞여 있으면 기준일 계산이 깨져 전체 지표가 0원·NaN으로 표시되던 문제 — 모든 데이터 원천에서 날짜 형식을 검증해 이상 행을 자동 제외하고, 기준일·집계 전반에 유효한 날짜만 사용하도록 이중 가드 적용'},{ver:'v5.21',date:'2026-10-16',note:'로딩 상태 명확화: 클라우드 데이터 로딩 중에는 0원 화면 대신 로딩 안내 표시(로딩 완료 시 자동 반영), 로드 시 날짜 형식이 잘못된 요약행 자동 제외 — 참고: 실제 데이터는 정상 보존되어 있으며 로딩 완료 후 정상 표시됨'},{ver:'v5.20',date:'2026-10-16',note:'클라우드 로드 진단·복원력 강화: 인사이트 탭에 클라우드 로드 결과(행 수/실패 사유) 표시, 로드 실패 시 경고 박스 표시, 연동 라이브러리 이상 시 REST 직접 조회로 자동 전환 — 클라우드 데이터는 정상 보존 상태'},{ver:'v5.19',date:'2026-10-16',note:'인사이트 탭 데이터 진단 강화: 보유 원본 데이터 건수(네이버 일별·상품·기타마켓·쿠팡 발주·광고)를 기준일 라인에 상시 표시, 기간 내 집계 매출이 0이면 업로드 상태 확인 경고 표시 — 데이터 미반영 원인을 화면에서 바로 식별'},{ver:'v5.18',date:'2026-10-16',note:'인사이트 탭 개선: 대시보드 표기 제1원칙 전면 적용 — 모든 상품을 자사 품목명(원가 엑셀 C열) 기준 표기 + 상품코드(SOMD- 등) 병기, 채널 상품명 단독 표기 금지(인사이트 MD·SCM·키즈IP·슬랙 TOP3까지 매핑 전파) · MD 섹션: 0으로만 나오던 주문 수 열 제거(수량으로 대체), 네이버뿐 아니라 기타마켓 소비자 매출과 쿠팡 B2B 입고까지 반영 · 마케터 섹션: 잘 되는 검색어 셀 제거(네이버 대시보드 개편으로 검색어 원천데이터 신뢰성 저하)'},{ver:'v5.17',date:'2026-10-01',note:'슬랙 리포트 개편: 먼슬리 리포트 추가(전월 대비 매출·광고비·마케팅지표 + 경쟁사 동향 통합), 경쟁사 리포트 버튼 제거, 데일리에서 유입 분석 섹션 제거, 메시지 라벨 편집 기능 제거'},{ver:'v5.16',date:'2026-09-28',note:'상품 분석 상세 개선: 요일별 매출을 월~일 순서의 1원 단위 데이터 카드로 재구성하고, 네이버 유입/전환 섹션을 제거했으며, 전체 채널 선택 시 쿠팡 B2B 입고도 판매추이에 포함되도록 일별 집계를 명확히 분리'},{ver:'v5.15',date:'2026-09-28',note:'원천 품목명 기준 정렬: 업로드한 원가 엑셀의 C열 품목명을 기준 상품명으로 사용하고, 원천 리소스 품목명·채널 상품명을 함께 alias로 묶어 대시보드 판단/표시에 동일 기준을 적용'},{ver:'v5.14',date:'2026-09-28',note:'상품 분석 개편: 막대 차트 금액 툴팁을 마우스/터치로 직접 표시하도록 수정, 상품 분석 문구를 분석형 용어로 정리, 상품ID·SKU뿐 아니라 원본 상품명도 함께 기준 상품코드/기준 상품명에 저장하는 alias 매핑 추가'},{ver:'v5.13',date:'2026-09-28',note:'매출 상이 오류 수정: sales_*.xlsx의 기간 합계행(예: 2026-09-22~2026-09-27)이 시작일 매출로 잘못 합산되던 버그 수정 — 9/22 표시 1,347,100원을 실제 185,250원으로 바로잡음, 기존 오기입 데이터 자동 정리, 완전중복 행 제거'},{ver:'v5.12',date:'2026-09-22',note:'매칭 편집 저장 강화: 내보내기가 전체 매핑 스냅샷(자동+수동 전체, 저장일·버전 포함)을 JSON으로 저장, 가져오기로 그대로 복원 — 기기 이동·공유 시 동일 매핑 보장, 구버전 파일도 호환'},{ver:'v5.11',date:'2026-09-22',note:'상품 매칭 편집 기능: 상품 분석 탭 [매칭 편집] 모달 — 상품별 코드 수동 지정/해제(드롭다운), 자동 매칭 실패만 보기 필터, 브라우저 저장+내보내기/가져오기(JSON) 공유, 변경 즉시 차트 반영'},{ver:'v5.10',date:'2026-09-22',note:'상품 매칭 고도화: ID 미매칭 시 이름 정규화 유사 매칭(SET/세트·풀세트 통합, 배지/규격 토큰 제거) + 단가 검증으로 오매칭 방지 — 사운드북+위인카드 SET/세트 등 표기 변형 자동 통합'},{ver:'v5.9',date:'2026-09-22',note:'상품 분석: 전체 현황 표에 상품코드 열 추가(순위 다음), 상품명은 상품코드 기준 통일명(COST_MAPS 마스터명) 표기, 검색 추천에도 코드 표시, 매핑 검증 리포트 병행 제공'},{ver:'v5.8',date:'2026-09-22',note:'상품 분석: 상품코드 기반 채널 매칭 — 네이버 pid·쿠팡 skuNo ID 직결(20/20 SKU), 기타마켓 이름 매핑, 코드 칩 표시, 채널 필터 오류 수정'},{ver:'v5.7', date:'2026-09-22', note:"상품 분석 개선: 기간·채널 필터, 상품 검색(드롭다운 대체), 전체 현황 상위 10개, 쿠팡 입고(B2B) 채널 추가 — SKU명 규칙 자동 매칭(입고량 93%), 미매칭 SKU는 [쿠팡] 행"},
+    {ver:'v5.23',date:'2026-10-16',note:'상품 매칭 고도화: 관리자 탭에 [상품 매칭 관리] 추가 — 채널별 상품명·상품코드·자사 품목명을 한 표에서 확인/수정(지정 즉시 전체 대시보드 반영) · 엑셀 양식 내려받기/일괄 적용으로 대량 매칭 · 자동 매칭 3단계(토큰 겹침) 추가로 긴 채널 상품명도 자동 매칭 강화'},{ver:'v5.22',date:'2026-10-16',note:'치명적 버그 수정: 브라우저 저장(기타마켓 등) 데이터에 날짜 형식이 아닌 행이 섞여 있으면 기준일 계산이 깨져 전체 지표가 0원·NaN으로 표시되던 문제 — 모든 데이터 원천에서 날짜 형식을 검증해 이상 행을 자동 제외하고, 기준일·집계 전반에 유효한 날짜만 사용하도록 이중 가드 적용'},{ver:'v5.21',date:'2026-10-16',note:'로딩 상태 명확화: 클라우드 데이터 로딩 중에는 0원 화면 대신 로딩 안내 표시(로딩 완료 시 자동 반영), 로드 시 날짜 형식이 잘못된 요약행 자동 제외 — 참고: 실제 데이터는 정상 보존되어 있으며 로딩 완료 후 정상 표시됨'},{ver:'v5.20',date:'2026-10-16',note:'클라우드 로드 진단·복원력 강화: 인사이트 탭에 클라우드 로드 결과(행 수/실패 사유) 표시, 로드 실패 시 경고 박스 표시, 연동 라이브러리 이상 시 REST 직접 조회로 자동 전환 — 클라우드 데이터는 정상 보존 상태'},{ver:'v5.19',date:'2026-10-16',note:'인사이트 탭 데이터 진단 강화: 보유 원본 데이터 건수(네이버 일별·상품·기타마켓·쿠팡 발주·광고)를 기준일 라인에 상시 표시, 기간 내 집계 매출이 0이면 업로드 상태 확인 경고 표시 — 데이터 미반영 원인을 화면에서 바로 식별'},{ver:'v5.18',date:'2026-10-16',note:'인사이트 탭 개선: 대시보드 표기 제1원칙 전면 적용 — 모든 상품을 자사 품목명(원가 엑셀 C열) 기준 표기 + 상품코드(SOMD- 등) 병기, 채널 상품명 단독 표기 금지(인사이트 MD·SCM·키즈IP·슬랙 TOP3까지 매핑 전파) · MD 섹션: 0으로만 나오던 주문 수 열 제거(수량으로 대체), 네이버뿐 아니라 기타마켓 소비자 매출과 쿠팡 B2B 입고까지 반영 · 마케터 섹션: 잘 되는 검색어 셀 제거(네이버 대시보드 개편으로 검색어 원천데이터 신뢰성 저하)'},{ver:'v5.17',date:'2026-10-01',note:'슬랙 리포트 개편: 먼슬리 리포트 추가(전월 대비 매출·광고비·마케팅지표 + 경쟁사 동향 통합), 경쟁사 리포트 버튼 제거, 데일리에서 유입 분석 섹션 제거, 메시지 라벨 편집 기능 제거'},{ver:'v5.16',date:'2026-09-28',note:'상품 분석 상세 개선: 요일별 매출을 월~일 순서의 1원 단위 데이터 카드로 재구성하고, 네이버 유입/전환 섹션을 제거했으며, 전체 채널 선택 시 쿠팡 B2B 입고도 판매추이에 포함되도록 일별 집계를 명확히 분리'},{ver:'v5.15',date:'2026-09-28',note:'원천 품목명 기준 정렬: 업로드한 원가 엑셀의 C열 품목명을 기준 상품명으로 사용하고, 원천 리소스 품목명·채널 상품명을 함께 alias로 묶어 대시보드 판단/표시에 동일 기준을 적용'},{ver:'v5.14',date:'2026-09-28',note:'상품 분석 개편: 막대 차트 금액 툴팁을 마우스/터치로 직접 표시하도록 수정, 상품 분석 문구를 분석형 용어로 정리, 상품ID·SKU뿐 아니라 원본 상품명도 함께 기준 상품코드/기준 상품명에 저장하는 alias 매핑 추가'},{ver:'v5.13',date:'2026-09-28',note:'매출 상이 오류 수정: sales_*.xlsx의 기간 합계행(예: 2026-09-22~2026-09-27)이 시작일 매출로 잘못 합산되던 버그 수정 — 9/22 표시 1,347,100원을 실제 185,250원으로 바로잡음, 기존 오기입 데이터 자동 정리, 완전중복 행 제거'},{ver:'v5.12',date:'2026-09-22',note:'매칭 편집 저장 강화: 내보내기가 전체 매핑 스냅샷(자동+수동 전체, 저장일·버전 포함)을 JSON으로 저장, 가져오기로 그대로 복원 — 기기 이동·공유 시 동일 매핑 보장, 구버전 파일도 호환'},{ver:'v5.11',date:'2026-09-22',note:'상품 매칭 편집 기능: 상품 분석 탭 [매칭 편집] 모달 — 상품별 코드 수동 지정/해제(드롭다운), 자동 매칭 실패만 보기 필터, 브라우저 저장+내보내기/가져오기(JSON) 공유, 변경 즉시 차트 반영'},{ver:'v5.10',date:'2026-09-22',note:'상품 매칭 고도화: ID 미매칭 시 이름 정규화 유사 매칭(SET/세트·풀세트 통합, 배지/규격 토큰 제거) + 단가 검증으로 오매칭 방지 — 사운드북+위인카드 SET/세트 등 표기 변형 자동 통합'},{ver:'v5.9',date:'2026-09-22',note:'상품 분석: 전체 현황 표에 상품코드 열 추가(순위 다음), 상품명은 상품코드 기준 통일명(COST_MAPS 마스터명) 표기, 검색 추천에도 코드 표시, 매핑 검증 리포트 병행 제공'},{ver:'v5.8',date:'2026-09-22',note:'상품 분석: 상품코드 기반 채널 매칭 — 네이버 pid·쿠팡 skuNo ID 직결(20/20 SKU), 기타마켓 이름 매핑, 코드 칩 표시, 채널 필터 오류 수정'},{ver:'v5.7', date:'2026-09-22', note:"상품 분석 개선: 기간·채널 필터, 상품 검색(드롭다운 대체), 전체 현황 상위 10개, 쿠팡 입고(B2B) 채널 추가 — SKU명 규칙 자동 매칭(입고량 93%), 미매칭 SKU는 [쿠팡] 행"},
     {ver:'v5.6', date:'2026-09-22', note:"상품 분석 탭 신설: 상품별 채널(네이버/기타마켓) 성과 · 일별·요일별 판매 패턴 · 방문·전환율 · 전체 상품 증감 현황"},
     {ver:'v5.5', date:'2026-09-17', note:"인사이트 탭에 경영진 카드 추가: 채널별 손익·영업이익 추정·마진율 (쿠팡 B2B 분리 표기)"},
     {ver:'v5.4', date:'2026-09-17', note:"인사이트 탭에 마케터 카드 추가: 채널별 광고비·ROAS(목적별 분리) · 주간 추이 · 검색어/쿠팡애즈 잘 되는 키워드"},
@@ -2926,6 +2941,7 @@ var PA_SOURCE_NAME = {
   "SOMD-0006 / SOMD-0015": "공룡마이크 + 노래하는 스티커북 공룡"
 }; // 원가 엑셀 C열 품목명(원천 리소스)
 var PA_NAME_CODE = {
+  "톰토미 공룡 노래 마이크 어린이 장난감 아기 마이크": "SOMD-0015",
   "톰토미 공룡 마이크": "SOMD-0015",
   "톰토미 명작동화 (3CD)": "SOCD-0318",
   "톰토미 명작동화 3CD": "SOCD-0318",
@@ -3019,6 +3035,15 @@ function paFindCode(nm,unit){ // 이름→코드 후보 탐색. unit(단가) 있
     for(k in PA_NAME_CODE){
       var cc2=paClean(k);
       if(cc2.length>=10&&(q.indexOf(cc2)>=0||cc2.indexOf(q)>=0)) add(PA_NAME_CODE[k]);
+    }
+  }
+  if(!cands.length){ // v5.23 3단계: 토큰 겹침 — 마스터 토큰이 채널 상품명에 모두 포함되면 후보 (예: '공룡 노래 마이크 어린이 장난감~' → 공룡 마이크)
+    function paToks(x){ return String(x||'').toLowerCase().split(/[^0-9a-z가-힣]+/).filter(function(t){ return t.length>1&&!/^(세이펜|호환|연동|세트|단품|1ea|1개)$/.test(t); }); }
+    var qt=paToks(nm);
+    if(qt.length>=3){
+      function paCov(name){ var ct=paToks(name); if(ct.length<3) return 0; var hit=0; ct.forEach(function(t){ if(qt.indexOf(t)>=0) hit++; }); return hit/ct.length; }
+      for(k in COST_MAPS.master){ var mn3=COST_MAPS.master[k]&&COST_MAPS.master[k].name; if(mn3&&paCov(mn3)>=1) add(k); }
+      for(k in PA_NAME_CODE){ if(paCov(k)>=1) add(PA_NAME_CODE[k]); }
     }
   }
   if(!cands.length) return null;
@@ -3180,7 +3205,7 @@ function paSetMap(ri,code){
   if(code){ PA_OVERRIDES[r.ch][r.id]=code; if(nk) PA_NAME_OVERRIDES[r.ch][nk]=code; }
   else { delete PA_OVERRIDES[r.ch][r.id]; if(nk) delete PA_NAME_OVERRIDES[r.ch][nk]; }
   paSaveOverrides();
-  PA_MAP_ROWS=paMapRows(); paRenderMap(); renderProdAnalysis();
+  PA_MAP_ROWS=paMapRows(); paRenderMap(); if(typeof admRenderMatch==='function'){ try{ admRenderMatch(); }catch(e){} } renderProdAnalysis();
 }
 function paExportMap(){
   try{
@@ -3213,6 +3238,78 @@ function paImportMap(file){
     }catch(err){ alert('❌ JSON 파일을 읽을 수 없어요: '+err.message); }
   };
   rd.readAsText(file);
+}
+var ADM_MATCH_VIEW='all';
+var MT_CH={'네이버':'naver','🟢 네이버':'naver','naver':'naver','쿠팡':'coup','🔵 쿠팡':'coup','coup':'coup','기타':'other','🛍️ 기타':'other','other':'other'};
+function admMatchFilter(v){ ADM_MATCH_VIEW=v; admRenderMatch(); }
+function admRenderMatch(){
+  var el=document.getElementById('admMatchBody'); if(!el) return;
+  var rows=paMapRows().map(function(r,i){ r.ri=i; r.cur=paCurCode(r.ch,r.id,r.nm); r.manual=!!((PA_OVERRIDES[r.ch]&&PA_OVERRIDES[r.ch][r.id])||(PA_NAME_OVERRIDES[r.ch]&&PA_NAME_OVERRIDES[r.ch][paNorm(r.nm)])); return r; });
+  rows.sort(function(a,b){ return (a.cur?1:0)-(b.cur?1:0) || a.ch.localeCompare(b.ch) || a.id.localeCompare(b.id); });
+  var un=rows.filter(function(r){ return !r.cur; }).length;
+  var cnt=document.getElementById('admMatchCnt'); if(cnt) cnt.textContent='총 '+rows.length+'개 · 미매칭 '+(un?un+'개 ⚠️':'0개 ✅');
+  var b1=document.getElementById('admMatch-all'), b2=document.getElementById('admMatch-un');
+  if(b1){ b1.style.background=ADM_MATCH_VIEW==='all'?'var(--s3)':''; b1.style.fontWeight=ADM_MATCH_VIEW==='all'?'700':'400'; }
+  if(b2){ b2.style.background=ADM_MATCH_VIEW==='un'?'var(--s3)':''; b2.style.fontWeight=ADM_MATCH_VIEW==='un'?'700':'400'; }
+  var view=rows.filter(function(r){ return ADM_MATCH_VIEW==='all'||!r.cur; });
+  el.innerHTML='<table class="tbl" style="margin-top:6px"><thead><tr><th style="text-align:left">채널</th><th style="text-align:left">채널 상품명 / ID</th><th style="text-align:left;width:280px">상품코드 지정</th><th style="text-align:left">자사 품목명(매칭 결과)</th></tr></thead><tbody>'+
+    (view.map(function(r){
+      var sel='<select onchange="paSetMap('+r.ri+',this.value)" style="width:100%;padding:5px 6px;border:1px solid var(--border);border-radius:6px;font-size:11px;background:#fff">'+paMapOpts(r.cur)+'</select>';
+      var base=r.cur?paDisplayName(r.cur,r.nm):'';
+      var st=r.cur?(r.manual?'<span class="badge ba">수동</span>':'<span style="font-size:10px;color:var(--dim)">자동</span>'):'<span style="color:var(--orange);font-weight:700">⚠️ 미매칭</span>';
+      return '<tr><td style="white-space:nowrap;font-weight:700">'+CH_LBL[r.ch]+'</td><td style="text-align:left"><div style="font-size:12px">'+insCut(r.nm,42)+'</div><div style="font-size:10px;color:var(--dim)">'+insCut(String(r.id),38)+'</div></td><td>'+sel+'</td><td style="text-align:left">'+st+(r.cur?'<div style="color:var(--green);font-weight:700;margin-top:2px">'+r.cur+'</div><div style="font-size:11px;color:var(--dim)">'+insCut(base,30)+'</div>':'')+'</td></tr>';
+    }).join('')||'<tr><td colspan="4" style="color:var(--dim);padding:14px">표시할 항목이 없습니다</td></tr>')+'</tbody></table>'+
+    '<div style="font-size:11px;color:var(--dim);margin-top:8px">💡 지정 즉시 브라우저에 저장되고 인사이트·상품분석 전체에 반영됩니다. <b>⬇️ 엑셀 양식</b>을 내려받아 <b>상품코드(수정후 입력)</b> 칸만 고쳐 <b>⬆️ 엑셀 일괄 적용</b>하면 한 번에 여러 상품을 매칭할 수 있습니다(매칭 해제는 그 칸에 <b>해제</b>라고 입력).</div>';
+}
+function mtExportExcel(){
+  try{
+    var rows=paMapRows().map(function(r){
+      var cur=paCurCode(r.ch,r.id,r.nm);
+      return {채널:(CH_LBL[r.ch]||r.ch).replace(/[^가-힣]/g,''), 상품ID:String(r.id), 채널상품명:r.nm, 현재상품코드:cur||'', 자사품목명:cur?paDisplayName(cur,r.nm):'', '상품코드(수정후 입력)':cur||''};
+    });
+    var ws=XLSX.utils.json_to_sheet(rows), wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'매칭');
+    var t=new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb,'상품매칭양식_'+t+'.xlsx');
+  }catch(e){ alert('엑셀 내보내기 실패: '+e.message); }
+}
+function mtApplyExcelRows(rows){
+  var applied=0, cleared=0, noId=0, unknown=[];
+  rows.forEach(function(r){
+    var ch=MT_CH[String(r['채널']!=null?r['채널']:'').trim()]; if(!ch) return;
+    var id=String(r['상품ID']!=null?r['상품ID']:'').trim();
+    var nm=String(r['채널상품명']!=null?r['채널상품명']:'').trim();
+    var code=String(r['상품코드(수정후 입력)']!=null?r['상품코드(수정후 입력)']:'').trim();
+    if(!code) return;
+    if(code==='해제'){
+      if(id) delete PA_OVERRIDES[ch][id];
+      var nk0=paNorm(nm); if(nk0) delete PA_NAME_OVERRIDES[ch][nk0];
+      cleared++; return;
+    }
+    if(!(COST_MAPS.master[code]||PA_CODE_NAME[code])){ unknown.push(code); return; }
+    if(id) PA_OVERRIDES[ch][id]=code; else noId++;
+    var nk=paNorm(nm); if(nk) PA_NAME_OVERRIDES[ch][nk]=code;
+    applied++;
+  });
+  if(applied||cleared) paSaveOverrides();
+  return {applied:applied,cleared:cleared,noId:noId,unknown:unknown};
+}
+function mtImportExcel(file){
+  if(!file) return;
+  var rd=new FileReader();
+  rd.onload=function(e){
+    try{
+      var wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+      var rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
+      var res=mtApplyExcelRows(rows);
+      PA_MAP_ROWS=paMapRows(); paRenderMap(); if(typeof admRenderMatch==='function'){ try{ admRenderMatch(); }catch(e){} } renderProdAnalysis(); renderAll();
+      var msg='✅ 엑셀 매칭 일괄 적용: '+res.applied+'건 변경'+(res.cleared?', '+res.cleared+'건 해제':'')+' — 대시보드에 즉시 반영되었습니다.';
+      if(res.noId) msg+='\n⚠️ 상품ID가 빈 행 '+res.noId+'건은 상품명 기준으로 적용';
+      if(res.unknown&&res.unknown.length) msg+='\n⚠️ 알 수 없는 상품코드는 제외됨: '+Array.from(new Set(res.unknown)).slice(0,10).join(', ');
+      alert(msg);
+    }catch(err){ alert('❌ 엑셀 파일을 읽을 수 없어요: '+err.message); }
+  };
+  rd.readAsArrayBuffer(file);
 }
 function paSuggest(){
   var inp=document.getElementById('pa-search'), el=document.getElementById('pa-suggest');
@@ -5760,6 +5857,6 @@ function loadOtherFromGSheet(){
 </div><!-- /mainContent -->
 <script>if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('mainContent').style.display='';}</script>
 
-<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920" integrity="sha512-L0ha0OXavK/8okipN9F8BtP84dg9DUhPERbBXzwI6dgTA55d2+yweo3pn5CSFYs45/r8md2+xvUPtTdvTNRfjA==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
 </body>
 </html>
