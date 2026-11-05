@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>톰토미 마케팅 대시보드 v5.26</title>
+<title>톰토미 마케팅 대시보드 v5.29</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -197,7 +197,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   <div class="logo" onclick="showSec('overview',document.querySelector('.nb'))" style="cursor:pointer">
     <div class="logo-icon">TT</div>
     <div>
-      <div class="logo-text">톰토미 마케팅 대시보드 <span id="ver-chip" style="font-size:11px;color:var(--accent);font-weight:400">v5.26</span></div>
+      <div class="logo-text">톰토미 마케팅 대시보드 <span id="ver-chip" style="font-size:11px;color:var(--accent);font-weight:400">v5.29</span></div>
       <div class="logo-sub">네이버 · 쿠팡(입고기준) · 기타마켓 · 광고 ROI 통합 · Supabase 연동
         <span style="cursor:pointer;color:var(--accent);font-weight:600;margin-left:6px" onclick="document.getElementById('fileGuide').style.display=document.getElementById('fileGuide').style.display==='none'?'block':'none'">📁 파일 가이드</span>
       </div>
@@ -671,7 +671,7 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
   </div>
   <!-- v5.2 버전 관리 (관리자 탭) -->
   <div class="card gf" style="margin-bottom:14px">
-    <div class="ctitle">🏷️ 버전 관리 <span class="badge ba">현재 <span id="ver-latest">v5.26</span></span></div>
+    <div class="ctitle">🏷️ 버전 관리 <span class="badge ba">현재 <span id="ver-latest">v5.29</span></span></div>
     <div class="csub">index.html을 새로 받아 적용할 때마다 버전이 올라갑니다 · 아래 표에서 지금 쓰는 버전이 최신인지 확인하세요</div>
     <div id="ver-table" style="margin-top:12px;overflow-x:auto"></div>
   </div>
@@ -680,6 +680,17 @@ if(sessionStorage.getItem('tt_auth')==='1'){document.getElementById('lockScreen'
     <div class="csub">입력 후 Enter — 자동 저장됩니다</div>
     <div id="price-table" style="margin-top:12px"></div>
 '    <button class="fbtn fbtn-pre" onclick="resetPriceTable()" style="margin-top:12px">초기화</button>
+  </div>
+
+  <!-- v5.28 슬랙 웹훅 설정 (관리자 탭) -->
+  <div class="card gf" style="margin-top:16px">
+    <div class="ctitle">📨 슬랙 웹훅 설정 <span class="badge ba">전송 경로</span></div>
+    <div class="csub">슬랙 Incoming Webhook URL을 여기에 저장합니다 — 코드 파일에는 담지 않으므로 깃허브 보안 경고가 생기지 않습니다. 이 브라우저와 클라우드에 함께 저장되어 다른 기기에서도 자동 적용됩니다.</div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <input type="text" id="wh-url" placeholder="https://hooks.slack.com/services/..." style="flex:1;min-width:260px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;background:var(--s1);color:var(--text);outline:none">
+      <button class="fbtn fbtn-apply" onclick="webhookSave()" style="padding:7px 16px">💾 저장</button>
+    </div>
+    <div id="wh-status" style="margin-top:8px;font-size:12px;color:var(--dim)"></div>
   </div>
 
   <!-- v5.23 상품 매칭 관리 (관리자 탭) -->
@@ -882,7 +893,7 @@ async function loadFromSupabase() {
       byChannel[k] = clean;
     });
     if (_skipped) console.warn('[Supabase] 날짜 형식이 잘못된 행 ' + _skipped + '건 제외');
-    ['naver','naverProd','coupStock','naverAd','coupAd','metaAd','naverVisit','naverProdVisit','naverAdBoost','naverQuery','naverCustNew','naverCustDemo'].forEach(k => {
+    ['naver','naverProd','coupStock','naverAd','coupAd','metaAd','naverVisit','naverProdVisit','naverAdBoost','naverQuery','naverCustNew','naverCustDemo','slackConfig'].forEach(k => {
       if (byChannel[k]) {
         DB[k] = byChannel[k];
         ARCHIVE[k] = byChannel[k];
@@ -891,6 +902,7 @@ async function loadFromSupabase() {
     _archiveLoaded = true;
     updateStatus();
     renderAll();
+    if(DB.slackConfig && DB.slackConfig[0] && DB.slackConfig[0].url) webhookApply(DB.slackConfig[0].url);
     if (statusEl) statusEl.innerHTML = '☁️ <span style="color:var(--green)">연결됨</span>';
     return true;
   } catch(e) {
@@ -2520,16 +2532,16 @@ function renderSection(id){
   else if(id==='compare') initCompare();
   else if(id==='insights'){ renderInsights(); insSetPeriod(INS_PERIOD); }
   else if(id==='prods'){ renderProdAnalysis(); }
-  else if(id==='settings'){ if(typeof admRenderMatch==='function'){ try{ admRenderMatch(); }catch(e){} } buildPriceTable(); renderHealthCheck(); renderVersionInfo(); }
+  else if(id==='settings'){ if(typeof admRenderMatch==='function'){ try{ admRenderMatch(); }catch(e){} } if(typeof webhookAdminSync==='function'){ try{ webhookAdminSync(); }catch(e){} } buildPriceTable(); renderHealthCheck(); renderVersionInfo(); }
 }
 
 // ══════════════════════════════════════════
 // v5.2 버전 관리 — index.html 전달 시마다 ver/date/history를 갱신 (제목·로고 표기도 자동 동기화됨)
 var APP_VERSION = {
-  ver: 'v5.26',
+  ver: 'v5.29',
   date: '2026-09-28',
   history: [
-    {ver:'v5.26',date:'2026-10-20',note:'이상신호 기준 개선: 상품 급등/급락의 비교 기준(평소)을 직전 7일 전체 일평균에서 판매가 있던 날의 평균으로 변경 — 판매 없던 날의 0원이 섞여 비현실적으로 낮게 나오던 평균 제거. 참고: 기준이 실제 판매 수준이 되므로 같은 상황에서 알림 배수가 낮아질 수 있음(급등 판단 임계값 3배는 유지)'},{ver:'v5.25',date:'2026-10-20',note:'이상신호 알림 정확도 개선: 상품 급등/급락 알림이 상품분석과 동일한 마스터 상품(상품코드+자사 품목명) 기준으로 집계·표기되도록 수정 — 채널 상품명 원문 표기 제거, 같은 상품의 여러 리스팅이 하나로 합산 · 기준 수치를 평소(N원) 대신 직전 7일 일평균(N원, 판매 M일)로 명시해 판매 없던 날이 포함된 평균임을 표시(숫자 계산 방식은 동일)'},{ver:'v5.24',date:'2026-10-19',note:'슬랙 리포트 개선: 기간 리포트(이틀 이상)에 일평균 매출·일평균 광고비 자동 표기 — 선택 기간이 아니라 실적이 발생한 날짜 수로 나눔(일부 날짜 누락 시 과소 계산 방지, 하단 (N일 평균) 표기), 하루 리포트는 기존과 동일'},{ver:'v5.23',date:'2026-10-16',note:'상품 매칭 고도화: 관리자 탭에 [상품 매칭 관리] 추가 — 채널별 상품명·상품코드·자사 품목명을 한 표에서 확인/수정(지정 즉시 전체 대시보드 반영) · 엑셀 양식 내려받기/일괄 적용으로 대량 매칭 · 자동 매칭 3단계(토큰 겹침) 추가로 긴 채널 상품명도 자동 매칭 강화'},{ver:'v5.22',date:'2026-10-16',note:'치명적 버그 수정: 브라우저 저장(기타마켓 등) 데이터에 날짜 형식이 아닌 행이 섞여 있으면 기준일 계산이 깨져 전체 지표가 0원·NaN으로 표시되던 문제 — 모든 데이터 원천에서 날짜 형식을 검증해 이상 행을 자동 제외하고, 기준일·집계 전반에 유효한 날짜만 사용하도록 이중 가드 적용'},{ver:'v5.21',date:'2026-10-16',note:'로딩 상태 명확화: 클라우드 데이터 로딩 중에는 0원 화면 대신 로딩 안내 표시(로딩 완료 시 자동 반영), 로드 시 날짜 형식이 잘못된 요약행 자동 제외 — 참고: 실제 데이터는 정상 보존되어 있으며 로딩 완료 후 정상 표시됨'},{ver:'v5.20',date:'2026-10-16',note:'클라우드 로드 진단·복원력 강화: 인사이트 탭에 클라우드 로드 결과(행 수/실패 사유) 표시, 로드 실패 시 경고 박스 표시, 연동 라이브러리 이상 시 REST 직접 조회로 자동 전환 — 클라우드 데이터는 정상 보존 상태'},{ver:'v5.19',date:'2026-10-16',note:'인사이트 탭 데이터 진단 강화: 보유 원본 데이터 건수(네이버 일별·상품·기타마켓·쿠팡 발주·광고)를 기준일 라인에 상시 표시, 기간 내 집계 매출이 0이면 업로드 상태 확인 경고 표시 — 데이터 미반영 원인을 화면에서 바로 식별'},{ver:'v5.18',date:'2026-10-16',note:'인사이트 탭 개선: 대시보드 표기 제1원칙 전면 적용 — 모든 상품을 자사 품목명(원가 엑셀 C열) 기준 표기 + 상품코드(SOMD- 등) 병기, 채널 상품명 단독 표기 금지(인사이트 MD·SCM·키즈IP·슬랙 TOP3까지 매핑 전파) · MD 섹션: 0으로만 나오던 주문 수 열 제거(수량으로 대체), 네이버뿐 아니라 기타마켓 소비자 매출과 쿠팡 B2B 입고까지 반영 · 마케터 섹션: 잘 되는 검색어 셀 제거(네이버 대시보드 개편으로 검색어 원천데이터 신뢰성 저하)'},{ver:'v5.17',date:'2026-10-01',note:'슬랙 리포트 개편: 먼슬리 리포트 추가(전월 대비 매출·광고비·마케팅지표 + 경쟁사 동향 통합), 경쟁사 리포트 버튼 제거, 데일리에서 유입 분석 섹션 제거, 메시지 라벨 편집 기능 제거'},{ver:'v5.16',date:'2026-09-28',note:'상품 분석 상세 개선: 요일별 매출을 월~일 순서의 1원 단위 데이터 카드로 재구성하고, 네이버 유입/전환 섹션을 제거했으며, 전체 채널 선택 시 쿠팡 B2B 입고도 판매추이에 포함되도록 일별 집계를 명확히 분리'},{ver:'v5.15',date:'2026-09-28',note:'원천 품목명 기준 정렬: 업로드한 원가 엑셀의 C열 품목명을 기준 상품명으로 사용하고, 원천 리소스 품목명·채널 상품명을 함께 alias로 묶어 대시보드 판단/표시에 동일 기준을 적용'},{ver:'v5.14',date:'2026-09-28',note:'상품 분석 개편: 막대 차트 금액 툴팁을 마우스/터치로 직접 표시하도록 수정, 상품 분석 문구를 분석형 용어로 정리, 상품ID·SKU뿐 아니라 원본 상품명도 함께 기준 상품코드/기준 상품명에 저장하는 alias 매핑 추가'},{ver:'v5.13',date:'2026-09-28',note:'매출 상이 오류 수정: sales_*.xlsx의 기간 합계행(예: 2026-09-22~2026-09-27)이 시작일 매출로 잘못 합산되던 버그 수정 — 9/22 표시 1,347,100원을 실제 185,250원으로 바로잡음, 기존 오기입 데이터 자동 정리, 완전중복 행 제거'},{ver:'v5.12',date:'2026-09-22',note:'매칭 편집 저장 강화: 내보내기가 전체 매핑 스냅샷(자동+수동 전체, 저장일·버전 포함)을 JSON으로 저장, 가져오기로 그대로 복원 — 기기 이동·공유 시 동일 매핑 보장, 구버전 파일도 호환'},{ver:'v5.11',date:'2026-09-22',note:'상품 매칭 편집 기능: 상품 분석 탭 [매칭 편집] 모달 — 상품별 코드 수동 지정/해제(드롭다운), 자동 매칭 실패만 보기 필터, 브라우저 저장+내보내기/가져오기(JSON) 공유, 변경 즉시 차트 반영'},{ver:'v5.10',date:'2026-09-22',note:'상품 매칭 고도화: ID 미매칭 시 이름 정규화 유사 매칭(SET/세트·풀세트 통합, 배지/규격 토큰 제거) + 단가 검증으로 오매칭 방지 — 사운드북+위인카드 SET/세트 등 표기 변형 자동 통합'},{ver:'v5.9',date:'2026-09-22',note:'상품 분석: 전체 현황 표에 상품코드 열 추가(순위 다음), 상품명은 상품코드 기준 통일명(COST_MAPS 마스터명) 표기, 검색 추천에도 코드 표시, 매핑 검증 리포트 병행 제공'},{ver:'v5.8',date:'2026-09-22',note:'상품 분석: 상품코드 기반 채널 매칭 — 네이버 pid·쿠팡 skuNo ID 직결(20/20 SKU), 기타마켓 이름 매핑, 코드 칩 표시, 채널 필터 오류 수정'},{ver:'v5.7', date:'2026-09-22', note:"상품 분석 개선: 기간·채널 필터, 상품 검색(드롭다운 대체), 전체 현황 상위 10개, 쿠팡 입고(B2B) 채널 추가 — SKU명 규칙 자동 매칭(입고량 93%), 미매칭 SKU는 [쿠팡] 행"},
+    {ver:'v5.29',date:'2026-11-05',note:'슬랙 전송 HTTP 400 수정: 브라우저에서 직결 전송 시 payload= form 방식이 text/plain으로 보내져 슬랙이 읽지 못하는 문제 — JSON 본문 직접 전송(브라우저 직결 표준 방식)으로 교체. 전송 실패 시 슬랙의 오류 응답 내용(예: invalid_payload)까지 화면에 표시해 원인을 바로 확인 가능'},{ver:'v5.28',date:'2026-11-03',note:'슬랙 웹훅 설정 분리: 전송용 웹훅 URL을 코드 파일에서 제거하고 관리자 탭 [📨 슬랙 웹훅 설정] 카드에서 입력·저장 — 브라우저와 클라우드에 동시 저장되어 다른 기기에서도 자동 적용, 깃허브 시크릿 스캔 경고 원천 제거, 웹훅 교체 시에도 파일 수정 불필요. 설정 전에 전송하면 안내 후 복사-붙여넣기로 진행'},{ver:'v5.27',date:'2026-11-03',note:'슬랙 전송 경로 직결화: 개인 Claude(Vercel) 중계 서버를 거치던 리포트 전송을 톰토미 리포트봇 앱의 슬랙 Incoming Webhook으로 직결 — 브라우저에서 바로 발신하며 발신자(톰토미 리포트봇)와 채널은 동일 유지. 중계 서버는 더 이상 필요 없음(해당 Vercel 프로젝트는 삭제 가능)'},{ver:'v5.26',date:'2026-10-20',note:'이상신호 기준 개선: 상품 급등/급락의 비교 기준(평소)을 직전 7일 전체 일평균에서 판매가 있던 날의 평균으로 변경 — 판매 없던 날의 0원이 섞여 비현실적으로 낮게 나오던 평균 제거. 참고: 기준이 실제 판매 수준이 되므로 같은 상황에서 알림 배수가 낮아질 수 있음(급등 판단 임계값 3배는 유지)'},{ver:'v5.25',date:'2026-10-20',note:'이상신호 알림 정확도 개선: 상품 급등/급락 알림이 상품분석과 동일한 마스터 상품(상품코드+자사 품목명) 기준으로 집계·표기되도록 수정 — 채널 상품명 원문 표기 제거, 같은 상품의 여러 리스팅이 하나로 합산 · 기준 수치를 평소(N원) 대신 직전 7일 일평균(N원, 판매 M일)로 명시해 판매 없던 날이 포함된 평균임을 표시(숫자 계산 방식은 동일)'},{ver:'v5.24',date:'2026-10-19',note:'슬랙 리포트 개선: 기간 리포트(이틀 이상)에 일평균 매출·일평균 광고비 자동 표기 — 선택 기간이 아니라 실적이 발생한 날짜 수로 나눔(일부 날짜 누락 시 과소 계산 방지, 하단 (N일 평균) 표기), 하루 리포트는 기존과 동일'},{ver:'v5.23',date:'2026-10-16',note:'상품 매칭 고도화: 관리자 탭에 [상품 매칭 관리] 추가 — 채널별 상품명·상품코드·자사 품목명을 한 표에서 확인/수정(지정 즉시 전체 대시보드 반영) · 엑셀 양식 내려받기/일괄 적용으로 대량 매칭 · 자동 매칭 3단계(토큰 겹침) 추가로 긴 채널 상품명도 자동 매칭 강화'},{ver:'v5.22',date:'2026-10-16',note:'치명적 버그 수정: 브라우저 저장(기타마켓 등) 데이터에 날짜 형식이 아닌 행이 섞여 있으면 기준일 계산이 깨져 전체 지표가 0원·NaN으로 표시되던 문제 — 모든 데이터 원천에서 날짜 형식을 검증해 이상 행을 자동 제외하고, 기준일·집계 전반에 유효한 날짜만 사용하도록 이중 가드 적용'},{ver:'v5.21',date:'2026-10-16',note:'로딩 상태 명확화: 클라우드 데이터 로딩 중에는 0원 화면 대신 로딩 안내 표시(로딩 완료 시 자동 반영), 로드 시 날짜 형식이 잘못된 요약행 자동 제외 — 참고: 실제 데이터는 정상 보존되어 있으며 로딩 완료 후 정상 표시됨'},{ver:'v5.20',date:'2026-10-16',note:'클라우드 로드 진단·복원력 강화: 인사이트 탭에 클라우드 로드 결과(행 수/실패 사유) 표시, 로드 실패 시 경고 박스 표시, 연동 라이브러리 이상 시 REST 직접 조회로 자동 전환 — 클라우드 데이터는 정상 보존 상태'},{ver:'v5.19',date:'2026-10-16',note:'인사이트 탭 데이터 진단 강화: 보유 원본 데이터 건수(네이버 일별·상품·기타마켓·쿠팡 발주·광고)를 기준일 라인에 상시 표시, 기간 내 집계 매출이 0이면 업로드 상태 확인 경고 표시 — 데이터 미반영 원인을 화면에서 바로 식별'},{ver:'v5.18',date:'2026-10-16',note:'인사이트 탭 개선: 대시보드 표기 제1원칙 전면 적용 — 모든 상품을 자사 품목명(원가 엑셀 C열) 기준 표기 + 상품코드(SOMD- 등) 병기, 채널 상품명 단독 표기 금지(인사이트 MD·SCM·키즈IP·슬랙 TOP3까지 매핑 전파) · MD 섹션: 0으로만 나오던 주문 수 열 제거(수량으로 대체), 네이버뿐 아니라 기타마켓 소비자 매출과 쿠팡 B2B 입고까지 반영 · 마케터 섹션: 잘 되는 검색어 셀 제거(네이버 대시보드 개편으로 검색어 원천데이터 신뢰성 저하)'},{ver:'v5.17',date:'2026-10-01',note:'슬랙 리포트 개편: 먼슬리 리포트 추가(전월 대비 매출·광고비·마케팅지표 + 경쟁사 동향 통합), 경쟁사 리포트 버튼 제거, 데일리에서 유입 분석 섹션 제거, 메시지 라벨 편집 기능 제거'},{ver:'v5.16',date:'2026-09-28',note:'상품 분석 상세 개선: 요일별 매출을 월~일 순서의 1원 단위 데이터 카드로 재구성하고, 네이버 유입/전환 섹션을 제거했으며, 전체 채널 선택 시 쿠팡 B2B 입고도 판매추이에 포함되도록 일별 집계를 명확히 분리'},{ver:'v5.15',date:'2026-09-28',note:'원천 품목명 기준 정렬: 업로드한 원가 엑셀의 C열 품목명을 기준 상품명으로 사용하고, 원천 리소스 품목명·채널 상품명을 함께 alias로 묶어 대시보드 판단/표시에 동일 기준을 적용'},{ver:'v5.14',date:'2026-09-28',note:'상품 분석 개편: 막대 차트 금액 툴팁을 마우스/터치로 직접 표시하도록 수정, 상품 분석 문구를 분석형 용어로 정리, 상품ID·SKU뿐 아니라 원본 상품명도 함께 기준 상품코드/기준 상품명에 저장하는 alias 매핑 추가'},{ver:'v5.13',date:'2026-09-28',note:'매출 상이 오류 수정: sales_*.xlsx의 기간 합계행(예: 2026-09-22~2026-09-27)이 시작일 매출로 잘못 합산되던 버그 수정 — 9/22 표시 1,347,100원을 실제 185,250원으로 바로잡음, 기존 오기입 데이터 자동 정리, 완전중복 행 제거'},{ver:'v5.12',date:'2026-09-22',note:'매칭 편집 저장 강화: 내보내기가 전체 매핑 스냅샷(자동+수동 전체, 저장일·버전 포함)을 JSON으로 저장, 가져오기로 그대로 복원 — 기기 이동·공유 시 동일 매핑 보장, 구버전 파일도 호환'},{ver:'v5.11',date:'2026-09-22',note:'상품 매칭 편집 기능: 상품 분석 탭 [매칭 편집] 모달 — 상품별 코드 수동 지정/해제(드롭다운), 자동 매칭 실패만 보기 필터, 브라우저 저장+내보내기/가져오기(JSON) 공유, 변경 즉시 차트 반영'},{ver:'v5.10',date:'2026-09-22',note:'상품 매칭 고도화: ID 미매칭 시 이름 정규화 유사 매칭(SET/세트·풀세트 통합, 배지/규격 토큰 제거) + 단가 검증으로 오매칭 방지 — 사운드북+위인카드 SET/세트 등 표기 변형 자동 통합'},{ver:'v5.9',date:'2026-09-22',note:'상품 분석: 전체 현황 표에 상품코드 열 추가(순위 다음), 상품명은 상품코드 기준 통일명(COST_MAPS 마스터명) 표기, 검색 추천에도 코드 표시, 매핑 검증 리포트 병행 제공'},{ver:'v5.8',date:'2026-09-22',note:'상품 분석: 상품코드 기반 채널 매칭 — 네이버 pid·쿠팡 skuNo ID 직결(20/20 SKU), 기타마켓 이름 매핑, 코드 칩 표시, 채널 필터 오류 수정'},{ver:'v5.7', date:'2026-09-22', note:"상품 분석 개선: 기간·채널 필터, 상품 검색(드롭다운 대체), 전체 현황 상위 10개, 쿠팡 입고(B2B) 채널 추가 — SKU명 규칙 자동 매칭(입고량 93%), 미매칭 SKU는 [쿠팡] 행"},
     {ver:'v5.6', date:'2026-09-22', note:"상품 분석 탭 신설: 상품별 채널(네이버/기타마켓) 성과 · 일별·요일별 판매 패턴 · 방문·전환율 · 전체 상품 증감 현황"},
     {ver:'v5.5', date:'2026-09-17', note:"인사이트 탭에 경영진 카드 추가: 채널별 손익·영업이익 추정·마진율 (쿠팡 B2B 분리 표기)"},
     {ver:'v5.4', date:'2026-09-17', note:"인사이트 탭에 마케터 카드 추가: 채널별 광고비·ROAS(목적별 분리) · 주간 추이 · 검색어/쿠팡애즈 잘 되는 키워드"},
@@ -5133,7 +5145,38 @@ function exportArchiveJSON() {
 // ══════════════════════════════════════════
 // 슬랙 리포트 (패널 방식 — 미리보기 → 수정 → 전송)
 // ══════════════════════════════════════════
-var SLACK_WEBHOOK = 'https://tomtomi-slack-relay.vercel.app/api/slack';
+// v5.28: 웹훅 URL은 파일에 담지 않음(깃허브 시크릿 스캔 경고 제거) — 관리자 탭에서 설정, 브라우저+클라우드 저장
+var SLACK_WEBHOOK = '';
+var WEBHOOK_LS_KEY = 'tt_slack_webhook';
+function webhookLoadLocal(){
+  try{ SLACK_WEBHOOK = localStorage.getItem(WEBHOOK_LS_KEY)||''; }catch(e){ SLACK_WEBHOOK=''; }
+  return SLACK_WEBHOOK;
+}
+webhookLoadLocal();
+function webhookApply(u){
+  SLACK_WEBHOOK=String(u||'').trim();
+  try{ if(SLACK_WEBHOOK) localStorage.setItem(WEBHOOK_LS_KEY,SLACK_WEBHOOK); else localStorage.removeItem(WEBHOOK_LS_KEY); }catch(e){}
+  var st=document.getElementById('wh-status');
+  if(st) st.textContent = SLACK_WEBHOOK?('✅ 설정됨 — '+SLACK_WEBHOOK.slice(0,46)+'…'):'설정 전 — 슬랙 웹훅 URL을 입력하고 저장하세요';
+  var ip=document.getElementById('wh-url');
+  if(ip && document.activeElement!==ip) ip.value=SLACK_WEBHOOK;
+}
+function webhookAdminSync(){ webhookApply(SLACK_WEBHOOK); }
+function webhookSave(){
+  var ip=document.getElementById('wh-url');
+  var u=ip?String(ip.value||'').trim():'';
+  if(u && u.indexOf('https://hooks.slack.com/services/')!==0){
+    if(!confirm('슬랙 웹훅 URL 형식이 아닙니다. 그래도 저장할까요?')) return;
+  }
+  webhookApply(u);
+  if(typeof _sb!=='undefined' && _sb){
+    saveToSupabase('slackConfig',{webhook:[{url:SLACK_WEBHOOK}]}).then(function(ok){
+      showSaveToast(ok?'💾 슬랙 웹훅 저장 완료 (브라우저+클라우드)':'⚠️ 브라우저에만 저장됨 (클라우드 저장 실패)');
+    });
+  } else {
+    showSaveToast('💾 브라우저에 저장됨 (클라우드 연결 전)');
+  }
+}
 
 function toggleSlackPanel(){
   var p = document.getElementById('slackPanel');
@@ -5621,23 +5664,31 @@ function sendSlackFromPanel(){
 }
 
 function _doSlackSend(msg, btn, status){
+  // v5.28: 웹훅 미설정 시 안내 후 복사-붙여넣기로 유도
+  if(!SLACK_WEBHOOK){
+    if(status){ status.style.color='var(--red)'; status.textContent='웹훅 미설정'; }
+    if(btn){ btn.disabled=false; btn.textContent='📨 슬랙으로 전송'; }
+    alert('슬랙 웹훅이 아직 설정되지 않았습니다.\n관리자 탭 → 📨 슬랙 웹훅 설정에서 URL을 붙여넣고 저장해주세요.\n\n설정 전까지는 아래 메시지를 복사해서 슬랙에 붙여넣어 주세요:\n\n'+msg);
+    return;
+  }
+  // v5.29: 브라우저 직결 표준 방식 — JSON 본문을 그대로 문자열로 전송(슬랙이 JSON으로 파싱).
+  // v5.27의 payload= form 방식은 브라우저가 Content-Type을 text/plain으로 보내 슬랙이
+  // 해석하지 못해 HTTP 400 invalid_payload 발생. raw JSON 본문은 text/plain 전송이어도
+  // 파싱되며, text/plain은 CORS 세이프리스트라 preflight 없이 전송됨.
   fetch(SLACK_WEBHOOK,{
     method:'POST',
-    headers:{'Content-Type':'application/json'},
     body:JSON.stringify({text:msg})
   }).then(function(resp){
-    if(resp.ok) return resp.json(); 
-    throw new Error('HTTP '+resp.status);
-  }).then(function(data){
-    if(data.result==='ok'){
-      if(status){ status.style.color='var(--green)'; status.textContent='✅ 슬랙 전송 완료!'; }
-      if(btn){ btn.textContent='✅ 전송 완료'; setTimeout(function(){btn.disabled=false;btn.textContent='📨 슬랙으로 전송';},3000); }
-      showSaveToast('✅ 슬랙 리포트 발송 완료!');
-    } else {
-      throw new Error(data.error||'전송 실패');
-    }
+    return resp.text().then(function(t){
+      if(!resp.ok) throw new Error('HTTP '+resp.status+(t?' ('+t+')':''));
+      return t;
+    });
+  }).then(function(){
+    if(status){ status.style.color='var(--green)'; status.textContent='✅ 슬랙 전송 완료!'; }
+    if(btn){ btn.disabled=false; btn.textContent='✅ 전송 완료'; setTimeout(function(){btn.disabled=false;btn.textContent='📨 슬랙으로 전송';},3000); }
+    showSaveToast('✅ 슬랙 리포트 발송 완료!');
   }).catch(function(err){
-    if(status){ status.style.color='var(--red)'; status.textContent='❌ 전송 실패: '+err.message; }
+    if(status){ status.style.color='var(--red)'; status.textContent='전송 실패'; }
     if(btn){ btn.disabled=false; btn.textContent='📨 슬랙으로 전송'; }
     alert('슬랙 전송 에러: '+err.message+'\n\n아래 메시지를 복사해서 슬랙에 붙여넣기 해주세요:\n\n'+msg);
   });
