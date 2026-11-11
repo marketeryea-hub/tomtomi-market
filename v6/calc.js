@@ -100,7 +100,7 @@
     });
     (raw.coupAd || []).forEach(function (e) {
       var d = normDate(e && e.d); if (!d) return;
-      out.ads.coupang.push({ d: d, cost: num(e.cost), rev: num(e.rev), clicks: num(e.clicks), imp: num(e.imp), conv: num(e.conv) });
+      out.ads.coupang.push({ d: d, cost: num(e.cost), rev: num(e.rev), clicks: num(e.clicks), imp: num(e.imp), conv: num(e.conv), campaign: String(e.campaign || '') });
     });
 
     (raw.naverOrder || []).forEach(function (e) {
@@ -265,6 +265,60 @@
     return data.other.filter(function (e) { return inRange(e.d, from, to); }).sort(function (a, b) { return a.d < b.d ? 1 : a.d > b.d ? -1 : 0; });
   }
 
+  /* ───────── 광고 메뉴 ─────────
+   * 비율(CTR, CPC, ROAS)은 날짜별 값을 더하지 않고, 합계끼리 나눠서 구한다.
+   */
+  var AD_FIELDS = ['saCost', 'saRev', 'saClicks', 'saImp', 'saConv', 'metaCost', 'metaClicks', 'metaImp', 'metaReach',
+    'boostCost', 'boostClicks', 'boostImp', 'boostConv', 'coupCost', 'coupRev', 'coupClicks', 'coupImp', 'coupConv', 'nNet', 'store'];
+  function adsDaily(data, from, to) {
+    var m = {};
+    function slot(d) {
+      if (!m[d]) { m[d] = { d: d }; AD_FIELDS.forEach(function (f) { m[d][f] = 0; }); }
+      return m[d];
+    }
+    data.ads.sa.forEach(function (e) { if (!inRange(e.d, from, to)) return; var o = slot(e.d); o.saCost += e.cost; o.saRev += e.rev; o.saClicks += e.clicks; o.saImp += e.imp; o.saConv += e.conv; });
+    data.ads.meta.forEach(function (e) { if (!inRange(e.d, from, to)) return; var o = slot(e.d); o.metaCost += e.cost; o.metaClicks += e.clicks; o.metaImp += e.imp; o.metaReach += e.reach; });
+    data.ads.boost.forEach(function (e) { if (!inRange(e.d, from, to)) return; var o = slot(e.d); o.boostCost += e.cost; o.boostClicks += e.clicks; o.boostImp += e.imp; o.boostConv += e.conv; });
+    data.ads.coupang.forEach(function (e) { if (!inRange(e.d, from, to)) return; var o = slot(e.d); o.coupCost += e.cost; o.coupRev += e.rev; o.coupClicks += e.clicks; o.coupImp += e.imp; o.coupConv += e.conv; });
+    data.naver.forEach(function (e) { if (inRange(e.d, from, to)) slot(e.d).nNet += e.net; });
+    var out = [];
+    for (var d = from; d <= to; d = addDays(d, 1)) { var o = slot(d); o.store = o.saCost + o.metaCost + o.boostCost; out.push(o); }
+    return out;
+  }
+  function bucketBy(rows, unit, fields) {
+    var m = {}, order = [];
+    rows.forEach(function (o) {
+      var key, label;
+      if (unit === 'month') { key = o.d.slice(0, 7); label = key.replace('-', '.'); }
+      else if (unit === 'week') { var dt = toDate(o.d); key = addDays(o.d, -((dt.getDay() + 6) % 7)); label = key.slice(5).replace('-', '.') + ' 주'; }
+      else { key = o.d; label = o.d.slice(5).replace('-', '.'); }
+      if (!m[key]) { m[key] = { key: key, label: label, from: o.d, to: o.d }; fields.forEach(function (f) { m[key][f] = 0; }); order.push(key); }
+      var b = m[key]; b.to = o.d;
+      fields.forEach(function (f) { b[f] += o[f]; });
+    });
+    return order.map(function (k) { return m[k]; });
+  }
+  function totalBy(rows, fields) {
+    var t = {}; fields.forEach(function (f) { t[f] = 0; });
+    rows.forEach(function (o) { fields.forEach(function (f) { t[f] += o[f]; }); });
+    return t;
+  }
+  function adsBucket(rows, unit) { return bucketBy(rows, unit, AD_FIELDS); }
+  function adsTotal(rows) { return totalBy(rows, AD_FIELDS); }
+  function ratio(a, b) { return b > 0 ? a / b : null; }
+  // 매체 안에서 캠페인(메타는 광고 세트)별로 나눠 보기
+  function adsBreakdown(data, medium, from, to) {
+    var src = medium === 'sa' ? data.ads.sa : medium === 'meta' ? data.ads.meta : medium === 'coupang' ? data.ads.coupang : [];
+    var m = {};
+    src.forEach(function (e) {
+      if (!inRange(e.d, from, to)) return;
+      var k = (medium === 'meta' ? e.setName : e.campaign) || '(구분 없음)';
+      var o = m[k] || (m[k] = { name: k, cost: 0, rev: 0, clicks: 0, imp: 0, conv: 0 });
+      o.cost += e.cost; o.rev += e.rev || 0; o.clicks += e.clicks; o.imp += e.imp; o.conv += e.conv || 0;
+    });
+    return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.cost - a.cost; });
+  }
+
   /* ───────── 옵션 → SKU (v5.38과 같은 규칙) ───────── */
   function skuNorm(v) {
     v = String(v || '').replace(/\s+/g, '');
@@ -411,6 +465,7 @@
     prevPeriod: prevPeriod, lastYear: lastYear, preset: preset,
     summary: summary, delta: delta, daily: daily, bucket: bucket, autoUnit: autoUnit,
     dailyFull: dailyFull, bucketFull: bucketFull, totalFull: totalFull, coupangTop: coupangTop, otherByMarket: otherByMarket, otherRows: otherRows,
+    adsDaily: adsDaily, adsBucket: adsBucket, adsTotal: adsTotal, adsBreakdown: adsBreakdown, ratio: ratio,
     skuAggregate: skuAggregate, skuUnmapped: skuUnmapped, skuParseOpt: skuParseOpt, orderCheck: orderCheck,
     signals: signals, health: health
   };

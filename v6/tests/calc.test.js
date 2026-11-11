@@ -81,5 +81,10 @@ eq('주는 월요일 시작', C.bucketFull(C.dailyFull(D, '2025-12-31', '2026-01
 eq('쿠팡 상위 품목 합 = 쿠팡 입고', C.coupangTop(D, '2026-01-01', '2026-01-02').reduce((a, o) => a + o.amount, 0), s.coupang);
 eq('기타마켓 마켓별', C.otherByMarket(D, '2026-01-01', '2026-01-02').map(o => [o.market, o.amount]), [['이베이', 300]]);
 
+const ad = C.adsTotal(C.adsDaily(D, '2026-01-01', '2026-01-02'));
+eq('광고 날짜별 합 = 요약', [ad.saCost, ad.metaCost, ad.boostCost, ad.store, ad.coupCost, ad.coupRev, ad.nNet], [s.adSa, s.adMeta, s.adBoost, s.adStore, s.coupAdCost, s.coupAdRev, s.naverNet]);
+eq('비율은 합계끼리 나눈다', [C.ratio(ad.metaClicks, ad.metaImp), C.ratio(1, 0)], [0.05, null]);
+eq('SA 캠페인별(구분 없는 행 포함)', C.adsBreakdown(D, 'sa', '2026-01-01', '2026-01-02').map(o => [o.name, o.cost]), [['A', 100], ['(구분 없음)', 50]]);
+
 console.log(fail ? '실패 ' + fail + '건' : '모든 규칙 통과');
 process.exit(fail ? 1 : 0);
