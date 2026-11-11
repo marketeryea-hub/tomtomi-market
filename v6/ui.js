@@ -8,8 +8,8 @@
   var C = root.TTCalc;
   var DATA = null;      // 정리된 데이터
   var META = {};        // 불러오기 결과(기타마켓 연결 여부 등)
-  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto' };
-  var READY = { home: 1, sales: 1 }; // 옮겨온 메뉴
+  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0 };
+  var READY = { home: 1, sales: 1, ads: 1 }; // 옮겨온 메뉴
   var STORE_KEY = 'tt6_state';
 
   var VIEWS = [
@@ -34,7 +34,7 @@
   function pctText(p) { return (p > 0 ? '+' : '') + Math.round(p * 100).toLocaleString('ko-KR') + '%'; }
   function today() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
   // 열 때마다 기간은 '최근 1일'에서 시작한다. 보던 메뉴, 채널, 차트 단위만 기억한다.
-  var KEEP = ['view', 'ch', 'unit'];
+  var KEEP = ['view', 'ch', 'unit', 'ad'];
   function save() { try { var o = {}; KEEP.forEach(function (k) { o[k] = S[k]; }); localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) { /* 저장 못 해도 화면은 동작 */ } }
   function restore() { try { var v = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); if (v && typeof v === 'object') KEEP.forEach(function (k) { if (typeof v[k] === 'string') S[k] = v[k]; }); } catch (e) { /* 무시 */ } }
 
@@ -93,7 +93,13 @@
     rows.forEach(function (o, i) { if (o.key >= S.from && o.key <= S.to) { if (a < 0) a = i; b = i; } });
     return a < 0 ? null : { a: a, b: b };
   }
-  function chartSvg(cur, prev, hl) {
+  /* 선(주 지표) + 막대(광고비) + 비교 기간(점선).
+   * 날짜 칸 어디에 마우스를 올려도 그 날짜의 값을 한꺼번에 보여준다.
+   * opt: { line: 선 이름, bar: 막대 이름, unit: 선의 단위('원' 또는 '회') }
+   */
+  function chartSvg(cur, prev, hl, opt) {
+    opt = opt || {};
+    var lineName = opt.line || '실매출', barName = opt.bar || '광고비', unit = opt.unit || '원';
     var W = 760, H = 250, L = 52, R = 48, T = 12, B = 30, pw = W - L - R, ph = H - T - B, n = cur.length;
     if (!n) return '';
     var maxS = 0, maxA = 0;
@@ -105,7 +111,7 @@
     function x(i) { return L + step * (i + 0.5); }
     function yS(v) { return T + ph - (Math.max(v, 0) / maxS) * ph; }
     function yA(v) { return T + ph - (v / maxA) * ph * 0.45; } // 막대는 아래쪽 45%만 쓴다
-    var s = '<svg class="chart" role="img" aria-label="실매출 선과 광고비 막대 차트" viewBox="0 0 ' + W + ' ' + H + '">';
+    var s = '<svg class="chart" role="img" aria-label="' + esc(lineName) + ' 선과 ' + esc(barName) + ' 막대 차트" viewBox="0 0 ' + W + ' ' + H + '">';
     for (var g = 0; g <= 4; g++) {
       var gy = T + ph - ph * g / 4;
       s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + gy + '" y2="' + gy + '" stroke="var(--line)" stroke-width="1"></line>';
@@ -115,20 +121,27 @@
       s += '<text x="' + (W - R + 6) + '" y="' + (yA(maxA) + 4) + '">' + shortWon(maxA) + '</text>';
       s += '<text x="' + (W - R + 6) + '" y="' + (T + ph + 4) + '">0</text>';
     }
-    if (hl) s += '<rect x="' + (L + step * hl.a).toFixed(1) + '" y="' + T + '" width="' + (step * (hl.b - hl.a + 1)).toFixed(1) + '" height="' + ph + '" fill="var(--accent-soft)"><title>조회 기간</title></rect>';
+    if (hl) s += '<rect x="' + (L + step * hl.a).toFixed(1) + '" y="' + T + '" width="' + (step * (hl.b - hl.a + 1)).toFixed(1) + '" height="' + ph + '" fill="var(--accent-soft)"></rect>';
     var bw = Math.max(2, Math.min(28, step * 0.6));
     cur.forEach(function (o, i) {
       if (o.ad <= 0) return;
       var y = yA(o.ad);
-      s += '<rect x="' + (x(i) - bw / 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + (T + ph - y).toFixed(1) + '" fill="var(--ad)" rx="2"><title>' + esc(o.label) + ' 광고비 ' + won(o.ad) + '원</title></rect>';
+      s += '<rect x="' + (x(i) - bw / 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + (T + ph - y).toFixed(1) + '" fill="var(--ad)" rx="2"></rect>';
     });
     function path(arr) { return arr.map(function (o, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + yS(o.sales).toFixed(1); }).join(' '); }
     if (prev && prev.length) s += '<path d="' + path(prev.slice(0, n)) + '" fill="none" stroke="var(--prev)" stroke-width="2" stroke-dasharray="6 6"></path>';
     s += '<path d="' + path(cur) + '" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></path>';
     var every = Math.max(1, Math.ceil(n / 8));
     cur.forEach(function (o, i) {
-      s += '<circle cx="' + x(i).toFixed(1) + '" cy="' + yS(o.sales).toFixed(1) + '" r="' + (n <= 45 ? 3 : 1.5) + '" fill="var(--accent)"><title>' + esc(o.label) + ' 실매출 ' + won(o.sales) + '원' + (prev && prev[i] ? ' (비교 ' + won(prev[i].sales) + '원)' : '') + '</title></circle>';
+      s += '<circle cx="' + x(i).toFixed(1) + '" cy="' + yS(o.sales).toFixed(1) + '" r="' + (n <= 45 ? 3 : 1.5) + '" fill="var(--accent)"></circle>';
       if (i % every === 0) s += '<text x="' + x(i).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle">' + esc(o.label) + '</text>';
+    });
+    // 날짜 칸 전체가 마우스를 받는다: 선, 비교, 막대 값을 한꺼번에 보여준다
+    cur.forEach(function (o, i) {
+      var lines = [o.label, lineName + ' ' + won(o.sales) + unit];
+      if (prev && prev[i]) lines.push('비교 (' + prev[i].label + ') ' + won(prev[i].sales) + unit);
+      if (opt.bar !== '') lines.push(barName + ' ' + won(o.ad) + '원');
+      s += '<rect class="hit" x="' + (L + step * i).toFixed(1) + '" y="' + T + '" width="' + step.toFixed(1) + '" height="' + ph + '" data-tip="' + esc(lines.join('|')) + '"></rect>';
     });
     return s + '</svg>';
   }
@@ -162,7 +175,7 @@
     if (ctx) h += '<span class="legend"><span class="lg-hl"></span>조회 기간</span>';
     h += '<span class="legend"><span class="lg-bar"></span>광고비 (오른쪽 눈금)</span></div>';
     h += chartSvg(cur, prev, ctx ? hlRange(cur) : null);
-    h += '<span class="note">선은 실매출(왼쪽 눈금), 막대는 스토어 광고비(네이버SA + 메타 + 애드부스트)입니다. 점에 마우스를 올리면 값이 보입니다.</span></section>';
+    h += '<span class="note">선은 실매출(왼쪽 눈금), 막대는 스토어 광고비(네이버SA + 메타 + 애드부스트)입니다. 차트에 마우스를 올리면 그 날짜의 값이 보입니다.</span></section>';
 
     var cmpEmpty = has && cr.to < DATA.first; // 비교 기간이 데이터 시작일보다 앞이면 비교할 값이 없다
     var sigs = has && !cmpEmpty ? C.signals(DATA, { from: S.from, to: S.to }, cr, sc, sp) : [];
@@ -209,6 +222,21 @@
     h += '<a class="more" href="index.html">파일 올리기와 데이터 관리 (v5에서 열림)</a></section>';
     h += '</div>';
     return h;
+  }
+
+  /* ───────── 표 넘겨보기: 최근 날짜부터 10줄씩 ───────── */
+  var PAGE_SIZE = 10;
+  function pageOf(list) {
+    var pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    if (S.page >= pages) S.page = pages - 1;
+    if (S.page < 0) S.page = 0;
+    return { rows: list.slice(S.page * PAGE_SIZE, (S.page + 1) * PAGE_SIZE), pages: pages, total: list.length };
+  }
+  function pagerHtml(pg) {
+    if (pg.pages <= 1) return '';
+    return '<div class="pager"><button type="button" class="chip" data-act="page" data-key="newer"' + (S.page === 0 ? ' disabled' : '') + '>‹ 더 최근</button>' +
+      '<span class="num">' + (S.page + 1) + ' / ' + pg.pages + ' <small>(전체 ' + pg.total + '줄)</small></span>' +
+      '<button type="button" class="chip" data-act="page" data-key="older"' + (S.page >= pg.pages - 1 ? ' disabled' : '') + '>더 과거 ›</button></div>';
   }
 
   /* ───────── 매출 ───────── */
@@ -293,25 +321,26 @@
     if (has && !ctx) h += '<span class="legend"><span class="lg-dash"></span>비교 기간</span>';
     if (ctx) h += '<span class="legend"><span class="lg-hl"></span>조회 기간</span>';
     if (aKey) h += '<span class="legend"><span class="lg-bar"></span>' + (ch === 'coupang' ? '쿠팡애즈 광고비 (참고)' : '광고비') + '</span>';
-    h += '</div>' + chartSvg(series(crow), has && !ctx ? series(M.prows) : null, ctx ? hlRange(crow) : null);
-    h += '<span class="note">' + (ctx ? '조회 기간이 짧아 최근 14일 흐름을 함께 보여줍니다. 색칠된 부분이 조회 기간입니다.' : UNIT_NAME[M.unit] + ' 단위' + (S.unit === 'auto' ? ' (기간 길이에 맞춰 자동 선택)' : '') + '.') + ' 점에 마우스를 올리면 값이 보입니다.</span></section>';
+    h += '</div>' + chartSvg(series(crow), has && !ctx ? series(M.prows) : null, ctx ? hlRange(crow) : null, { line: sName, bar: aKey ? (ch === 'coupang' ? '쿠팡애즈 광고비 (참고)' : '광고비') : '' });
+    h += '<span class="note">' + (ctx ? '조회 기간이 짧아 최근 14일 흐름을 함께 보여줍니다. 색칠된 부분이 조회 기간입니다.' : UNIT_NAME[M.unit] + ' 단위' + (S.unit === 'auto' ? ' (기간 길이에 맞춰 자동 선택)' : '') + '.') + ' 차트에 마우스를 올리면 그 날짜의 값이 보입니다.</span></section>';
 
     // 표 + 옆 목록
     h += '<div class="row">';
-    h += '<section class="card grow3 flush" aria-label="기간별 실적"><div class="card-h pad"><h2>' + (ch === 'other' ? '주문 목록' : UNIT_NAME[M.unit] + '별 실적') + '</h2><button type="button" class="chip" data-act="csv">엑셀로 받기 (CSV)</button></div><div class="scroll">';
+    h += '<section class="card grow3 flush" aria-label="기간별 실적"><div class="card-h pad"><h2>' + (ch === 'other' ? '주문 목록' : UNIT_NAME[M.unit] + '별 실적') + '</h2><span class="hint">합계는 조회 기간 전체</span><button type="button" class="chip" data-act="csv">엑셀로 받기 (CSV)</button></div><div class="scroll">';
     if (ch === 'other') {
       var orows = C.otherRows(DATA, S.from, S.to);
       h += '<table class="tbl"><thead><tr><th scope="col">날짜</th><th scope="col">마켓</th><th scope="col">상품</th><th scope="col" class="r">수량</th><th scope="col" class="r">매출</th></tr></thead><tbody>';
       if (!orows.length) h += '<tr><td colspan="5" class="none">이 기간에 기타마켓 주문이 없습니다.</td></tr>';
-      orows.slice(0, 100).forEach(function (e) { h += '<tr><th scope="row">' + dot(e.d) + '</th><td>' + esc(e.market) + '</td><td>' + esc(e.product) + '</td><td class="r num">' + n0(e.qty) + '</td><td class="r num b">' + n0(e.amount) + '</td></tr>'; });
+      var opg = pageOf(orows);
+      opg.rows.forEach(function (e) { h += '<tr><th scope="row">' + dot(e.d) + '</th><td>' + esc(e.market) + '</td><td>' + esc(e.product) + '</td><td class="r num">' + n0(e.qty) + '</td><td class="r num b">' + n0(e.amount) + '</td></tr>'; });
       if (orows.length) h += '<tr class="sum"><th scope="row">합계</th><td></td><td></td><td class="r num">' + n0(t.otherQty) + '</td><td class="r num b">' + n0(t.other) + '</td></tr>';
-      h += '</tbody></table>';
+      h += '</tbody></table>' + pagerHtml(opg);
     } else {
-      var cols = salesColumns(ch), list = M.rows.slice().reverse(), LIMIT = 100;
+      var cols = salesColumns(ch), list = M.rows.slice().reverse(), pg = pageOf(list);
       h += '<table class="tbl"><thead><tr><th scope="col">' + (M.unit === 'day' ? '날짜' : '기간') + '</th>';
       cols.forEach(function (c) { h += '<th scope="col" class="r">' + c[0] + '</th>'; });
       h += '</tr></thead><tbody>';
-      list.slice(0, LIMIT).forEach(function (o) {
+      pg.rows.forEach(function (o) {
         h += '<tr><th scope="row">' + (M.unit === 'day' ? dot(o.key) : esc(o.label)) + '</th>';
         cols.forEach(function (c) { var v = o[c[1]]; h += '<td class="r num' + (c[2] ? ' b' : '') + '">' + (v ? n0(v) : '<span class="zero">0</span>') + '</td>'; });
         h += '</tr>';
@@ -319,7 +348,7 @@
       h += '<tr class="sum"><th scope="row">합계</th>';
       cols.forEach(function (c) { h += '<td class="r num' + (c[2] ? ' b' : '') + '">' + n0(t[c[1]]) + '</td>'; });
       h += '</tr></tbody></table>';
-      if (list.length > LIMIT) h += '<p class="note pad">최근 ' + LIMIT + '줄만 보여줍니다. 전체 ' + list.length + '줄은 [엑셀로 받기]로 받을 수 있습니다.</p>';
+      h += pagerHtml(pg);
     }
     h += '</div></section>';
 
@@ -379,6 +408,160 @@
     setTimeout(function () { a.remove(); URL.revokeObjectURL(a.href); }, 1000);
   }
 
+  /* ───────── 광고 ───────── */
+  var MEDIA = [['store', '스토어 광고 전체'], ['sa', '네이버SA'], ['meta', '메타'], ['boost', '애드부스트'], ['coupang', '쿠팡애즈 (참고)']];
+  function pct1(v) { return v === null ? '-' : (v * 100).toFixed(2) + '%'; }
+  function roasText(v) { return v === null ? '-' : n0(v * 100) + '%'; }
+  // 매체별 표 구성: [열 이름, 값 함수, 표시 방식, 강조]. 화면 표와 CSV가 함께 쓴다.
+  function adsColumns(md) {
+    var R = C.ratio;
+    if (md === 'sa') return [['광고비', function (o) { return o.saCost; }, 'n', 1], ['노출', function (o) { return o.saImp; }, 'n'], ['클릭', function (o) { return o.saClicks; }, 'n'],
+      ['CTR', function (o) { return R(o.saClicks, o.saImp); }, 'p'], ['CPC', function (o) { return R(o.saCost, o.saClicks); }, 'n'], ['전환수', function (o) { return o.saConv; }, 'n'],
+      ['전환매출', function (o) { return o.saRev; }, 'n'], ['ROAS', function (o) { return R(o.saRev, o.saCost); }, 'r']];
+    if (md === 'meta') return [['광고비', function (o) { return o.metaCost; }, 'n', 1], ['노출', function (o) { return o.metaImp; }, 'n'], ['도달', function (o) { return o.metaReach; }, 'n'],
+      ['클릭', function (o) { return o.metaClicks; }, 'n'], ['CTR', function (o) { return R(o.metaClicks, o.metaImp); }, 'p'], ['CPC', function (o) { return R(o.metaCost, o.metaClicks); }, 'n']];
+    if (md === 'boost') return [['광고비', function (o) { return o.boostCost; }, 'n', 1], ['노출', function (o) { return o.boostImp; }, 'n'], ['클릭', function (o) { return o.boostClicks; }, 'n'],
+      ['CTR', function (o) { return R(o.boostClicks, o.boostImp); }, 'p'], ['전환수', function (o) { return o.boostConv; }, 'n']];
+    if (md === 'coupang') return [['광고비', function (o) { return o.coupCost; }, 'n', 1], ['노출', function (o) { return o.coupImp; }, 'n'], ['클릭', function (o) { return o.coupClicks; }, 'n'],
+      ['CTR', function (o) { return R(o.coupClicks, o.coupImp); }, 'p'], ['전환수', function (o) { return o.coupConv; }, 'n'], ['전환매출 (참고)', function (o) { return o.coupRev; }, 'n'], ['ROAS (참고)', function (o) { return R(o.coupRev, o.coupCost); }, 'r']];
+    return [['네이버SA', function (o) { return o.saCost; }, 'n'], ['메타', function (o) { return o.metaCost; }, 'n'], ['애드부스트', function (o) { return o.boostCost; }, 'n'],
+      ['스토어 광고비', function (o) { return o.store; }, 'n', 1], ['네이버 순매출', function (o) { return o.nNet; }, 'n'], ['스토어 ROAS', function (o) { return R(o.nNet, o.store); }, 'r']];
+  }
+  function fmtBy(v, kind) {
+    if (v === null || v === undefined) return '-';
+    if (kind === 'p') return (v * 100).toFixed(2) + '%';
+    if (kind === 'r') return n0(v * 100) + '%';
+    return n0(v);
+  }
+  function adsModel() {
+    var cr = cmpRange(), has = !!cr && cr.to >= DATA.first;
+    var unit = S.unit === 'auto' ? C.autoUnit(S.from, S.to) : S.unit;
+    var rows = C.adsBucket(C.adsDaily(DATA, S.from, S.to), unit);
+    var prows = has ? C.adsBucket(C.adsDaily(DATA, cr.from, cr.to), unit) : null;
+    return { cr: cr, has: has, unit: unit, rows: rows, prows: prows, t: C.adsTotal(rows), pt: has ? C.adsTotal(prows) : null };
+  }
+  function viewAds() {
+    var M = adsModel(), md = S.ad, t = M.t, pt = M.pt, has = M.has, R = C.ratio, h = '';
+    var mdName = MEDIA.filter(function (c) { return c[0] === md; })[0][1];
+    h += '<div class="tabs" role="tablist" aria-label="광고 매체">';
+    MEDIA.forEach(function (c) { h += '<button type="button" role="tab" class="tab" data-act="ad" data-key="' + c[0] + '" aria-selected="' + (c[0] === md) + '">' + c[1] + '</button>'; });
+    h += '</div>';
+
+    function rsub(cur, prev, kind) { // 비율 지표의 이전 값 표시 (kind: 'r' ROAS, 'p' CTR)
+      if (!has || prev === null || cur === null) return '';
+      return '이전 ' + fmtBy(prev, kind);
+    }
+    h += '<section class="strip" aria-label="' + mdName + ' 요약">';
+    if (md === 'sa') {
+      h += cell('광고비', n0(t.saCost), dsub(t.saCost, has ? pt.saCost : 0, has));
+      h += cell('전환매출', n0(t.saRev), dsub(t.saRev, has ? pt.saRev : 0, has));
+      h += cell('ROAS', roasText(R(t.saRev, t.saCost)), rsub(R(t.saRev, t.saCost), has ? R(pt.saRev, pt.saCost) : null, 'r'));
+      h += cell('클릭', n0(t.saClicks), 'CPC ' + fmtBy(R(t.saCost, t.saClicks), 'n') + '원');
+      h += cell('CTR', pct1(R(t.saClicks, t.saImp)), '노출 ' + n0(t.saImp) + ', 전환 ' + n0(t.saConv) + '건');
+    } else if (md === 'meta') {
+      h += cell('광고비', n0(t.metaCost), dsub(t.metaCost, has ? pt.metaCost : 0, has));
+      h += cell('CTR', pct1(R(t.metaClicks, t.metaImp)), rsub(R(t.metaClicks, t.metaImp), has ? R(pt.metaClicks, pt.metaImp) : null, 'p'));
+      h += cell('클릭', n0(t.metaClicks), dsub(t.metaClicks, has ? pt.metaClicks : 0, has));
+      h += cell('CPC', fmtBy(R(t.metaCost, t.metaClicks), 'n'), '클릭 1회당 비용(원)');
+      h += cell('노출', n0(t.metaImp), '도달 ' + n0(t.metaReach));
+    } else if (md === 'boost') {
+      h += cell('광고비', n0(t.boostCost), dsub(t.boostCost, has ? pt.boostCost : 0, has));
+      h += cell('클릭', n0(t.boostClicks), 'CTR ' + pct1(R(t.boostClicks, t.boostImp)));
+      h += cell('노출', n0(t.boostImp), '');
+      h += cell('전환수', n0(t.boostConv), '');
+    } else if (md === 'coupang') {
+      h += cell('광고비 (참고)', n0(t.coupCost), dsub(t.coupCost, has ? pt.coupCost : 0, has), 1);
+      h += cell('전환매출 (참고)', n0(t.coupRev), dsub(t.coupRev, has ? pt.coupRev : 0, has), 1);
+      h += cell('ROAS (참고)', roasText(R(t.coupRev, t.coupCost)), rsub(R(t.coupRev, t.coupCost), has ? R(pt.coupRev, pt.coupCost) : null, 'r'), 1);
+      h += cell('클릭', n0(t.coupClicks), 'CTR ' + pct1(R(t.coupClicks, t.coupImp)), 1);
+      h += cell('전환수', n0(t.coupConv), '노출 ' + n0(t.coupImp), 1);
+    } else {
+      h += cell('스토어 광고비', n0(t.store), dsub(t.store, has ? pt.store : 0, has));
+      h += cell('스토어 ROAS', roasText(R(t.nNet, t.store)), rsub(R(t.nNet, t.store), has ? R(pt.nNet, pt.store) : null, 'r'));
+      h += cell('네이버 순매출', n0(t.nNet), dsub(t.nNet, has ? pt.nNet : 0, has));
+      h += cell('매출 대비 광고비', t.nNet > 0 ? (t.store / t.nNet * 100).toFixed(1) + '%' : '-', '순매출 100원당 광고비');
+      h += cell('메타 CTR', pct1(R(t.metaClicks, t.metaImp)), rsub(R(t.metaClicks, t.metaImp), has ? R(pt.metaClicks, pt.metaImp) : null, 'p'));
+    }
+    h += '</section>';
+    var defs = {
+      store: '스토어 광고비 = 네이버SA + 메타 + 애드부스트. 스토어 ROAS = 네이버 순매출 ÷ 스토어 광고비 (광고를 거치지 않은 매출도 포함된 값입니다).',
+      sa: '전환매출과 ROAS는 네이버 광고가 직접 집계한 값입니다 (광고를 누른 뒤 일어난 구매).',
+      meta: '메타는 구매가 네이버에서 일어나 전환을 잴 수 없습니다. 그래서 ROAS 대신 CTR(노출 대비 클릭)로 봅니다.',
+      boost: '애드부스트는 집행한 날짜에만 기록이 있습니다.',
+      coupang: '쿠팡애즈 전환매출은 쿠팡의 소비자 판매액입니다. 톰토미 실매출(쿠팡 입고)이 아니므로 참고로만 봅니다.' };
+    h += '<span class="note tight">' + defs[md] + '</span>';
+
+    // 추이: 막대는 광고비, 선은 매체별 대표 성과
+    var spec = { store: ['nNet', 'store', '네이버 순매출', '원'], sa: ['saRev', 'saCost', 'SA 전환매출', '원'], meta: ['metaClicks', 'metaCost', '클릭', '회'],
+      boost: ['boostClicks', 'boostCost', '클릭', '회'], coupang: ['coupRev', 'coupCost', '전환매출 (참고)', '원'] }[md];
+    function series(rows) { return rows.map(function (o) { return { label: o.label, key: o.key, sales: o[spec[0]], ad: o[spec[1]] }; }); }
+    var ctx = chartCtx(), crow = ctx ? C.adsBucket(C.adsDaily(DATA, ctx.from, ctx.to), 'day') : M.rows;
+    h += '<section class="card" aria-label="광고비 추이"><div class="card-h"><h2>광고비와 ' + spec[2] + ' 추이</h2><div class="units">';
+    [['auto', '자동'], ['day', '일'], ['week', '주'], ['month', '월']].forEach(function (u) { h += '<button type="button" class="chip" data-act="unit" data-key="' + u[0] + '" aria-pressed="' + (S.unit === u[0]) + '">' + u[1] + '</button>'; });
+    h += '</div><span class="legend"><span class="lg-line"></span>' + spec[2] + ' (왼쪽 눈금)</span>';
+    if (has && !ctx) h += '<span class="legend"><span class="lg-dash"></span>비교 기간</span>';
+    if (ctx) h += '<span class="legend"><span class="lg-hl"></span>조회 기간</span>';
+    h += '<span class="legend"><span class="lg-bar"></span>광고비 (오른쪽 눈금)</span></div>';
+    h += chartSvg(series(crow), has && !ctx ? series(M.prows) : null, ctx ? hlRange(crow) : null, { line: spec[2], bar: '광고비', unit: spec[3] });
+    h += '<span class="note">' + (ctx ? '조회 기간이 짧아 최근 14일 흐름을 함께 보여줍니다. 색칠된 부분이 조회 기간입니다.' : UNIT_NAME[M.unit] + ' 단위' + (S.unit === 'auto' ? ' (기간 길이에 맞춰 자동 선택)' : '') + '.') + ' 차트에 마우스를 올리면 그 날짜의 값이 보입니다.</span></section>';
+
+    // 표
+    var cols = adsColumns(md), list = M.rows.slice().reverse(), pg = pageOf(list);
+    h += '<div class="row"><section class="card grow3 flush" aria-label="기간별 광고 실적"><div class="card-h pad"><h2>' + UNIT_NAME[M.unit] + '별 실적</h2><span class="hint">합계는 조회 기간 전체</span><button type="button" class="chip" data-act="adcsv">엑셀로 받기 (CSV)</button></div><div class="scroll">';
+    h += '<table class="tbl"><thead><tr><th scope="col">' + (M.unit === 'day' ? '날짜' : '기간') + '</th>';
+    cols.forEach(function (c) { h += '<th scope="col" class="r">' + c[0] + '</th>'; });
+    h += '</tr></thead><tbody>';
+    pg.rows.forEach(function (o) {
+      h += '<tr><th scope="row">' + (M.unit === 'day' ? dot(o.key) : esc(o.label)) + '</th>';
+      cols.forEach(function (c) { var v = c[1](o); h += '<td class="r num' + (c[3] ? ' b' : '') + '">' + (v === 0 ? '<span class="zero">0</span>' : fmtBy(v, c[2])) + '</td>'; });
+      h += '</tr>';
+    });
+    h += '<tr class="sum"><th scope="row">합계</th>';
+    cols.forEach(function (c) { h += '<td class="r num' + (c[3] ? ' b' : '') + '">' + fmtBy(c[1](t), c[2]) + '</td>'; });
+    h += '</tr></tbody></table>';
+    h += pagerHtml(pg);
+    h += '</div></section>';
+
+    // 옆 목록
+    h += '<section class="card grow2 flush" aria-label="상세 목록">';
+    if (md === 'store') {
+      h += '<div class="card-h pad"><h2>매체별 광고비</h2><span class="hint">스토어 광고비 기준</span></div>';
+      [['네이버SA', t.saCost], ['메타', t.metaCost], ['애드부스트', t.boostCost]].forEach(function (c) {
+        var share = t.store > 0 ? c[1] / t.store : 0;
+        h += '<div class="li"><span>' + c[0] + '</span><span class="num sub2">' + (share * 100).toFixed(1) + '%</span><b class="num">' + n0(c[1]) + '</b></div><div class="bar-track mx"><div class="bar-fill" style="width:' + (share * 100).toFixed(1) + '%"></div></div>';
+      });
+      h += '<div class="ref" style="margin:12px 18px 16px"><b>참고 숫자 (실매출 아님)</b><span>쿠팡애즈 광고비 ' + n0(t.coupCost) + '원, 전환매출 ' + n0(t.coupRev) + '원, ROAS ' + roasText(R(t.coupRev, t.coupCost)) + '</span></div>';
+    } else if (md === 'boost') {
+      h += '<div class="card-h pad"><h2>세부 구분</h2></div><p class="note pad">애드부스트는 하루 합계만 기록되어 세부 구분이 없습니다.</p>';
+    } else {
+      var bd = C.adsBreakdown(DATA, md, S.from, S.to), isMeta = md === 'meta';
+      h += '<div class="card-h pad"><h2>' + (isMeta ? '광고 세트별' : '캠페인별') + '</h2><span class="hint">광고비 순, ' + (isMeta ? 'CTR' : 'ROAS') + '</span></div>';
+      if (!bd.length) h += '<p class="note pad">이 기간에 집행 기록이 없습니다.</p>';
+      bd.slice(0, 10).forEach(function (o) {
+        var k = isMeta ? pct1(R(o.clicks, o.imp)) : roasText(R(o.rev, o.cost));
+        h += '<div class="li"><span title="' + esc(o.name) + '">' + esc(o.name) + '</span><span class="num sub2">' + k + '</span><b class="num">' + n0(o.cost) + '</b></div>';
+      });
+      if (bd.length > 10) h += '<p class="note pad">광고비 상위 10개만 표시 (전체 ' + bd.length + '개)</p>';
+      if (md === 'sa' && bd.some(function (o) { return o.name === '(구분 없음)'; })) h += '<p class="note pad">네이버SA는 2026-04-15 이후 하루 합계만 저장되어 캠페인 구분이 없습니다. 캠페인별로 보려면 저장 방식을 바꿔야 합니다.</p>';
+      if (md === 'coupang' && bd.some(function (o) { return o.name === '(구분 없음)'; })) h += '<p class="note pad">일부 기간은 하루 합계만 저장되어 캠페인 구분이 없습니다.</p>';
+    }
+    h += '</section></div>';
+    return h;
+  }
+  function downloadAdsCsv() {
+    var M = adsModel(), cols = adsColumns(S.ad), lines = [];
+    function q(v) { v = String(v === null || v === undefined ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+    function val(c, o) { var v = c[1](o); if (v === null) return ''; return c[2] === 'p' ? (v * 100).toFixed(2) + '%' : c[2] === 'r' ? Math.round(v * 100) + '%' : Math.round(v); }
+    lines.push((M.unit === 'day' ? ['날짜'] : ['기간 시작', '기간 끝']).concat(cols.map(function (c) { return c[0]; })));
+    M.rows.forEach(function (o) { lines.push((M.unit === 'day' ? [o.key] : [o.from, o.to]).concat(cols.map(function (c) { return val(c, o); }))); });
+    lines.push((M.unit === 'day' ? ['합계'] : ['합계', '']).concat(cols.map(function (c) { return val(c, M.t); })));
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['﻿' + lines.map(function (r) { return r.map(q).join(','); }).join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'tomtomi_ads_' + S.ad + '_' + S.from + '_' + S.to + '.csv';
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { a.remove(); URL.revokeObjectURL(a.href); }, 1000);
+  }
+
   function viewSoon(label) {
     return '<div class="empty"><b>' + esc(label) + ' 메뉴는 준비 중입니다</b><span>v6는 홈부터 순서대로 옮기고 있습니다. 그동안은 기존 화면에서 볼 수 있습니다.</span><a class="more" href="index.html">기존 화면(v5) 열기</a></div>';
   }
@@ -397,7 +580,7 @@
     h += '</div><div class="side-status"><b class="' + (ok ? 'ok' : 'chk') + '">' + (ok ? '데이터 정상' : '확인 필요') + '</b><span>네이버 판매 ' + mdot(hl.lastNaver) + '까지</span><span>주문 ' + mdot(hl.lastOrders) + '까지</span></div></nav>';
     h += '<main class="main"><header class="head"><h1>' + cur.label + '</h1><span>데이터 기준일 ' + dot(DATA.last) + '</span></header>';
     h += periodBar();
-    h += cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : viewSoon(cur.label);
+    h += cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : cur.id === 'ads' ? viewAds() : viewSoon(cur.label);
     h += '</main></div>';
     app.innerHTML = h;
   }
@@ -405,12 +588,16 @@
   function onClick(ev) {
     var el = ev.target.closest('[data-act]'); if (!el || el.tagName === 'INPUT') return;
     var act = el.getAttribute('data-act'), key = el.getAttribute('data-key');
+    if (act === 'page') { S.page += key === 'older' ? 1 : -1; render(); return; }
+    if (act !== 'csv' && act !== 'adcsv') S.page = 0; // 기간, 메뉴, 채널이 바뀌면 첫 쪽(최근)으로
     if (act === 'view') S.view = key;
     else if (act === 'preset') applyPreset(key);
     else if (act === 'cmp') {
       if (key === 'custom') { var r = cmpRange() || C.prevPeriod(S.from, S.to); S.cmpFrom = r.from; S.cmpTo = r.to; }
       S.cmp = key;
     } else if (act === 'ch') S.ch = key;
+    else if (act === 'ad') S.ad = key;
+    else if (act === 'adcsv') { downloadAdsCsv(); return; }
     else if (act === 'unit') S.unit = key;
     else if (act === 'csv') { downloadCsv(); return; }
     else return;
@@ -423,7 +610,21 @@
     else if (act === 'to') { S.to = v; if (S.to < S.from) S.from = S.to; S.preset = ''; }
     else if (act === 'cmpFrom') { S.cmpFrom = v; if (S.cmpTo && S.cmpFrom > S.cmpTo) S.cmpTo = S.cmpFrom; }
     else if (act === 'cmpTo') { S.cmpTo = v; if (S.cmpFrom && S.cmpTo < S.cmpFrom) S.cmpFrom = S.cmpTo; }
-    clampDates(); save(); render();
+    S.page = 0; clampDates(); save(); render();
+  }
+
+  // 차트 툴팁: 화면에 하나만 두고 마우스를 따라다닌다
+  function onTip(ev) {
+    var tip = document.getElementById('tip'); if (!tip) return;
+    var el = ev.target && ev.target.closest ? ev.target.closest('.hit') : null;
+    if (!el) { tip.hidden = true; return; }
+    var parts = el.getAttribute('data-tip').split('|');
+    tip.innerHTML = '<b>' + esc(parts[0]) + '</b>' + parts.slice(1).map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('');
+    tip.hidden = false;
+    var w = tip.offsetWidth, hgt = tip.offsetHeight, px = ev.clientX + 14, py = ev.clientY + 14;
+    if (px + w > window.innerWidth - 8) px = ev.clientX - w - 14;
+    if (py + hgt > window.innerHeight - 8) py = ev.clientY - hgt - 14;
+    tip.style.left = Math.max(8, px) + 'px'; tip.style.top = Math.max(8, py) + 'px';
   }
 
   function start(raw) {
@@ -435,6 +636,8 @@
     if (!S.from || !S.to) applyPreset('1');
     document.addEventListener('click', onClick);
     document.addEventListener('change', onChange);
+    document.addEventListener('mousemove', onTip);
+    document.addEventListener('click', onTip); // 터치 화면에서는 눌러서 본다
     render();
   }
   function boot() {
