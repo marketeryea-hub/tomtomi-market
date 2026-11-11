@@ -8,7 +8,7 @@
   var C = root.TTCalc;
   var DATA = null;      // 정리된 데이터
   var META = {};        // 불러오기 결과(기타마켓 연결 여부 등)
-  var S = { view: 'home', from: '', to: '', preset: '30', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto' };
+  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto' };
   var READY = { home: 1, sales: 1 }; // 옮겨온 메뉴
   var STORE_KEY = 'tt6_state';
 
@@ -33,8 +33,10 @@
   function mdot(ds) { return ds ? ds.slice(5, 7) + '.' + ds.slice(8, 10) : '-'; }
   function pctText(p) { return (p > 0 ? '+' : '') + Math.round(p * 100).toLocaleString('ko-KR') + '%'; }
   function today() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
-  function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) { /* 저장 못 해도 화면은 동작 */ } }
-  function restore() { try { var v = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); if (v && typeof v === 'object') Object.keys(S).forEach(function (k) { if (v[k] !== undefined) S[k] = v[k]; }); } catch (e) { /* 무시 */ } }
+  // 열 때마다 기간은 '최근 1일'에서 시작한다. 보던 메뉴, 채널, 차트 단위만 기억한다.
+  var KEEP = ['view', 'ch', 'unit'];
+  function save() { try { var o = {}; KEEP.forEach(function (k) { o[k] = S[k]; }); localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) { /* 저장 못 해도 화면은 동작 */ } }
+  function restore() { try { var v = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); if (v && typeof v === 'object') KEEP.forEach(function (k) { if (typeof v[k] === 'string') S[k] = v[k]; }); } catch (e) { /* 무시 */ } }
 
   /* ───────── 기간 상태 ───────── */
   function cmpRange() {
@@ -63,7 +65,7 @@
   }
   function periodBar() {
     var cr = cmpRange();
-    var presets = [['7', '7일'], ['30', '30일'], ['90', '90일'], ['thisMonth', '이번 달'], ['lastMonth', '지난달'], ['thisYear', '올해'], ['all', '전체 기간']];
+    var presets = [['1', '1일'], ['7', '7일'], ['30', '30일'], ['90', '90일'], ['thisMonth', '이번 달'], ['lastMonth', '지난달'], ['thisYear', '올해'], ['all', '전체 기간']];
     var cmps = [['prev', '바로 앞 같은 길이'], ['lastYear', '작년 같은 기간'], ['custom', '직접 지정'], ['off', '비교 끄기']];
     var custom = S.cmp === 'custom';
     var h = '<section class="period" aria-label="기간 설정">';
@@ -80,7 +82,18 @@
   }
 
   /* ───────── 차트: 실매출(선) + 광고비(막대) + 비교 기간(점선) ───────── */
-  function chartSvg(cur, prev) {
+  // 조회 기간이 7일보다 짧으면 차트만 최근 14일 흐름을 보여주고 조회 기간을 색칠한다
+  function chartCtx() {
+    if (C.dayDiff(S.from, S.to) + 1 >= 7) return null;
+    var f = C.addDays(S.to, -13); if (f < DATA.first) f = DATA.first;
+    return { from: f, to: S.to };
+  }
+  function hlRange(rows) {
+    var a = -1, b = -1;
+    rows.forEach(function (o, i) { if (o.key >= S.from && o.key <= S.to) { if (a < 0) a = i; b = i; } });
+    return a < 0 ? null : { a: a, b: b };
+  }
+  function chartSvg(cur, prev, hl) {
     var W = 760, H = 250, L = 52, R = 48, T = 12, B = 30, pw = W - L - R, ph = H - T - B, n = cur.length;
     if (!n) return '';
     var maxS = 0, maxA = 0;
@@ -102,6 +115,7 @@
       s += '<text x="' + (W - R + 6) + '" y="' + (yA(maxA) + 4) + '">' + shortWon(maxA) + '</text>';
       s += '<text x="' + (W - R + 6) + '" y="' + (T + ph + 4) + '">0</text>';
     }
+    if (hl) s += '<rect x="' + (L + step * hl.a).toFixed(1) + '" y="' + T + '" width="' + (step * (hl.b - hl.a + 1)).toFixed(1) + '" height="' + ph + '" fill="var(--accent-soft)"><title>조회 기간</title></rect>';
     var bw = Math.max(2, Math.min(28, step * 0.6));
     cur.forEach(function (o, i) {
       if (o.ad <= 0) return;
@@ -123,10 +137,10 @@
   function viewHome() {
     var cr = cmpRange(), has = !!cr;
     var sc = C.summary(DATA, S.from, S.to), sp = has ? C.summary(DATA, cr.from, cr.to) : null;
-    var unit = C.autoUnit(S.from, S.to);
-    var cur = C.bucket(C.daily(DATA, S.from, S.to), unit);
-    var prev = has ? C.bucket(C.daily(DATA, cr.from, cr.to), unit) : null;
-    var unitName = unit === 'day' ? '일별' : unit === 'week' ? '주별' : '월별';
+    var unit = C.autoUnit(S.from, S.to), ctx = chartCtx();
+    var cur = C.bucket(ctx ? C.daily(DATA, ctx.from, ctx.to) : C.daily(DATA, S.from, S.to), unit);
+    var prev = has && !ctx ? C.bucket(C.daily(DATA, cr.from, cr.to), unit) : null;
+    var unitName = ctx ? '최근 14일' : unit === 'day' ? '일별' : unit === 'week' ? '주별' : '월별';
     var h = '';
 
     h += '<section aria-label="실매출"><div class="sec-h"><h2>실매출</h2><span>톰토미에 실제로 들어온 돈 (네이버 순매출 + 쿠팡 입고 + 기타마켓)</span></div><div class="kpis">';
@@ -144,9 +158,10 @@
     h += '<div class="row">';
     h += '<section class="card grow2" aria-label="실매출과 광고비 추이"><div class="card-h"><h2>' + unitName + ' 실매출과 광고비</h2>';
     h += '<span class="legend"><span class="lg-line"></span>이번 기간</span>';
-    if (has) h += '<span class="legend"><span class="lg-dash"></span>비교 기간</span>';
+    if (prev) h += '<span class="legend"><span class="lg-dash"></span>비교 기간</span>';
+    if (ctx) h += '<span class="legend"><span class="lg-hl"></span>조회 기간</span>';
     h += '<span class="legend"><span class="lg-bar"></span>광고비 (오른쪽 눈금)</span></div>';
-    h += chartSvg(cur, prev);
+    h += chartSvg(cur, prev, ctx ? hlRange(cur) : null);
     h += '<span class="note">선은 실매출(왼쪽 눈금), 막대는 스토어 광고비(네이버SA + 메타 + 애드부스트)입니다. 점에 마우스를 올리면 값이 보입니다.</span></section>';
 
     var cmpEmpty = has && cr.to < DATA.first; // 비교 기간이 데이터 시작일보다 앞이면 비교할 값이 없다
@@ -274,10 +289,12 @@
     h += '<section class="card" aria-label="' + sName + ' 추이"><div class="card-h"><h2>' + sName + (aKey ? '과 광고비' : '') + ' 추이</h2><div class="units">';
     [['auto', '자동'], ['day', '일'], ['week', '주'], ['month', '월']].forEach(function (u) { h += '<button type="button" class="chip" data-act="unit" data-key="' + u[0] + '" aria-pressed="' + (S.unit === u[0]) + '">' + u[1] + '</button>'; });
     h += '</div><span class="legend"><span class="lg-line"></span>' + sName + '</span>';
-    if (has) h += '<span class="legend"><span class="lg-dash"></span>비교 기간</span>';
+    var ctx = chartCtx(), crow = ctx ? C.bucketFull(C.dailyFull(DATA, ctx.from, ctx.to), 'day') : M.rows;
+    if (has && !ctx) h += '<span class="legend"><span class="lg-dash"></span>비교 기간</span>';
+    if (ctx) h += '<span class="legend"><span class="lg-hl"></span>조회 기간</span>';
     if (aKey) h += '<span class="legend"><span class="lg-bar"></span>' + (ch === 'coupang' ? '쿠팡애즈 광고비 (참고)' : '광고비') + '</span>';
-    h += '</div>' + chartSvg(series(M.rows), has ? series(M.prows) : null);
-    h += '<span class="note">' + UNIT_NAME[M.unit] + ' 단위' + (S.unit === 'auto' ? ' (기간 길이에 맞춰 자동 선택)' : '') + '. 점에 마우스를 올리면 값이 보입니다.</span></section>';
+    h += '</div>' + chartSvg(series(crow), has && !ctx ? series(M.prows) : null, ctx ? hlRange(crow) : null);
+    h += '<span class="note">' + (ctx ? '조회 기간이 짧아 최근 14일 흐름을 함께 보여줍니다. 색칠된 부분이 조회 기간입니다.' : UNIT_NAME[M.unit] + ' 단위' + (S.unit === 'auto' ? ' (기간 길이에 맞춰 자동 선택)' : '') + '.') + ' 점에 마우스를 올리면 값이 보입니다.</span></section>';
 
     // 표 + 옆 목록
     h += '<div class="row">';
@@ -415,7 +432,7 @@
     if (!DATA.last) { document.getElementById('app').innerHTML = '<div class="main"><div class="error">불러온 데이터가 없습니다.</div></div>'; return; }
     restore();
     if (S.preset) applyPreset(S.preset); else clampDates();
-    if (!S.from || !S.to) applyPreset('30');
+    if (!S.from || !S.to) applyPreset('1');
     document.addEventListener('click', onClick);
     document.addEventListener('change', onChange);
     render();

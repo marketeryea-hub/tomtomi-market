@@ -134,7 +134,7 @@
   }
   function preset(key, anchor, first) {
     var a = toDate(anchor);
-    if (key === '7' || key === '30' || key === '90') return { from: addDays(anchor, -(+key - 1)), to: anchor };
+    if (key === '1' || key === '7' || key === '30' || key === '90') return { from: addDays(anchor, -(+key - 1)), to: anchor };
     if (key === 'thisMonth') return { from: fmtDate(new Date(a.getFullYear(), a.getMonth(), 1)), to: anchor };
     if (key === 'lastMonth') return { from: fmtDate(new Date(a.getFullYear(), a.getMonth() - 1, 1)), to: fmtDate(new Date(a.getFullYear(), a.getMonth(), 0)) };
     if (key === 'thisYear') return { from: a.getFullYear() + '-01-01', to: anchor };

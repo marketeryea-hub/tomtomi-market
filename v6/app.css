@@ -104,6 +104,7 @@ h1, h2 { margin: 0; }
 .lg-line { width: 14px; height: 3px; background: var(--accent); border-radius: 2px; }
 .lg-dash { width: 14px; height: 0; border-top: 2px dashed var(--prev); }
 .lg-bar { width: 10px; height: 12px; background: var(--ad); border-radius: 2px; }
+.lg-hl { width: 12px; height: 12px; background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 2px; }
 .chart { width: 100%; height: auto; display: block; }
 .chart text { font-size: 11px; fill: var(--sub); font-family: inherit; }
 .note { font-size: 12px; color: var(--sub); }
