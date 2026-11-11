@@ -171,6 +171,9 @@ h1, h2 { margin: 0; }
 .tbl .none { text-align: center; color: var(--sub); padding: 28px; white-space: normal; }
 .tbl tr.sum { border-top: 2px solid var(--text); background: var(--bg); }
 .tbl tr.sum th { font-weight: 700; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--line); font-size: 13px; }
+.pager small { color: var(--sub); }
+.chip:disabled { opacity: .4; cursor: default; }
 .li { display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-bottom: 1px solid var(--line); }
 .li span:first-child { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .li .sub2 { min-width: 52px; text-align: right; font-size: 12px; color: var(--sub); }

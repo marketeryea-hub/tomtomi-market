@@ -8,7 +8,7 @@
   var C = root.TTCalc;
   var DATA = null;      // 정리된 데이터
   var META = {};        // 불러오기 결과(기타마켓 연결 여부 등)
-  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store' };
+  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0 };
   var READY = { home: 1, sales: 1, ads: 1 }; // 옮겨온 메뉴
   var STORE_KEY = 'tt6_state';
 
@@ -224,6 +224,21 @@
     return h;
   }
 
+  /* ───────── 표 넘겨보기: 최근 날짜부터 10줄씩 ───────── */
+  var PAGE_SIZE = 10;
+  function pageOf(list) {
+    var pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    if (S.page >= pages) S.page = pages - 1;
+    if (S.page < 0) S.page = 0;
+    return { rows: list.slice(S.page * PAGE_SIZE, (S.page + 1) * PAGE_SIZE), pages: pages, total: list.length };
+  }
+  function pagerHtml(pg) {
+    if (pg.pages <= 1) return '';
+    return '<div class="pager"><button type="button" class="chip" data-act="page" data-key="newer"' + (S.page === 0 ? ' disabled' : '') + '>‹ 더 최근</button>' +
+      '<span class="num">' + (S.page + 1) + ' / ' + pg.pages + ' <small>(전체 ' + pg.total + '줄)</small></span>' +
+      '<button type="button" class="chip" data-act="page" data-key="older"' + (S.page >= pg.pages - 1 ? ' disabled' : '') + '>더 과거 ›</button></div>';
+  }
+
   /* ───────── 매출 ───────── */
   var CHANNELS = [['all', '전체'], ['naver', '네이버'], ['coupang', '쿠팡 입고'], ['other', '기타마켓']];
   var UNIT_NAME = { day: '일', week: '주', month: '월' };
@@ -311,20 +326,21 @@
 
     // 표 + 옆 목록
     h += '<div class="row">';
-    h += '<section class="card grow3 flush" aria-label="기간별 실적"><div class="card-h pad"><h2>' + (ch === 'other' ? '주문 목록' : UNIT_NAME[M.unit] + '별 실적') + '</h2><button type="button" class="chip" data-act="csv">엑셀로 받기 (CSV)</button></div><div class="scroll">';
+    h += '<section class="card grow3 flush" aria-label="기간별 실적"><div class="card-h pad"><h2>' + (ch === 'other' ? '주문 목록' : UNIT_NAME[M.unit] + '별 실적') + '</h2><span class="hint">합계는 조회 기간 전체</span><button type="button" class="chip" data-act="csv">엑셀로 받기 (CSV)</button></div><div class="scroll">';
     if (ch === 'other') {
       var orows = C.otherRows(DATA, S.from, S.to);
       h += '<table class="tbl"><thead><tr><th scope="col">날짜</th><th scope="col">마켓</th><th scope="col">상품</th><th scope="col" class="r">수량</th><th scope="col" class="r">매출</th></tr></thead><tbody>';
       if (!orows.length) h += '<tr><td colspan="5" class="none">이 기간에 기타마켓 주문이 없습니다.</td></tr>';
-      orows.slice(0, 100).forEach(function (e) { h += '<tr><th scope="row">' + dot(e.d) + '</th><td>' + esc(e.market) + '</td><td>' + esc(e.product) + '</td><td class="r num">' + n0(e.qty) + '</td><td class="r num b">' + n0(e.amount) + '</td></tr>'; });
+      var opg = pageOf(orows);
+      opg.rows.forEach(function (e) { h += '<tr><th scope="row">' + dot(e.d) + '</th><td>' + esc(e.market) + '</td><td>' + esc(e.product) + '</td><td class="r num">' + n0(e.qty) + '</td><td class="r num b">' + n0(e.amount) + '</td></tr>'; });
       if (orows.length) h += '<tr class="sum"><th scope="row">합계</th><td></td><td></td><td class="r num">' + n0(t.otherQty) + '</td><td class="r num b">' + n0(t.other) + '</td></tr>';
-      h += '</tbody></table>';
+      h += '</tbody></table>' + pagerHtml(opg);
     } else {
-      var cols = salesColumns(ch), list = M.rows.slice().reverse(), LIMIT = 100;
+      var cols = salesColumns(ch), list = M.rows.slice().reverse(), pg = pageOf(list);
       h += '<table class="tbl"><thead><tr><th scope="col">' + (M.unit === 'day' ? '날짜' : '기간') + '</th>';
       cols.forEach(function (c) { h += '<th scope="col" class="r">' + c[0] + '</th>'; });
       h += '</tr></thead><tbody>';
-      list.slice(0, LIMIT).forEach(function (o) {
+      pg.rows.forEach(function (o) {
         h += '<tr><th scope="row">' + (M.unit === 'day' ? dot(o.key) : esc(o.label)) + '</th>';
         cols.forEach(function (c) { var v = o[c[1]]; h += '<td class="r num' + (c[2] ? ' b' : '') + '">' + (v ? n0(v) : '<span class="zero">0</span>') + '</td>'; });
         h += '</tr>';
@@ -332,7 +348,7 @@
       h += '<tr class="sum"><th scope="row">합계</th>';
       cols.forEach(function (c) { h += '<td class="r num' + (c[2] ? ' b' : '') + '">' + n0(t[c[1]]) + '</td>'; });
       h += '</tr></tbody></table>';
-      if (list.length > LIMIT) h += '<p class="note pad">최근 ' + LIMIT + '줄만 보여줍니다. 전체 ' + list.length + '줄은 [엑셀로 받기]로 받을 수 있습니다.</p>';
+      h += pagerHtml(pg);
     }
     h += '</div></section>';
 
@@ -490,12 +506,12 @@
     h += '<span class="note">' + (ctx ? '조회 기간이 짧아 최근 14일 흐름을 함께 보여줍니다. 색칠된 부분이 조회 기간입니다.' : UNIT_NAME[M.unit] + ' 단위' + (S.unit === 'auto' ? ' (기간 길이에 맞춰 자동 선택)' : '') + '.') + ' 차트에 마우스를 올리면 그 날짜의 값이 보입니다.</span></section>';
 
     // 표
-    var cols = adsColumns(md), list = M.rows.slice().reverse(), LIMIT = 100;
-    h += '<div class="row"><section class="card grow3 flush" aria-label="기간별 광고 실적"><div class="card-h pad"><h2>' + UNIT_NAME[M.unit] + '별 실적</h2><button type="button" class="chip" data-act="adcsv">엑셀로 받기 (CSV)</button></div><div class="scroll">';
+    var cols = adsColumns(md), list = M.rows.slice().reverse(), pg = pageOf(list);
+    h += '<div class="row"><section class="card grow3 flush" aria-label="기간별 광고 실적"><div class="card-h pad"><h2>' + UNIT_NAME[M.unit] + '별 실적</h2><span class="hint">합계는 조회 기간 전체</span><button type="button" class="chip" data-act="adcsv">엑셀로 받기 (CSV)</button></div><div class="scroll">';
     h += '<table class="tbl"><thead><tr><th scope="col">' + (M.unit === 'day' ? '날짜' : '기간') + '</th>';
     cols.forEach(function (c) { h += '<th scope="col" class="r">' + c[0] + '</th>'; });
     h += '</tr></thead><tbody>';
-    list.slice(0, LIMIT).forEach(function (o) {
+    pg.rows.forEach(function (o) {
       h += '<tr><th scope="row">' + (M.unit === 'day' ? dot(o.key) : esc(o.label)) + '</th>';
       cols.forEach(function (c) { var v = c[1](o); h += '<td class="r num' + (c[3] ? ' b' : '') + '">' + (v === 0 ? '<span class="zero">0</span>' : fmtBy(v, c[2])) + '</td>'; });
       h += '</tr>';
@@ -503,7 +519,7 @@
     h += '<tr class="sum"><th scope="row">합계</th>';
     cols.forEach(function (c) { h += '<td class="r num' + (c[3] ? ' b' : '') + '">' + fmtBy(c[1](t), c[2]) + '</td>'; });
     h += '</tr></tbody></table>';
-    if (list.length > LIMIT) h += '<p class="note pad">최근 ' + LIMIT + '줄만 보여줍니다. 전체 ' + list.length + '줄은 [엑셀로 받기]로 받을 수 있습니다.</p>';
+    h += pagerHtml(pg);
     h += '</div></section>';
 
     // 옆 목록
@@ -572,6 +588,8 @@
   function onClick(ev) {
     var el = ev.target.closest('[data-act]'); if (!el || el.tagName === 'INPUT') return;
     var act = el.getAttribute('data-act'), key = el.getAttribute('data-key');
+    if (act === 'page') { S.page += key === 'older' ? 1 : -1; render(); return; }
+    if (act !== 'csv' && act !== 'adcsv') S.page = 0; // 기간, 메뉴, 채널이 바뀌면 첫 쪽(최근)으로
     if (act === 'view') S.view = key;
     else if (act === 'preset') applyPreset(key);
     else if (act === 'cmp') {
@@ -592,7 +610,7 @@
     else if (act === 'to') { S.to = v; if (S.to < S.from) S.from = S.to; S.preset = ''; }
     else if (act === 'cmpFrom') { S.cmpFrom = v; if (S.cmpTo && S.cmpFrom > S.cmpTo) S.cmpTo = S.cmpFrom; }
     else if (act === 'cmpTo') { S.cmpTo = v; if (S.cmpFrom && S.cmpTo < S.cmpFrom) S.cmpFrom = S.cmpTo; }
-    clampDates(); save(); render();
+    S.page = 0; clampDates(); save(); render();
   }
 
   // 차트 툴팁: 화면에 하나만 두고 마우스를 따라다닌다
