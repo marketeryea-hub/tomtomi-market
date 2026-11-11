@@ -57,6 +57,7 @@ eq('메타 CTR', s.metaCtr, 0.05);
 eq('날짜 정리', [C.normDate('2026-3-8'), C.normDate('2026.03.08.'), C.normDate('2026/03/08 10:00'), C.normDate('x')], ['2026-03-08', '2026-03-08', '2026-03-08', '']);
 eq('바로 앞 같은 길이', C.prevPeriod('2026-10-12', '2026-11-10'), { from: '2026-09-12', to: '2026-10-11' });
 eq('작년 같은 기간', C.lastYear('2026-10-01', '2026-10-31'), { from: '2025-10-01', to: '2025-10-31' });
+eq('최근 1일(기본 기간)', C.preset('1', '2026-11-10', '2023-07-06'), { from: '2026-11-10', to: '2026-11-10' });
 eq('지난달', C.preset('lastMonth', '2026-11-10', '2023-07-06'), { from: '2026-10-01', to: '2026-10-31' });
 eq('전체 기간', C.preset('all', '2026-11-10', '2023-07-06'), { from: '2023-07-06', to: '2026-11-10' });
 eq('조회 범위', [D.first, D.last], ['2026-01-01', '2026-01-02']);
@@ -71,6 +72,14 @@ eq('SKU 집계(세트 분해, 취소, 미결제 제외, 미매핑)', sk, [['(매
 eq('매핑 누락 옵션', C.skuUnmapped(D), ['333|빅롤스티커공룡']);
 eq('판매와 주문 대조 일치', C.orderCheck(D).diff.length, 0);
 eq('증감(이전 0이면 비율 없음)', [C.delta(10, 0).pct, C.delta(15, 10).pct], [null, 0.5]);
+
+const full = C.dailyFull(D, '2026-01-01', '2026-01-02');
+const tf = C.totalFull(full);
+eq('날짜별 상세 합 = 요약', [tf.nNet, tf.nGross, tf.nRefund, tf.coup, tf.other, tf.adStore, tf.coupAdCost, tf.total], [s.naverNet, s.naverGross, s.naverRefund, s.coupang, s.other, s.adStore, s.coupAdCost, s.total]);
+eq('월로 묶어도 합은 같다', C.totalFull(C.bucketFull(full, 'month')).total, s.total);
+eq('주는 월요일 시작', C.bucketFull(C.dailyFull(D, '2025-12-31', '2026-01-05'), 'week').map(b => b.key), ['2025-12-29', '2026-01-05']);
+eq('쿠팡 상위 품목 합 = 쿠팡 입고', C.coupangTop(D, '2026-01-01', '2026-01-02').reduce((a, o) => a + o.amount, 0), s.coupang);
+eq('기타마켓 마켓별', C.otherByMarket(D, '2026-01-01', '2026-01-02').map(o => [o.market, o.amount]), [['이베이', 300]]);
 
 console.log(fail ? '실패 ' + fail + '건' : '모든 규칙 통과');
 process.exit(fail ? 1 : 0);
