@@ -204,6 +204,67 @@
   }
   function autoUnit(from, to) { var n = dayDiff(from, to) + 1; return n <= 62 ? 'day' : (n <= 370 ? 'week' : 'month'); }
 
+  /* ───────── 매출 메뉴: 날짜별 상세 ─────────
+   * 한 날짜에 필요한 숫자를 모두 담은 줄을 만들고, 주/월로 묶을 때는 숫자 칸을 그대로 더한다.
+   */
+  var FULL_FIELDS = ['nNet', 'nGross', 'nRefund', 'nOrders', 'nVisits', 'coup', 'coupQty', 'other', 'otherQty', 'adStore', 'coupAdCost', 'coupAdRev', 'total'];
+  function dailyFull(data, from, to) {
+    var m = {};
+    function slot(d) {
+      if (!m[d]) { m[d] = { d: d }; FULL_FIELDS.forEach(function (f) { m[d][f] = 0; }); }
+      return m[d];
+    }
+    data.naver.forEach(function (e) { if (!inRange(e.d, from, to)) return; var o = slot(e.d); o.nNet += e.net; o.nGross += e.gross; o.nRefund += e.refund; o.nOrders += e.orders; o.nVisits += e.visits; });
+    data.coupang.forEach(function (e) { if (!inRange(e.d, from, to)) return; var o = slot(e.d); o.coup += e.amount; o.coupQty += e.qty; });
+    data.other.forEach(function (e) { if (!inRange(e.d, from, to)) return; var o = slot(e.d); o.other += e.amount; o.otherQty += e.qty; });
+    ['sa', 'meta', 'boost'].forEach(function (k) { data.ads[k].forEach(function (e) { if (inRange(e.d, from, to)) slot(e.d).adStore += e.cost; }); });
+    data.ads.coupang.forEach(function (e) { if (!inRange(e.d, from, to)) return; var o = slot(e.d); o.coupAdCost += e.cost; o.coupAdRev += e.rev; });
+    var out = [];
+    for (var d = from; d <= to; d = addDays(d, 1)) { var o = slot(d); o.total = o.nNet + o.coup + o.other; out.push(o); }
+    return out;
+  }
+  function bucketFull(rows, unit) {
+    var m = {}, order = [];
+    rows.forEach(function (o) {
+      var key, label;
+      if (unit === 'month') { key = o.d.slice(0, 7); label = key.replace('-', '.'); }
+      else if (unit === 'week') { var dt = toDate(o.d); key = addDays(o.d, -((dt.getDay() + 6) % 7)); label = key.slice(5).replace('-', '.') + ' 주'; }
+      else { key = o.d; label = o.d.slice(5).replace('-', '.'); }
+      if (!m[key]) { m[key] = { key: key, label: label, from: o.d, to: o.d }; FULL_FIELDS.forEach(function (f) { m[key][f] = 0; }); order.push(key); }
+      var b = m[key]; b.to = o.d;
+      FULL_FIELDS.forEach(function (f) { b[f] += o[f]; });
+    });
+    return order.map(function (k) { return m[k]; });
+  }
+  function totalFull(rows) {
+    var t = {}; FULL_FIELDS.forEach(function (f) { t[f] = 0; });
+    rows.forEach(function (o) { FULL_FIELDS.forEach(function (f) { t[f] += o[f]; }); });
+    return t;
+  }
+  // 쿠팡 입고 상위 품목
+  function coupangTop(data, from, to) {
+    var m = {};
+    data.coupang.forEach(function (e) {
+      if (!inRange(e.d, from, to)) return;
+      var k = e.skuNo || e.sku; var o = m[k] || (m[k] = { skuNo: e.skuNo, name: e.sku, qty: 0, amount: 0 });
+      o.qty += e.qty; o.amount += e.amount; if (e.sku) o.name = e.sku;
+    });
+    return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.amount - a.amount; });
+  }
+  // 기타마켓: 마켓별 합계와 주문 목록
+  function otherByMarket(data, from, to) {
+    var m = {};
+    data.other.forEach(function (e) {
+      if (!inRange(e.d, from, to)) return;
+      var k = e.market || '(마켓 미기재)'; var o = m[k] || (m[k] = { market: k, qty: 0, amount: 0, count: 0 });
+      o.qty += e.qty; o.amount += e.amount; o.count += 1;
+    });
+    return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.amount - a.amount; });
+  }
+  function otherRows(data, from, to) {
+    return data.other.filter(function (e) { return inRange(e.d, from, to); }).sort(function (a, b) { return a.d < b.d ? 1 : a.d > b.d ? -1 : 0; });
+  }
+
   /* ───────── 옵션 → SKU (v5.38과 같은 규칙) ───────── */
   function skuNorm(v) {
     v = String(v || '').replace(/\s+/g, '');
@@ -349,6 +410,7 @@
     num: num, normDate: normDate, addDays: addDays, dayDiff: dayDiff, normalize: normalize,
     prevPeriod: prevPeriod, lastYear: lastYear, preset: preset,
     summary: summary, delta: delta, daily: daily, bucket: bucket, autoUnit: autoUnit,
+    dailyFull: dailyFull, bucketFull: bucketFull, totalFull: totalFull, coupangTop: coupangTop, otherByMarket: otherByMarket, otherRows: otherRows,
     skuAggregate: skuAggregate, skuUnmapped: skuUnmapped, skuParseOpt: skuParseOpt, orderCheck: orderCheck,
     signals: signals, health: health
   };
