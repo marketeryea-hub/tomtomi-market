@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>톰토미 대시보드 v6</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="v6/app.css?v=6.0.0">
+</head>
+<body>
+<div id="lock" class="lock">
+  <form class="lock-box" id="lockForm">
+    <h1>톰토미 마케팅 대시보드</h1>
+    <p>접근하려면 비밀번호를 입력해주세요</p>
+    <label for="pw" style="position:absolute;left:-9999px">비밀번호</label>
+    <input id="pw" type="password" placeholder="비밀번호 입력" autocomplete="current-password">
+    <button class="btn" type="submit">확인</button>
+    <div class="lock-err" id="lockErr" role="alert"></div>
+  </form>
+</div>
+<div id="app"></div>
+<script src="v6/calc.js?v=6.0.0"></script>
+<script src="v6/data.js?v=6.0.0"></script>
+<script src="v6/ui.js?v=6.0.0"></script>
+<script>
+// 잠금: v5와 같은 비밀번호, 같은 로그인 상태를 쓴다(한쪽에서 풀면 다른 쪽도 열림)
+(function () {
+  var PW_HASH = '4843e3fd7b69b7e31bfe8fecdaae2939232a7a1117aad6565d104d9a037ecbb8';
+  var lock = document.getElementById('lock'), err = document.getElementById('lockErr');
+  function open() { lock.hidden = true; TTApp.boot(); }
+  function sha256(m) {
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(m)).then(function (h) {
+      return Array.from(new Uint8Array(h)).map(function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+    });
+  }
+  var authed = false;
+  try { authed = sessionStorage.getItem('tt_auth') === '1'; } catch (e) { /* 저장소를 못 쓰면 매번 입력 */ }
+  if (authed) { open(); return; }
+  document.getElementById('lockForm').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    sha256(document.getElementById('pw').value).then(function (h) {
+      if (h === PW_HASH) { try { sessionStorage.setItem('tt_auth', '1'); } catch (e) { /* 무시 */ } open(); }
+      else { err.textContent = '비밀번호가 틀렸습니다'; setTimeout(function () { err.textContent = ''; }, 2000); }
+    });
+  });
+})();
+</script>
+</body>
+</html>
