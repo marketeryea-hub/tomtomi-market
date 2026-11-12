@@ -408,7 +408,7 @@
   //  - SKU 수량, 원가: 주문조회 파일(주문일 기준, 미결제취소/취소/반품 제외) × 매핑표 × 원가표
   //  - 마진 = 순매출 - 원가. 원가가 하나라도 빠진 상품은 마진을 계산하지 않는다(null)
   function products(data, from, to) {
-    var ix = skuIndex(data.skuMap), cx = costIndex(data.costVer), P = {}, K = {};
+    var ix = skuIndex(data.skuMap), cx = costIndex(data.costVer), P = {}, K = {}, unalloc = 0;
     function prod(id) { return P[id] || (P[id] = { prodId: id, name: '', nameD: '', qty: 0, net: 0, oqty: 0, cost: 0, noCost: 0, skus: {} }); }
     data.naverProd.forEach(function (e) {
       if (!inRange(e.d, from, to)) return;
@@ -426,7 +426,7 @@
         else items = r.codes.map(function (c) { return { c: c.c, q: c.q || 1, nm: ix.names[c.c] || '' }; });
         items.forEach(function (x) {
           var q = x.q * e.qty;
-          var g = K[x.c] || (K[x.c] = { code: x.c, name: x.nm, qty: 0, cancel: 0, cost: 0, noCost: 0, unit: null });
+          var g = K[x.c] || (K[x.c] = { code: x.c, name: x.nm, qty: 0, cancel: 0, cost: 0, noCost: 0, unit: null, rev: 0, est: false });
           var s = o.skus[x.c] || (o.skus[x.c] = { code: x.c, name: x.nm, qty: 0, cost: 0, noCost: 0, unit: null });
           if (!g.name && x.nm) g.name = x.nm;
           if (cancel) { g.cancel += q; return; }
@@ -441,15 +441,28 @@
       var o = P[k];
       o.skuList = Object.keys(o.skus).map(function (c) { return o.skus[c]; }).sort(function (a, b) { return b.qty - a.qty; });
       o.margin = (o.oqty > 0 && o.noCost === 0) ? o.net - o.cost : null;
+      // SKU별 매출: 상품 순매출을 그 상품의 SKU 수량 비율로 나눈다.
+      // SKU가 하나뿐인 상품은 그대로 정확하고, 여러 SKU가 섞인 상품(세트, 추가구성)은 추정(est)이다.
+      if (o.oqty > 0) o.skuList.forEach(function (s) { s.rev = o.net * s.qty / o.oqty; K[s.code].rev += s.rev; if (o.skuList.length > 1) K[s.code].est = true; });
+      else unalloc += o.net;
       return o;
     }).filter(function (o) { return o.qty || o.net || o.oqty; }).sort(function (a, b) { return b.net - a.net || b.qty - a.qty; });
     var skus = Object.keys(K).map(function (k) { return K[k]; }).sort(function (a, b) { return b.qty - a.qty || (a.code < b.code ? -1 : 1); });
-    var t = { count: 0, qty: 0, net: 0, cost: 0, margin: 0, netCosted: 0 };
+    var t = { count: 0, qty: 0, net: 0, cost: 0, margin: 0, netCosted: 0, unalloc: unalloc };
     prods.forEach(function (o) {
       if (o.qty > 0) t.count++; t.qty += o.qty; t.net += o.net;
       if (o.margin !== null) { t.cost += o.cost; t.margin += o.margin; t.netCosted += o.net; }
     });
     return { prods: prods, skus: skus, total: t, noCost: skus.filter(function (s) { return s.noCost > 0 && s.code.charAt(0) !== '('; }), hasCost: !!data.costVer };
+  }
+
+  // 상품 비교 차트용: 상품별 순매출 추이. 62일 이하는 날짜별, 그보다 길면 월별
+  function productSeries(data, ids, from, to) {
+    var byMonth = dayDiff(from, to) + 1 > 62, labels = [], pos = {}, d, k, want = {}, series = {};
+    for (d = from; d <= to; d = addDays(d, 1)) { k = byMonth ? d.slice(0, 7) : d; if (pos[k] === undefined) { pos[k] = labels.length; labels.push(k); } }
+    ids.forEach(function (id) { want[id] = 1; series[id] = labels.map(function () { return 0; }); });
+    data.naverProd.forEach(function (e) { if (want[e.prodId] && inRange(e.d, from, to)) series[e.prodId][pos[byMonth ? e.d.slice(0, 7) : e.d]] += e.net; });
+    return { labels: labels, series: series, unit: byMonth ? 'month' : 'day' };
   }
 
   function skuUnmapped(data) {
@@ -551,7 +564,7 @@
     dailyFull: dailyFull, bucketFull: bucketFull, totalFull: totalFull, coupangTop: coupangTop, otherByMarket: otherByMarket, otherRows: otherRows,
     adsDaily: adsDaily, adsBucket: adsBucket, adsTotal: adsTotal, adsBreakdown: adsBreakdown, ratio: ratio,
     skuAggregate: skuAggregate, skuUnmapped: skuUnmapped, skuParseOpt: skuParseOpt, orderCheck: orderCheck,
-    costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products,
+    costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products, productSeries: productSeries,
     signals: signals, health: health
   };
 });

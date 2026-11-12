@@ -173,6 +173,21 @@ h1, h2 { margin: 0; }
 .tbl tr.sum th { font-weight: 700; }
 .tbl.wrap tbody th { white-space: normal; min-width: 200px; }
 .tbl.wrap .exp { white-space: normal; }
+.search { display: flex; align-items: center; gap: 12px; padding-top: 0; padding-bottom: 12px; }
+.search input { flex: 1; min-width: 0; max-width: 420px; min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); font: inherit; font-size: 14px; color: var(--text); }
+.search input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pick { display: flex; align-items: flex-start; gap: 8px; }
+.pick input { width: 18px; height: 18px; margin: 7px 0 0; flex: none; accent-color: var(--accent); cursor: pointer; }
+.dotc { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+.tbl.cmp thead th { white-space: normal; min-width: 130px; vertical-align: bottom; }
+.tbl.cmp tbody th { min-width: 150px; }
+.tbl.cmp small { color: var(--sub); font-weight: 400; }
+.cmpchart { display: flex; flex-direction: column; gap: 8px; padding-top: 16px; padding-bottom: 16px; border-top: 1px solid var(--line); }
+.mline { width: 100%; height: auto; }
+.mline .grid { stroke: var(--line); stroke-width: 1; }
+.mline .ax { font-size: 11px; fill: var(--sub); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--sub); }
+#pcompare:empty { display: none; }
 .exp { background: none; border: 0; padding: 6px 0; min-height: 32px; font: inherit; font-weight: 500; color: var(--text); text-align: left; cursor: pointer; }
 .exp:hover { color: var(--accent-deep); }
 .tbl tr.subrow { background: var(--bg); }
@@ -201,3 +216,4 @@ h1, h2 { margin: 0; }
   .main { padding: 16px; }
   .kpi .val { font-size: 24px; }
 }
+.li b { white-space: nowrap; }
