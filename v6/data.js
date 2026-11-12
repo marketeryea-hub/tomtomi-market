@@ -1,7 +1,8 @@
 /* 톰토미 대시보드 v6 — 데이터 불러오기
  *
- * 저장소는 v5와 같은 Supabase 표(tomtomi_data)를 그대로 읽는다. v6는 읽기만 한다.
- * (파일 올리기, 수정은 당분간 v5 화면에서 한다.)
+ * 저장소는 v5와 같은 Supabase 표(tomtomi_data)를 그대로 읽는다.
+ * v6가 쓰는 것은 원가표(skuCost) 하나뿐이고, 올릴 때마다 새 판으로 추가만 한다(기존 줄을 고치거나 지우지 않음).
+ * (그 밖의 파일 올리기, 수정은 당분간 v5 화면에서 한다.)
  */
 (function (root) {
   'use strict';
@@ -80,5 +81,17 @@
     });
   }
 
-  root.TTData = { load: load };
+  // 원가표 저장: channel=skuCost, date=판 번호(저장 시각). 같은 판 번호가 이미 있으면 실패하게 둔다(덮어쓰기 방지).
+  function saveCost(ver) {
+    return fetch(SUPABASE_URL + '/rest/v1/tomtomi_data', {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify([{ channel: 'skuCost', date: ver.ver, data: [ver] }])
+    }).then(function (res) {
+      if (!res.ok) return res.text().then(function (t) { throw new Error('저장 실패 (HTTP ' + res.status + ') ' + String(t).slice(0, 120)); });
+      return true;
+    });
+  }
+
+  root.TTData = { load: load, saveCost: saveCost };
 })(window);

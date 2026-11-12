@@ -86,5 +86,37 @@ eq('광고 날짜별 합 = 요약', [ad.saCost, ad.metaCost, ad.boostCost, ad.st
 eq('비율은 합계끼리 나눈다', [C.ratio(ad.metaClicks, ad.metaImp), C.ratio(1, 0)], [0.05, null]);
 eq('SA 캠페인별(구분 없는 행 포함)', C.adsBreakdown(D, 'sa', '2026-01-01', '2026-01-02').map(o => [o.name, o.cost]), [['A', 100], ['(구분 없음)', 50]]);
 
+// 원가, 상품 (작은 예시)
+{
+  const D2 = C.normalize({
+    naverProd: [{ d: '2026-02-01', prodId: 'P1', name: '세트', qty: 3, rev: 30000 }, { d: '2026-02-01', prodId: 'P2', name: '단품', qty: 1, rev: 5000 }],
+    naverOrder: [
+      { d: '2026-02-01', prodId: 'P1', name: '세트', opt: '', qty: 2, st: '구매확정' },
+      { d: '2026-02-10', prodId: 'P1', name: '세트', opt: '', qty: 1, st: '구매확정' },
+      { d: '2026-02-01', prodId: 'P1', name: '세트', opt: '', qty: 1, st: '취소' },
+      { d: '2026-02-01', prodId: 'P1', name: '세트', opt: '', qty: 9, st: '미결제취소' },
+      { d: '2026-02-01', prodId: 'P2', name: '단품', opt: '', qty: 1, st: '구매확정' }],
+    skuMap: [{ k: 'P1|(없음)', codes: [{ c: 'A', q: 1 }, { c: 'B', q: 2 }], names: ['에이', '비'] }, { k: 'P2|(없음)', codes: [{ c: 'Z', q: 1 }], names: ['제트'] }],
+    skuCost: [{ ver: '2026-01-01 00:00:00', rows: [{ c: 'A', cost: 999 }] },
+      { ver: '2026-01-02 00:00:00', rows: [{ c: 'A', cost: 1000, from: '' }, { c: 'A', cost: 1500, from: '2026-02-05' }, { c: 'B', cost: 200, from: '' }] }]
+  });
+  const cx = C.costIndex(D2.costVer);
+  eq('가장 최근 원가표 판을 쓴다', D2.costVer.ver, '2026-01-02 00:00:00');
+  eq('적용 시작일 전후 원가, 없는 코드는 null', [C.costAt(cx, 'A', '2026-02-04'), C.costAt(cx, 'A', '2026-02-05'), C.costAt(cx, 'Z', '2026-02-05')], [1000, 1500, null]);
+  const M = C.products(D2, '2026-02-01', '2026-02-28');
+  const p1 = M.prods.find(o => o.prodId === 'P1'), p2 = M.prods.find(o => o.prodId === 'P2');
+  // P1 원가: 2/1 2세트 = 2*(1000+2*200)=2800, 2/10 1세트 = 1500+400=1900 → 4700. 취소, 미결제취소는 제외
+  eq('세트 원가 = 구성품 합, 취소 제외, 날짜별 원가', [p1.cost, p1.margin, p1.oqty], [4700, 25300, 9]);
+  eq('원가 없는 상품은 마진 없음(0원 취급 금지)', [p2.margin, p2.noCost], [null, 1]);
+  eq('합계 마진은 원가가 다 있는 상품만', [M.total.net, M.total.netCosted, M.total.margin, M.noCost.map(s => s.code)], [35000, 30000, 25300, ['Z']]);
+  const sk = {}; M.skus.forEach(s => sk[s.code] = [Math.round(s.rev), s.est]);
+  eq('SKU 매출: 수량 비율로 배분, 여러 SKU 상품은 추정 표시', [sk.A, sk.B, sk.Z, M.total.unalloc], [[10000, true], [20000, true], [5000, false], 0]);
+  eq('SKU 매출 합 = 상품 순매출 합', Math.round(M.skus.reduce((a, s) => a + s.rev, 0) + M.total.unalloc), M.total.net);
+  const ps = C.productSeries(D2, ['P1', 'P2'], '2026-02-01', '2026-02-02');
+  eq('상품 추이', [ps.labels, ps.series.P1, ps.series.P2, ps.unit], [['2026-02-01', '2026-02-02'], [30000, 0], [5000, 0], 'day']);
+  const mg = C.costMerge(D2.costVer, [{ c: 'A', cost: 1100, from: '' }, { c: 'Z', cost: 300, from: '' }]);
+  eq('원가표 합치기: 새 표에 없는 줄은 유지', [mg.stat, mg.rows.length, mg.rows.find(r => r.c === 'B').cost], [{ added: 1, changed: 1, same: 0, kept: 2 }, 4, 200]);
+}
+
 console.log(fail ? '실패 ' + fail + '건' : '모든 규칙 통과');
 process.exit(fail ? 1 : 0);

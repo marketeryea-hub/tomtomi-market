@@ -108,6 +108,7 @@
       out.orders.push({ d: d, prodId: String(e.prodId || ''), name: String(e.name || ''), opt: String(e.opt || ''), qty: num(e.qty), st: String(e.st || ''), claim: String(e.claim || '') });
     });
     out.skuMap = (raw.skuMap || []).filter(function (r) { return r && r.k; });
+    out.costVer = costPick(raw.skuCost);
 
     // 조회 가능한 범위: 채널별 첫 날짜와 마지막 날짜
     function span(rows) {
@@ -368,6 +369,102 @@
     return Object.keys(m).map(function (k) { var o = m[k]; o.net = o.qty - o.cancel; return o; })
       .sort(function (a, b) { return b.net - a.net; });
   }
+  /* ───────── 원가 (SKU 1개당, 부가세 포함 금액으로 저장) ───────── */
+  // 원가표는 올릴 때마다 새 판(ver)으로 쌓인다. 가장 최근 판을 쓴다.
+  function costPick(list) {
+    var best = null;
+    (list || []).forEach(function (v) { if (v && Array.isArray(v.rows) && (!best || String(v.ver) > String(best.ver))) best = v; });
+    return best;
+  }
+  function costIndex(ver) {
+    var ix = {};
+    if (!ver) return ix;
+    ver.rows.forEach(function (r) { var c = num(r.cost); if (!r.c || !(c > 0)) return; (ix[r.c] = ix[r.c] || []).push({ from: r.from || '', cost: c }); });
+    Object.keys(ix).forEach(function (k) { ix[k].sort(function (a, b) { return a.from < b.from ? -1 : a.from > b.from ? 1 : 0; }); });
+    return ix;
+  }
+  // 그 날짜에 적용되는 원가. 없으면 null (0원으로 치지 않는다)
+  function costAt(ix, code, d) {
+    var a = ix[code], v = null; if (!a) return null;
+    a.forEach(function (e) { if (!e.from || e.from <= d) v = e.cost; });
+    return v;
+  }
+  // 새로 올린 원가표를 이전 판 위에 합친다: 같은 (코드, 적용 시작일)은 새 값으로, 새 표에 없는 줄은 그대로 둔다
+  function costMerge(prev, rows) {
+    var m = {}, order = [], st = { added: 0, changed: 0, same: 0, kept: 0 };
+    ((prev && prev.rows) || []).forEach(function (r) { var k = r.c + '|' + (r.from || ''); if (!m[k]) order.push(k); m[k] = { c: r.c, name: r.name || '', cost: num(r.cost), from: r.from || '', note: r.note || '' }; });
+    var touched = {};
+    rows.forEach(function (r) {
+      var k = r.c + '|' + (r.from || ''); touched[k] = 1;
+      if (!m[k]) { order.push(k); st.added++; }
+      else if (m[k].cost !== r.cost) st.changed++; else st.same++;
+      m[k] = { c: r.c, name: r.name || (m[k] && m[k].name) || '', cost: r.cost, from: r.from || '', note: r.note || '' };
+    });
+    order.forEach(function (k) { if (!touched[k]) st.kept++; });
+    return { rows: order.map(function (k) { return m[k]; }), stat: st };
+  }
+  // 네이버 상품별 성과 + SKU 풀이 + 원가
+  //  - 수량, 순매출: 상품성과 파일(결제일 기준)
+  //  - SKU 수량, 원가: 주문조회 파일(주문일 기준, 미결제취소/취소/반품 제외) × 매핑표 × 원가표
+  //  - 마진 = 순매출 - 원가. 원가가 하나라도 빠진 상품은 마진을 계산하지 않는다(null)
+  function products(data, from, to) {
+    var ix = skuIndex(data.skuMap), cx = costIndex(data.costVer), P = {}, K = {}, unalloc = 0;
+    function prod(id) { return P[id] || (P[id] = { prodId: id, name: '', nameD: '', qty: 0, net: 0, oqty: 0, cost: 0, noCost: 0, skus: {} }); }
+    data.naverProd.forEach(function (e) {
+      if (!inRange(e.d, from, to)) return;
+      var o = prod(e.prodId); o.qty += e.qty; o.net += e.net;
+      if (e.name && e.d >= o.nameD) { o.name = e.name; o.nameD = e.d; }
+    });
+    data.orders.forEach(function (e) {
+      if (e.st === '미결제취소' || !inRange(e.d, from, to)) return;
+      var cancel = (e.st === '취소' || e.st === '반품');
+      var o = prod(e.prodId); if (!o.name) o.name = e.name;
+      skuKeys(e).forEach(function (k) {
+        var r = ix.idx[k], items;
+        if (!r) items = [{ c: '(매핑 없음)', q: 1, nm: '매핑표에 없는 옵션' }];
+        else if (!r.codes || !r.codes.length) items = [{ c: '(종류 미상)', q: 1, nm: (r.pname || '') + ' (종류 미상)' }];
+        else items = r.codes.map(function (c) { return { c: c.c, q: c.q || 1, nm: ix.names[c.c] || '' }; });
+        items.forEach(function (x) {
+          var q = x.q * e.qty;
+          var g = K[x.c] || (K[x.c] = { code: x.c, name: x.nm, qty: 0, cancel: 0, cost: 0, noCost: 0, unit: null, rev: 0, est: false });
+          var s = o.skus[x.c] || (o.skus[x.c] = { code: x.c, name: x.nm, qty: 0, cost: 0, noCost: 0, unit: null });
+          if (!g.name && x.nm) g.name = x.nm;
+          if (cancel) { g.cancel += q; return; }
+          var c = costAt(cx, x.c, e.d);
+          g.qty += q; s.qty += q; o.oqty += q;
+          if (c === null) { g.noCost += q; s.noCost += q; o.noCost += q; }
+          else { g.cost += c * q; s.cost += c * q; o.cost += c * q; g.unit = c; s.unit = c; }
+        });
+      });
+    });
+    var prods = Object.keys(P).map(function (k) {
+      var o = P[k];
+      o.skuList = Object.keys(o.skus).map(function (c) { return o.skus[c]; }).sort(function (a, b) { return b.qty - a.qty; });
+      o.margin = (o.oqty > 0 && o.noCost === 0) ? o.net - o.cost : null;
+      // SKU별 매출: 상품 순매출을 그 상품의 SKU 수량 비율로 나눈다.
+      // SKU가 하나뿐인 상품은 그대로 정확하고, 여러 SKU가 섞인 상품(세트, 추가구성)은 추정(est)이다.
+      if (o.oqty > 0) o.skuList.forEach(function (s) { s.rev = o.net * s.qty / o.oqty; K[s.code].rev += s.rev; if (o.skuList.length > 1) K[s.code].est = true; });
+      else unalloc += o.net;
+      return o;
+    }).filter(function (o) { return o.qty || o.net || o.oqty; }).sort(function (a, b) { return b.net - a.net || b.qty - a.qty; });
+    var skus = Object.keys(K).map(function (k) { return K[k]; }).sort(function (a, b) { return b.qty - a.qty || (a.code < b.code ? -1 : 1); });
+    var t = { count: 0, qty: 0, net: 0, cost: 0, margin: 0, netCosted: 0, unalloc: unalloc };
+    prods.forEach(function (o) {
+      if (o.qty > 0) t.count++; t.qty += o.qty; t.net += o.net;
+      if (o.margin !== null) { t.cost += o.cost; t.margin += o.margin; t.netCosted += o.net; }
+    });
+    return { prods: prods, skus: skus, total: t, noCost: skus.filter(function (s) { return s.noCost > 0 && s.code.charAt(0) !== '('; }), hasCost: !!data.costVer };
+  }
+
+  // 상품 비교 차트용: 상품별 순매출 추이. 62일 이하는 날짜별, 그보다 길면 월별
+  function productSeries(data, ids, from, to) {
+    var byMonth = dayDiff(from, to) + 1 > 62, labels = [], pos = {}, d, k, want = {}, series = {};
+    for (d = from; d <= to; d = addDays(d, 1)) { k = byMonth ? d.slice(0, 7) : d; if (pos[k] === undefined) { pos[k] = labels.length; labels.push(k); } }
+    ids.forEach(function (id) { want[id] = 1; series[id] = labels.map(function () { return 0; }); });
+    data.naverProd.forEach(function (e) { if (want[e.prodId] && inRange(e.d, from, to)) series[e.prodId][pos[byMonth ? e.d.slice(0, 7) : e.d]] += e.net; });
+    return { labels: labels, series: series, unit: byMonth ? 'month' : 'day' };
+  }
+
   function skuUnmapped(data) {
     var ix = skuIndex(data.skuMap).idx, seen = {};
     data.orders.forEach(function (e) { if (e.st === '미결제취소') return; skuKeys(e).forEach(function (k) { if (!ix[k]) seen[k] = 1; }); });
@@ -467,6 +564,7 @@
     dailyFull: dailyFull, bucketFull: bucketFull, totalFull: totalFull, coupangTop: coupangTop, otherByMarket: otherByMarket, otherRows: otherRows,
     adsDaily: adsDaily, adsBucket: adsBucket, adsTotal: adsTotal, adsBreakdown: adsBreakdown, ratio: ratio,
     skuAggregate: skuAggregate, skuUnmapped: skuUnmapped, skuParseOpt: skuParseOpt, orderCheck: orderCheck,
+    costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products, productSeries: productSeries,
     signals: signals, health: health
   };
 });
