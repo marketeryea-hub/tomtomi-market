@@ -116,5 +116,57 @@
     return next();
   }
 
-  root.TTData = { load: load, saveCost: saveCost, saveRows: saveRows };
+  // 슬랙 웹훅 주소: v5와 같은 곳(브라우저 저장 → 없으면 클라우드 slackConfig)에서 읽는다. 화면에는 보여주지 않는다
+  function loadWebhook() {
+    var local = ''; try { local = localStorage.getItem('tt_slack_webhook') || ''; } catch (e) { /* 무시 */ }
+    if (local) return Promise.resolve(local);
+    var url = SUPABASE_URL + '/rest/v1/tomtomi_data?select=data&channel=eq.slackConfig';
+    return fetch(url, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } })
+      .then(function (res) { return res.ok ? res.json() : []; })
+      .then(function (rows) { var u = ''; (rows || []).forEach(function (r) { (r.data || []).forEach(function (x) { if (x && x.url) u = x.url; }); }); return u; })
+      .catch(function () { return ''; });
+  }
+  // 온라인 대시보드 구글 시트: SNS 팔로워(시트1), 경쟁사 검색량(competitor) — v5와 같은 시트
+  var ONLINE_GSHEET_ID = '1vuyz2V0I6KgJ0vrpH2cwJ_5XzOcqj12opLRGM4irtu0';
+  function csvLine(r) { var out = [], cur = '', q = false; for (var i = 0; i < r.length; i++) { var ch = r[i]; if (ch === '"') q = !q; else if (ch === ',' && !q) { out.push(cur.trim()); cur = ''; } else cur += ch; } out.push(cur.trim()); return out; }
+  function sheetCsv(sheet) {
+    return fetch('https://docs.google.com/spreadsheets/d/' + ONLINE_GSHEET_ID + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(sheet))
+      .then(function (res) { return res.text(); }).then(function (t) { return t.trim().split('\n').map(csvLine); });
+  }
+  function ymd(v) { var m = String(v || '').match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/); return m ? m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) : null; }
+  function numv(v) { var n = parseFloat(String(v || '').replace(/,/g, '')); return isNaN(n) ? 0 : n; }
+  function loadOnline() {
+    var out = { crm: null, competitor: null };
+    var a = sheetCsv('시트1').then(function (rows) {
+      if (rows.length < 2) return;
+      var hd = rows[0].map(function (h) { return String(h || '').toLowerCase().trim(); });
+      function ix(names, def) { var i = hd.findIndex(function (h) { return names.indexOf(h) >= 0; }); return i >= 0 ? i : def; }
+      var ci = { d: ix(['date'], 0), naver: ix(['naver', '알림받기', 'smartstore'], 1), insta: ix(['insta', 'instagram'], 2), tiktok: ix(['tiktok', '틱톡'], 3), threads: ix(['threads', '쓰레드'], 4) }, crm = { naver: [], insta: [], tiktok: [], threads: [] };
+      rows.slice(1).forEach(function (r) { var d = ymd(r[ci.d]); if (!d) return; ['naver', 'insta', 'tiktok', 'threads'].forEach(function (k) { var v = parseInt(String(r[ci[k]] || '').replace(/,/g, ''), 10); if (v > 0) crm[k].push({ date: d, val: v }); }); });
+      Object.keys(crm).forEach(function (k) { crm[k].sort(function (x, y) { return x.date < y.date ? -1 : 1; }); });
+      out.crm = crm;
+    }).catch(function () { /* 못 읽으면 SNS 줄을 뺀다 */ });
+    var b = sheetCsv('competitor').then(function (rows) {
+      if (rows.length < 2) return;
+      var hd = rows[0].map(function (h) { return String(h || '').toLowerCase().trim(); });
+      function fi(f, def) { var i = hd.findIndex(f); return i >= 0 ? i : def; }
+      var ci = { m: fi(function (h) { return h.indexOf('month') >= 0 || h.indexOf('월') >= 0; }, 0), b: fi(function (h) { return h.indexOf('brand') >= 0 || h.indexOf('브랜드') >= 0; }, 1), mo: fi(function (h) { return h === 'mo' || h === '모바일'; }, 2), pc: fi(function (h) { return h === 'pc'; }, 3), t: fi(function (h) { return h.indexOf('합계') >= 0 || h === 'total'; }, 4) }, bs = {};
+      rows.slice(1).forEach(function (r) {
+        var mm = String(r[ci.m] || '').trim().match(/^(\d{4})[-./](\d{1,2})/), brand = String(r[ci.b] || '').trim(); if (!mm || !brand) return;
+        var month = mm[1] + '-' + ('0' + mm[2]).slice(-2), tot = numv(r[ci.t]) || numv(r[ci.mo]) + numv(r[ci.pc]);
+        var o = bs[brand] || (bs[brand] = { dates: [], vals: [] }); o.dates.push(month); o.vals.push(tot);
+      });
+      Object.keys(bs).forEach(function (k) { var z = bs[k].dates.map(function (d, i) { return { d: d, v: bs[k].vals[i] }; }).sort(function (x, y) { return x.d < y.d ? -1 : 1; }); bs[k].dates = z.map(function (x) { return x.d; }); bs[k].vals = z.map(function (x) { return x.v; }); });
+      out.competitor = bs;
+    }).catch(function () { /* 못 읽으면 경쟁사 줄을 뺀다 */ });
+    return Promise.all([a, b]).then(function () { return out; });
+  }
+  // 슬랙 보내기: v5와 같은 방식(본문만 JSON 문자열로, 브라우저 사전 확인 없이)
+  function sendSlack(webhook, text) {
+    return fetch(webhook, { method: 'POST', body: JSON.stringify({ text: text }) }).then(function (res) {
+      return res.text().then(function (t) { if (!res.ok) throw new Error('HTTP ' + res.status + (t ? ' (' + t + ')' : '')); return true; });
+    });
+  }
+
+  root.TTData = { load: load, saveCost: saveCost, saveRows: saveRows, loadWebhook: loadWebhook, loadOnline: loadOnline, sendSlack: sendSlack };
 })(window);
