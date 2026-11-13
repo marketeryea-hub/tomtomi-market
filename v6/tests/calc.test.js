@@ -128,5 +128,21 @@ eq('SA 캠페인별(구분 없는 행 포함)', C.adsBreakdown(D, 'sa', '2026-01
   const ia = C.items(D2, '2026-02-01', '2026-02-28').rows.A.ch.naver;
   eq('품목 A: 수량, 배분 매출, 원가', [ia.qty, Math.round(ia.rev), ia.cost], [3, 10000, 3500]);
 }
+// 유입: 경로 합 = 날짜 합, 품목 유입 합 = 상품 방문 합, 주 품목 80% 규칙
+{
+  const D3 = C.normalize({
+    naverVisit: [{ d: '2026-06-01', path1: '네이버 외부', path2: 'instagram.com', path3: '-', visits: 10, orders: 1, rev: 1000 }, { d: '2026-06-01', path1: '직유입', path2: '-', path3: '-', visits: 5, orders: 0, rev: 0 }],
+    naverProdVisit: [{ d: '2026-06-01', prodId: 'P1', name: '세트', visits: 8 }, { d: '2026-06-01', prodId: 'P2', name: '택1', visits: 4 }, { d: '2026-06-01', prodId: 'P9', name: '모름', visits: 3 }],
+    naverProd: [{ d: '2026-06-01', prodId: 'P1', qty: 10, rev: 1 }, { d: '2026-06-01', prodId: 'P2', qty: 2, rev: 1 }],
+    naverOrder: [{ d: '2026-06-01', prodId: 'P1', opt: '', qty: 9, st: '구매확정' }, { d: '2026-06-01', prodId: 'P1', opt: '추가', qty: 1, st: '구매확정' },
+      { d: '2026-06-01', prodId: 'P2', opt: 'a', qty: 1, st: '구매확정' }, { d: '2026-06-01', prodId: 'P2', opt: 'b', qty: 1, st: '구매확정' }],
+    skuMap: [{ k: 'P1|(없음)', codes: [{ c: 'A', q: 1 }] }, { k: 'P1|추가', codes: [{ c: 'B', q: 1 }] }, { k: 'P2|a', codes: [{ c: 'A', q: 1 }] }, { k: 'P2|b', codes: [{ c: 'B', q: 1 }] }]
+  });
+  const tt = C.trafficTotal(C.trafficDaily(D3, '2026-06-01', '2026-06-01'));
+  const pth = C.trafficPaths(D3, '2026-06-01', '2026-06-01');
+  eq('유입 날짜 합 = 경로 합', [tt.visits, pth.reduce((a, g) => a + g.visits, 0)], [15, 15]);
+  const ti = C.trafficItems(D3, '2026-06-01', '2026-06-01').rows;
+  eq('주 품목 90% 페이지는 그 품목, 반반 페이지는 여러 품목, 매핑 없으면 미지정', [ti.A && ti.A.visits, ti['MULTI:P2'] && ti['MULTI:P2'].visits, ti[C.NONE] && ti[C.NONE].visits], [8, 4, 3]);
+}
 console.log(fail ? '실패 ' + fail + '건' : '모든 규칙 통과');
 process.exit(fail ? 1 : 0);

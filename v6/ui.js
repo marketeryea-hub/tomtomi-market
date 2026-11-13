@@ -8,8 +8,8 @@
   var C = root.TTCalc;
   var DATA = null;      // 정리된 데이터
   var META = {};        // 불러오기 결과(기타마켓 연결 여부 등)
-  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '' };
-  var READY = { home: 1, sales: 1, ads: 1, products: 1 }; // 옮겨온 메뉴
+  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '', tpage: 0, topen: '' };
+  var READY = { home: 1, sales: 1, ads: 1, products: 1, customers: 1 }; // 옮겨온 메뉴
   var STORE_KEY = 'tt6_state';
 
   var VIEWS = [
@@ -140,7 +140,7 @@
     cur.forEach(function (o, i) {
       var lines = [o.label, lineName + ' ' + won(o.sales) + unit];
       if (prev && prev[i]) lines.push('비교 (' + prev[i].label + ') ' + won(prev[i].sales) + unit);
-      if (opt.bar !== '') lines.push(barName + ' ' + won(o.ad) + '원');
+      if (opt.bar !== '') lines.push(barName + ' ' + won(o.ad) + (opt.barUnit || '원'));
       s += '<rect class="hit" x="' + (L + step * i).toFixed(1) + '" y="' + T + '" width="' + step.toFixed(1) + '" height="' + ph + '" data-tip="' + esc(lines.join('|')) + '"></rect>';
     });
     return s + '</svg>';
@@ -226,17 +226,19 @@
 
   /* ───────── 표 넘겨보기: 최근 날짜부터 10줄씩 ───────── */
   var PAGE_SIZE_DEF = 10;
-  function pageOf(list, size) {
-    var PAGE_SIZE = size || PAGE_SIZE_DEF, pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
-    if (S.page >= pages) S.page = pages - 1;
-    if (S.page < 0) S.page = 0;
-    return { rows: list.slice(S.page * PAGE_SIZE, (S.page + 1) * PAGE_SIZE), pages: pages, total: list.length };
+  function pageOf(list, size, field) {
+    var f = field || 'page', PAGE_SIZE = size || PAGE_SIZE_DEF, pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    if (!(S[f] >= 0)) S[f] = 0;
+    if (S[f] >= pages) S[f] = pages - 1;
+    return { rows: list.slice(S[f] * PAGE_SIZE, (S[f] + 1) * PAGE_SIZE), pages: pages, total: list.length, field: f };
   }
-  function pagerHtml(pg) {
+  // list = true 이면 날짜가 아닌 목록(품목 등)이라 '이전 / 다음'으로 부른다
+  function pagerHtml(pg, list) {
     if (pg.pages <= 1) return '';
-    return '<div class="pager"><button type="button" class="chip" data-act="page" data-key="newer"' + (S.page === 0 ? ' disabled' : '') + '>‹ 더 최근</button>' +
-      '<span class="num">' + (S.page + 1) + ' / ' + pg.pages + ' <small>(전체 ' + pg.total + '줄)</small></span>' +
-      '<button type="button" class="chip" data-act="page" data-key="older"' + (S.page >= pg.pages - 1 ? ' disabled' : '') + '>더 과거 ›</button></div>';
+    var f = pg.field || 'page', cur = S[f] || 0, at = f === 'page' ? '' : ' data-field="' + f + '"';
+    return '<div class="pager"><button type="button" class="chip" data-act="page" data-key="newer"' + at + (cur === 0 ? ' disabled' : '') + '>‹ ' + (list ? '이전' : '더 최근') + '</button>' +
+      '<span class="num">' + (cur + 1) + ' / ' + pg.pages + ' <small>(전체 ' + pg.total + (list ? '개' : '줄') + ')</small></span>' +
+      '<button type="button" class="chip" data-act="page" data-key="older"' + at + (cur >= pg.pages - 1 ? ' disabled' : '') + '>' + (list ? '다음' : '더 과거') + ' ›</button></div>';
   }
 
   /* ───────── 매출 ───────── */
@@ -653,7 +655,7 @@
       });
     });
     if (list.length) h += '<tr class="sum"><th scope="row">' + sumName + '</th><td><small>원가, 마진은 원가가 다 입력된 품목만</small></td>' + (all ? '<td></td>' : '') + '<td class="r num">' + n0(t.qty) + '</td><td class="r num b">' + n0(t.rev) + '</td>' + (cr ? '<td class="r num">' + grow(t.rev, t.prev) + '</td>' : '') + '<td class="r num">' + (t.revCosted > 0 ? n0(t.cost) : '-') + '</td><td class="r num">' + (t.revCosted > 0 ? n0(t.margin) : '-') + '</td><td class="r num">' + (t.revCosted > 0 ? rate(t.margin, t.revCosted) : '-') + '</td></tr>';
-    h += '</tbody></table>' + pagerHtml(pg);
+    h += '</tbody></table>' + pagerHtml(pg, true);
     if (S.pch !== 'coupang' && S.pch !== 'other') h += '<p class="note pad">네이버 매출은 판매 페이지별 순매출을 그 페이지에서 팔린 품목 수량 비율로 나눈 값입니다. 세트나 추가구성처럼 여러 품목이 섞인 페이지에서 온 금액이 있으면 "약"을 붙였습니다.</p>';
     return h;
   }
@@ -899,6 +901,114 @@
     }).catch(function (e) { S.saving = false; S.costMsg = '저장하지 못했습니다. 화면의 값은 바뀌지 않았습니다. ' + (e && e.message || ''); render(); });
   }
 
+  /* ───────── 고객/유입 (네이버 visit 파일) ───────── */
+  function pct1(a, b) { return b > 0 ? (a / b * 100).toFixed(1) + '%' : '-'; }
+  function viewCustomers() {
+    var h = '', cr = cmpRange(), has = !!cr, tspan = (function () { var f = '', l = ''; DATA.traffic.forEach(function (e) { if (!f || e.d < f) f = e.d; if (e.d > l) l = e.d; }); return { first: f, last: l }; })();
+    if (!tspan.first) return h + '<section class="card"><p class="note">아직 유입 데이터(visit 파일)가 없습니다.</p></section>';
+    var cur = C.trafficTotal(C.trafficDaily(DATA, S.from, S.to)), prev = has ? C.trafficTotal(C.trafficDaily(DATA, cr.from, cr.to)) : null;
+    var pHas = has && cr.to >= tspan.first;
+    h += '<span class="note tight">네이버 스마트스토어 visit 파일 기준입니다 (' + dot(tspan.first) + ' ~ ' + dot(tspan.last) + '). 쿠팡은 입고 구조라 방문 데이터가 없습니다.' + (S.from < tspan.first ? ' <b>조회 기간 중 ' + dot(tspan.first) + ' 이전은 유입 데이터가 없어 0으로 잡힙니다.</b>' : '') + '</span>';
+    h += '<section class="strip" aria-label="유입 요약">';
+    h += cell('방문', n0(cur.visits), dsub(cur.visits, prev ? prev.visits : 0, pHas));
+    h += cell('주문', n0(cur.orders), dsub(cur.orders, prev ? prev.orders : 0, pHas));
+    var cv = cur.visits ? cur.orders / cur.visits : 0, pv = prev && prev.visits ? prev.orders / prev.visits : 0;
+    h += cell('전환율 (주문 ÷ 방문)', pct1(cur.orders, cur.visits), pHas && pv ? (cv - pv >= 0 ? '<span class="up">+' : '<span class="down">') + ((cv - pv) * 100).toFixed(1) + '%p</span> 이전 ' + pct1(prev.orders, prev.visits) : '');
+    h += cell('방문당 결제금액', cur.visits ? n0(cur.rev / cur.visits) : '-', pHas && prev.visits ? '이전 ' + n0(prev.rev / prev.visits) : '');
+    h += '</section>';
+
+    // 추이: 선 = 방문, 막대 = 주문
+    var unit = S.unit === 'auto' ? C.autoUnit(S.from, S.to) : S.unit, ctx = chartCtx();
+    function series(rows) { return rows.map(function (o) { return { label: o.label, key: o.key, sales: o.visits, ad: o.orders }; }); }
+    var crow = C.trafficBucket(C.trafficDaily(DATA, ctx ? ctx.from : S.from, ctx ? ctx.to : S.to), ctx ? 'day' : unit);
+    var prow = has && !ctx ? C.trafficBucket(C.trafficDaily(DATA, cr.from, cr.to), unit) : null;
+    h += '<section class="card" aria-label="방문 추이"><div class="card-h"><h2>방문과 주문 추이</h2><div class="units">';
+    [['auto', '자동'], ['day', '일'], ['week', '주'], ['month', '월']].forEach(function (u) { h += '<button type="button" class="chip" data-act="unit" data-key="' + u[0] + '" aria-pressed="' + (S.unit === u[0]) + '">' + u[1] + '</button>'; });
+    h += '</div><span class="legend"><span class="lg-line"></span>방문 (왼쪽 눈금)</span>';
+    if (prow) h += '<span class="legend"><span class="lg-dash"></span>비교 기간</span>';
+    if (ctx) h += '<span class="legend"><span class="lg-hl"></span>조회 기간</span>';
+    h += '<span class="legend"><span class="lg-bar"></span>주문 (오른쪽 눈금)</span></div>';
+    h += chartSvg(series(crow), prow ? series(prow) : null, ctx ? hlRange(crow) : null, { line: '방문', bar: '주문', unit: '명', barUnit: '건' });
+    h += '<span class="note">' + (ctx ? '조회 기간이 짧아 최근 14일 흐름을 함께 보여줍니다. 색칠된 부분이 조회 기간입니다.' : UNIT_NAME[unit] + ' 단위') + '</span></section>';
+
+    // 유입경로
+    var P = C.trafficPaths(DATA, S.from, S.to), PP = has ? C.trafficPaths(DATA, cr.from, cr.to) : [], pmap = {};
+    PP.forEach(function (g) { pmap[g.name] = g; g.subList.forEach(function (x) { pmap[g.name + '|' + x.name] = x; }); });
+    h += '<section class="card flush" aria-label="유입경로별"><div class="card-h pad"><h2>유입경로별</h2><span class="hint">경로를 누르면 세부 경로가 펼쳐집니다</span><button type="button" class="chip" data-act="tcsv">엑셀로 받기 (CSV)</button></div><div class="scroll">';
+    h += trafficTable(P.map(function (g) { return { key: g.name, label: g.name, o: g, pv: pmap[g.name], subs: g.subList.map(function (x) { return { label: x.name, o: x, pv: pmap[g.name + '|' + x.name] }; }) }; }), cur.visits, has, '경로');
+    h += '</div></section>';
+
+    // 품목별 유입 (품목코드 중심, 목록 고정)
+    var TI = C.trafficItems(DATA, S.from, S.to), TP = has ? C.trafficItems(DATA, cr.from, cr.to) : null, X = itemModel(S.from, S.to);
+    var order = C.trafficOrder(DATA).concat([C.NONE]);
+    h += '<section class="card flush" aria-label="품목별 유입"><div class="card-h pad"><h2>품목별 유입</h2><span class="hint">목록과 순서는 기간과 상관없이 고정 (전체 기간 누적 방문순), 10개씩</span></div><div class="scroll">';
+    var pg = pageOf(order, 10, 'tpage');
+    h += '<table class="tbl wrap items"><thead><tr><th scope="col">품목코드</th><th scope="col">품목명</th><th scope="col" class="r">방문</th><th scope="col" class="r">비중</th><th scope="col" class="r">주문</th><th scope="col" class="r">전환율</th><th scope="col" class="r">결제금액</th>' + (has ? '<th scope="col" class="r">방문 비교 대비</th>' : '') + '</tr></thead><tbody>';
+    pg.rows.forEach(function (k) {
+      var o = TI.rows[k] || { visits: 0, orders: 0, rev: 0 }, pv = TP && TP.rows[k], multi = k.indexOf('MULTI:') === 0, none = k === C.NONE, zero = !o.visits;
+      var code = multi ? '<span class="code muted">여러 품목</span>' : codeLabel(k);
+      var name = none ? '품목 미지정 (매핑표에 없는 판매 페이지)' : multi ? esc(multiName(TI, k)) + '<br><small>' + esc(multiCodes(TI, k)) + '</small>' : esc(itemName(X, k));
+      h += '<tr' + (zero ? ' class="zero-row"' : '') + '><th scope="row">' + code + '</th><td class="nm">' + name + '</td><td class="r num b">' + n0(o.visits) + '</td><td class="r num">' + pct1(o.visits, cur.visits) + '</td><td class="r num">' + n0(o.orders) + '</td><td class="r num">' + pct1(o.orders, o.visits) + '</td><td class="r num">' + n0(o.rev) + '</td>';
+      if (has) h += '<td class="r num">' + (zero && !(pv && pv.visits) ? '-' : grow(o.visits, pv ? pv.visits : 0)) + '</td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table>' + pagerHtml(pg, true) + '</div>';
+    h += '<p class="note pad">판매 페이지 방문을 품목코드로 연결했습니다. 한 페이지의 주문 수량 중 한 품목이 80% 이상이면 그 품목으로 보고(예: 위인 SET 페이지 → SOMD-0020), 여러 품목이 고르게 팔리는 페이지(예: 스티커북 택1)는 방문을 품목별로 나눌 수 없어 "여러 품목"으로 따로 보여줍니다.</p></section>';
+
+    // 보관 데이터 (네이버 개편으로 수집 중단)
+    var q = C.queryTop(DATA), cd = C.custDemo(DATA);
+    h += '<div class="row">';
+    h += '<section class="card grow1 flush" aria-label="검색어 보관 데이터"><div class="card-h pad"><h2>검색어 순위</h2><span class="tag">보관 데이터</span></div>';
+    h += '<p class="note pad">' + (q.span.first ? dot(q.span.first) + ' ~ ' + dot(q.span.last) + ' 전체 합계. 네이버 대시보드 개편으로 검색어 유입 기능이 없어져 이후 데이터는 없습니다. 조회 기간과 상관없이 보관 기간 전체를 보여줍니다.' : '보관된 검색어 데이터가 없습니다.') + '</p>';
+    if (q.list.length) {
+      h += '<div class="scroll"><table class="tbl"><thead><tr><th scope="col">검색어</th><th scope="col" class="r">방문</th><th scope="col" class="r">주문</th><th scope="col" class="r">결제금액</th></tr></thead><tbody>';
+      q.list.slice(0, 20).forEach(function (o) { h += '<tr><th scope="row">' + esc(o.q) + '</th><td class="r num b">' + n0(o.visits) + '</td><td class="r num">' + n0(o.orders) + '</td><td class="r num">' + n0(o.rev) + '</td></tr>'; });
+      h += '</tbody></table></div>';
+    }
+    h += '</section>';
+    h += '<section class="card grow1 flush" aria-label="고객 보관 데이터"><div class="card-h pad"><h2>성별, 나이별 방문 고객</h2><span class="tag">보관 데이터</span></div>';
+    h += '<p class="note pad">' + (cd.span.first ? dot(cd.span.first) + ' 주 ~ ' + dot(cd.span.last) + ' 주 합계. 7월 이후 데이터는 없습니다.' : '보관된 고객 데이터가 없습니다.') + '</p>';
+    if (cd.list.length) {
+      h += '<div class="scroll"><table class="tbl"><thead><tr><th scope="col">구분</th><th scope="col" class="r">방문 고객</th><th scope="col" class="r">비중</th><th scope="col" class="r">결제 고객</th><th scope="col" class="r">결제금액</th></tr></thead><tbody>';
+      cd.list.forEach(function (o) { h += '<tr><th scope="row">' + esc(o.seg) + '</th><td class="r num b">' + n0(o.visitCust) + '</td><td class="r num">' + pct1(o.visitCust, cd.total) + '</td><td class="r num">' + n0(o.payCust) + '</td><td class="r num">' + n0(o.rev) + '</td></tr>'; });
+      h += '</tbody></table></div>';
+    }
+    h += '</section></div>';
+    return h;
+  }
+  function multiName(TI, k) { var o = TI.rows[k]; return o && o.page ? o.page : '판매 페이지 ' + k.slice(6); }
+  function multiCodes(TI, k) { var p = TI.pageCodes[k.slice(6)]; if (!p) return ''; var c = p.codes; return c.slice(0, 5).join(', ') + (c.length > 5 ? ' 외 ' + (c.length - 5) + '개' : ''); }
+  // 유입경로 표 (큰 분류 + 펼치면 세부)
+  function trafficTable(groups, total, has, label) {
+    var h = '<table class="tbl wrap"><thead><tr><th scope="col">' + label + '</th><th scope="col" class="r">방문</th><th scope="col" class="r">비중</th><th scope="col" class="r">주문</th><th scope="col" class="r">전환율</th><th scope="col" class="r">결제금액</th>' + (has ? '<th scope="col" class="r">방문 비교 대비</th>' : '') + '</tr></thead><tbody>';
+    if (!groups.length) h += '<tr><td colspan="' + (has ? 7 : 6) + '" class="none">이 기간에 유입 데이터가 없습니다.</td></tr>';
+    var t = { visits: 0, orders: 0, rev: 0, prev: 0 };
+    groups.forEach(function (g) {
+      var open = S.topen === g.key, o = g.o;
+      t.visits += o.visits; t.orders += o.orders; t.rev += o.rev; t.prev += g.pv ? g.pv.visits : 0;
+      h += '<tr><th scope="row"><button type="button" class="exp" data-act="topen" data-key="' + esc(g.key) + '" aria-expanded="' + open + '">' + (open ? '▾ ' : '▸ ') + esc(g.label) + '</button></th>';
+      h += '<td class="r num b">' + n0(o.visits) + '</td><td class="r num">' + pct1(o.visits, total) + '</td><td class="r num">' + n0(o.orders) + '</td><td class="r num">' + pct1(o.orders, o.visits) + '</td><td class="r num">' + n0(o.rev) + '</td>' + (has ? '<td class="r num">' + grow(o.visits, g.pv ? g.pv.visits : 0) + '</td>' : '') + '</tr>';
+      if (open) g.subs.forEach(function (x) {
+        h += '<tr class="subrow"><th scope="row">└ ' + esc(x.label) + '</th><td class="r num">' + n0(x.o.visits) + '</td><td class="r num">' + pct1(x.o.visits, total) + '</td><td class="r num">' + n0(x.o.orders) + '</td><td class="r num">' + pct1(x.o.orders, x.o.visits) + '</td><td class="r num">' + n0(x.o.rev) + '</td>' + (has ? '<td class="r num">' + grow(x.o.visits, x.pv ? x.pv.visits : 0) + '</td>' : '') + '</tr>';
+      });
+    });
+    if (groups.length) h += '<tr class="sum"><th scope="row">합계</th><td class="r num b">' + n0(t.visits) + '</td><td class="r num">100%</td><td class="r num">' + n0(t.orders) + '</td><td class="r num">' + pct1(t.orders, t.visits) + '</td><td class="r num">' + n0(t.rev) + '</td>' + (has ? '<td class="r num">' + grow(t.visits, t.prev) + '</td>' : '') + '</tr>';
+    return h + '</tbody></table>';
+  }
+  function downloadTrafficCsv() {
+    var lines = [['구분', '경로 또는 품목코드', '세부 경로 또는 품목명', '방문', '주문', '결제금액']];
+    C.trafficPaths(DATA, S.from, S.to).forEach(function (g) {
+      lines.push(['유입경로', g.name, '', g.visits, g.orders, Math.round(g.rev)]);
+      g.subList.forEach(function (x) { lines.push(['유입경로', g.name, x.name, x.visits, x.orders, Math.round(x.rev)]); });
+    });
+    var TI = C.trafficItems(DATA, S.from, S.to), X = itemModel(S.from, S.to);
+    C.trafficOrder(DATA).concat([C.NONE]).forEach(function (k) {
+      var o = TI.rows[k] || { visits: 0, orders: 0, rev: 0 }, multi = k.indexOf('MULTI:') === 0;
+      lines.push(['품목별 유입', multi ? '여러 품목 (' + multiCodes(TI, k) + ')' : k === C.NONE ? '' : k, multi ? multiName(TI, k) : k === C.NONE ? '품목 미지정' : itemName(X, k), o.visits, o.orders, Math.round(o.rev)]);
+    });
+    saveCsv(lines, 'tomtomi_traffic_' + S.from + '_' + S.to + '.csv');
+  }
+
   function viewSoon(label) {
     return '<div class="empty"><b>' + esc(label) + ' 메뉴는 준비 중입니다</b><span>v6는 홈부터 순서대로 옮기고 있습니다. 그동안은 기존 화면에서 볼 수 있습니다.</span><a class="more" href="index.html">기존 화면(v5) 열기</a></div>';
   }
@@ -917,7 +1027,7 @@
     h += '</div><div class="side-status"><b class="' + (ok ? 'ok' : 'chk') + '">' + (ok ? '데이터 정상' : '확인 필요') + '</b><span>네이버 판매 ' + mdot(hl.lastNaver) + '까지</span><span>주문 ' + mdot(hl.lastOrders) + '까지</span></div></nav>';
     h += '<main class="main"><header class="head"><h1>' + cur.label + '</h1><span>데이터 기준일 ' + dot(DATA.last) + '</span></header>';
     h += periodBar();
-    h += cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : cur.id === 'ads' ? viewAds() : cur.id === 'products' ? viewProducts() : viewSoon(cur.label);
+    h += cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : cur.id === 'ads' ? viewAds() : cur.id === 'products' ? viewProducts() : cur.id === 'customers' ? viewCustomers() : viewSoon(cur.label);
     h += '</main></div>';
     app.innerHTML = h;
   }
@@ -925,7 +1035,9 @@
   function onClick(ev) {
     var el = ev.target.closest('[data-act]'); if (!el || el.tagName === 'INPUT') return;
     var act = el.getAttribute('data-act'), key = el.getAttribute('data-key');
-    if (act === 'page') { S.page += key === 'older' ? 1 : -1; render(); return; }
+    if (act === 'page') { var pf = el.getAttribute('data-field') || 'page'; S[pf] = (S[pf] || 0) + (key === 'older' ? 1 : -1); render(); return; }
+    if (act === 'topen') { S.topen = S.topen === key ? '' : key; render(); return; }
+    if (act === 'tcsv') { downloadTrafficCsv(); return; }
     if (act === 'open') { S.open = S.open === key ? '' : key; refreshProdBody(); return; }
     if (act === 'selclear') { S.sel = []; S.selMsg = ''; render(); return; }
     if (act === 'pcsv') { downloadProductsCsv(); return; }
@@ -933,7 +1045,7 @@
     if (act === 'costcancel') { S.draft = null; S.costMsg = ''; render(); return; }
     if (act === 'pch' || act === 'pmode') { if (act === 'pch') S.pch = key; else S.pmode = key; S.open = ''; S.page = 0; save(); render(); return; }
     if (act === 'view') S.open = '';
-    if (act !== 'csv' && act !== 'adcsv') S.page = 0; // 기간, 메뉴, 채널이 바뀌면 첫 쪽(최근)으로
+    if (act !== 'csv' && act !== 'adcsv') { S.page = 0; S.tpage = 0; } // 기간, 메뉴, 채널이 바뀌면 첫 쪽으로
     if (act === 'view') S.view = key;
     else if (act === 'preset') applyPreset(key);
     else if (act === 'cmp') {
@@ -965,7 +1077,7 @@
     else if (act === 'to') { S.to = v; if (S.to < S.from) S.from = S.to; S.preset = ''; }
     else if (act === 'cmpFrom') { S.cmpFrom = v; if (S.cmpTo && S.cmpFrom > S.cmpTo) S.cmpTo = S.cmpFrom; }
     else if (act === 'cmpTo') { S.cmpTo = v; if (S.cmpFrom && S.cmpTo < S.cmpFrom) S.cmpFrom = S.cmpTo; }
-    S.page = 0; clampDates(); save(); render();
+    S.page = 0; S.tpage = 0; clampDates(); save(); render();
   }
 
   // 검색어 입력: 입력칸은 그대로 두고 표만 다시 그린다 (한글 입력 중에 글자가 끊기지 않게)

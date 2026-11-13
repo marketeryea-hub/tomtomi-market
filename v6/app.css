@@ -238,3 +238,4 @@ h1, h2 { margin: 0; }
 .tbl.items th:last-child, .tbl.items td:last-child { padding-right: 18px; }
 .tbl.items .chtag { margin: 1px 0; }
 .tbl.items .exp, .tbl.items .iname { white-space: nowrap; }
+.card-h .tag { padding: 2px 8px; background: var(--warn-soft); color: var(--warn); }
