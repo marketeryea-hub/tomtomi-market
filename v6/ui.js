@@ -590,7 +590,7 @@
   }
   // 품목 기준 모델: 기간이 바뀌어도 품목 목록과 순서는 그대로, 숫자만 바뀐다
   var ICACHE = { key: '', X: null }, IORDER = { key: '', list: null };
-  var CH_NAME = { naver: '네이버', coupang: '쿠팡', other: '기타몰' }, CHS = ['naver', 'coupang', 'other'], ITEM_PAGE = 20;
+  var CH_NAME = { naver: '네이버', coupang: '쿠팡', other: '기타몰' }, CHS = ['naver', 'coupang', 'other'], ITEM_PAGE = 10;
   function itemModel(from, to) {
     var key = from + '|' + to + '|' + (DATA.costVer ? DATA.costVer.ver : '');
     if (ICACHE.key !== key) ICACHE = { key: key, X: C.items(DATA, from, to) };
@@ -627,19 +627,19 @@
   function prodBody() {
     if (S.pch === 'naver' && S.pmode === 'page') return pageBody();
     var h = '', X = itemModel(S.from, S.to), cr = cmpRange(), PX = cr ? itemModel(cr.from, cr.to) : null, all = S.pch === 'all';
-    var list = itemList(), sumName = S.q.trim() ? '검색 결과 합계' : '합계', nc = 6 + (all ? 1 : 0) + (cr ? 1 : 0);
+    var list = itemList(), sumName = S.q.trim() ? '검색 결과 합계' : '합계', nc = 7 + (all ? 1 : 0) + (cr ? 1 : 0);
     var t = { qty: 0, rev: 0, cost: 0, margin: 0, revCosted: 0, prev: 0 };
     list.forEach(function (c) { var o = iv(X, c); t.qty += o.qty; t.rev += o.rev; if (o.margin !== null) { t.cost += o.cost; t.margin += o.margin; t.revCosted += o.rev; } if (PX) t.prev += iv(PX, c).rev; });
     PCOUNT = list.length;
-    h += '<table class="tbl wrap"><thead><tr><th scope="col">품목 (체크하면 비교' + (all ? ', 누르면 채널별로 펼침' : '') + ')</th>' + (all ? '<th scope="col">팔린 채널</th>' : '') + '<th scope="col" class="r">수량</th><th scope="col" class="r">' + revName() + '</th>' + (cr ? '<th scope="col" class="r">비교 기간 대비</th>' : '') + '<th scope="col" class="r">원가</th><th scope="col" class="r">마진</th><th scope="col" class="r">마진율</th></tr></thead><tbody>';
+    h += '<table class="tbl wrap items"><thead><tr><th scope="col">품목코드</th><th scope="col">품목명</th>' + (all ? '<th scope="col">판매채널</th>' : '') + '<th scope="col" class="r">수량</th><th scope="col" class="r">' + revName() + '</th>' + (cr ? '<th scope="col" class="r">비교 기간 대비</th>' : '') + '<th scope="col" class="r">원가</th><th scope="col" class="r">마진</th><th scope="col" class="r">마진율</th></tr></thead><tbody>';
     if (!list.length) h += '<tr><td colspan="' + nc + '" class="none">검색 결과가 없습니다.</td></tr>';
     var pg = pageOf(list, ITEM_PAGE);
     pg.rows.forEach(function (c) {
       var o = iv(X, c), pv = PX ? iv(PX, c) : null, open = all && S.open === c, zero = !o.qty && !o.rev, none = c === C.NONE;
       h += '<tr' + (zero ? ' class="zero-row"' : '') + '><th scope="row"><span class="pick">';
       h += none ? '<span class="nobox"></span>' : '<input type="checkbox" data-act="sel" data-key="' + esc(c) + '"' + (S.sel.indexOf(c) >= 0 ? ' checked' : '') + ' aria-label="비교에 넣기: ' + esc(itemName(X, c) || c) + '">';
-      h += all && !zero ? '<button type="button" class="exp" data-act="open" data-key="' + esc(c) + '" aria-expanded="' + open + '">' + (open ? '▾ ' : '▸ ') + itemLabel(X, c) + '</button>' : '<span class="iname">' + itemLabel(X, c) + '</span>';
-      h += '</span></th>';
+      h += all && !zero ? '<button type="button" class="exp" data-act="open" data-key="' + esc(c) + '" aria-expanded="' + open + '">' + (open ? '▾ ' : '▸ ') + codeLabel(c) + '</button>' : '<span class="iname">' + codeLabel(c) + '</span>';
+      h += '</span></th><td class="nm">' + esc(none ? '품목 미지정 (매핑 없음, 품번 빈칸)' : itemName(X, c)) + '</td>';
       if (all) h += '<td>' + (o.chs.length ? o.chs.map(function (k) { return '<span class="chtag ch-' + k + '">' + CH_NAME[k] + '</span>'; }).join(' ') : '<span class="zero">-</span>') + '</td>';
       h += '<td class="r num">' + n0(o.qty) + '</td><td class="r num b">' + (o.est ? '약 ' : '') + n0(o.rev) + '</td>';
       if (cr) h += '<td class="r num">' + (zero && !(pv && pv.rev) ? '-' : grow(o.rev, pv ? pv.rev : 0)) + '</td>';
@@ -648,11 +648,11 @@
       if (open) CHS.forEach(function (k) {
         var x = X.rows[c] && X.rows[c].ch[k]; if (!x || !x.n) return;
         var m = x.qty > 0 && x.noCost === 0 && !none ? x.rev - x.cost : null;
-        h += '<tr class="subrow"><th scope="row">└ ' + CH_NAME[k] + ' <small>(' + (k === 'naver' ? '순매출 배분' : k === 'coupang' ? '입고 금액' : '매출액') + ')</small></th><td></td><td class="r num">' + n0(x.qty) + '</td><td class="r num">' + (x.est ? '약 ' : '') + n0(x.rev) + '</td>' + (cr ? '<td></td>' : '');
+        h += '<tr class="subrow"><th scope="row"></th><td>└ ' + CH_NAME[k] + ' <small>(' + (k === 'naver' ? '순매출 배분' : k === 'coupang' ? '입고 금액' : '매출액') + ')</small></td><td></td><td class="r num">' + n0(x.qty) + '</td><td class="r num">' + (x.est ? '약 ' : '') + n0(x.rev) + '</td>' + (cr ? '<td></td>' : '');
         h += '<td class="r num">' + (none ? '-' : x.noCost > 0 ? miss('미입력') : n0(x.cost)) + '</td><td class="r num">' + (m === null ? '-' : n0(m)) + '</td><td class="r num">' + (m === null ? '-' : rate(m, x.rev)) + '</td></tr>';
       });
     });
-    if (list.length) h += '<tr class="sum"><th scope="row">' + sumName + ' <small>(원가, 마진은 원가가 다 입력된 품목만)</small></th>' + (all ? '<td></td>' : '') + '<td class="r num">' + n0(t.qty) + '</td><td class="r num b">' + n0(t.rev) + '</td>' + (cr ? '<td class="r num">' + grow(t.rev, t.prev) + '</td>' : '') + '<td class="r num">' + (t.revCosted > 0 ? n0(t.cost) : '-') + '</td><td class="r num">' + (t.revCosted > 0 ? n0(t.margin) : '-') + '</td><td class="r num">' + (t.revCosted > 0 ? rate(t.margin, t.revCosted) : '-') + '</td></tr>';
+    if (list.length) h += '<tr class="sum"><th scope="row">' + sumName + '</th><td><small>원가, 마진은 원가가 다 입력된 품목만</small></td>' + (all ? '<td></td>' : '') + '<td class="r num">' + n0(t.qty) + '</td><td class="r num b">' + n0(t.rev) + '</td>' + (cr ? '<td class="r num">' + grow(t.rev, t.prev) + '</td>' : '') + '<td class="r num">' + (t.revCosted > 0 ? n0(t.cost) : '-') + '</td><td class="r num">' + (t.revCosted > 0 ? n0(t.margin) : '-') + '</td><td class="r num">' + (t.revCosted > 0 ? rate(t.margin, t.revCosted) : '-') + '</td></tr>';
     h += '</tbody></table>' + pagerHtml(pg);
     if (S.pch !== 'coupang' && S.pch !== 'other') h += '<p class="note pad">네이버 매출은 판매 페이지별 순매출을 그 페이지에서 팔린 품목 수량 비율로 나눈 값입니다. 세트나 추가구성처럼 여러 품목이 섞인 페이지에서 온 금액이 있으면 "약"을 붙였습니다.</p>';
     return h;
@@ -694,7 +694,7 @@
   function searchBar() {
     var ph = S.pch === 'naver' && S.pmode === 'page' ? '상품명, 상품번호, 품목코드로 검색' : '품목코드, 품목명으로 검색';
     return '<div class="search pad"><input type="search" data-act="q" value="' + esc(S.q) + '" placeholder="' + ph + '" aria-label="품목 검색" autocomplete="off">' +
-      '<span class="hint">결과 <b id="pcount" class="num">' + PCOUNT + '</b>개</span></div>';
+      '<span class="hint">결과 <b id="pcount" class="num">' + PCOUNT + '</b>개' + (S.pch === 'naver' && S.pmode === 'page' ? '' : ', 체크하면 비교' + (S.pch === 'all' ? ', 코드를 누르면 채널별로 펼침' : '')) + '</span></div>';
   }
   // 고른 품목 비교 (최대 5개). 기간을 바꿔도 고른 품목은 그대로 남는다
   function compareHtml() {
@@ -764,10 +764,10 @@
     h += cell('마진 (원가 입력분)', DATA.costVer && t.revCosted > 0 ? n0(t.margin) : '-', !DATA.costVer ? '원가표를 올리면 계산됩니다' : t.revCosted > 0 ? '마진율 ' + rate(t.margin, t.revCosted) + ', 매출의 ' + rate(t.revCosted, t.rev) + '에 원가 입력됨' : '이 기간 판매 품목에 입력된 원가가 없습니다');
     h += '</section>';
     h += '<span class="note tight">매출 기준: 네이버 = 순매출, 쿠팡 = 입고 금액, 기타몰 = 매출액. 마진 = 매출 - 원가 (부가세 포함 기준)이고 수수료, 배송비, 광고비는 빼지 않은 값입니다.</span>';
-    h += '<div class="row"><section class="card grow3 flush" aria-label="품목별 성과"><div class="card-h pad"><h2>' + (page ? '판매 페이지별 성과' : '품목별 성과') + '</h2><span class="hint">목록과 순서는 기간과 상관없이 고정 (전체 기간 누적 매출순)</span>';
+    h += '<section class="card flush" aria-label="품목별 성과"><div class="card-h pad"><h2>' + (page ? '판매 페이지별 성과' : '품목별 성과') + '</h2><span class="hint">목록과 순서는 기간과 상관없이 고정 (전체 기간 누적 매출순), 10개씩</span>';
     if (pch === 'naver') [['item', '품목 기준'], ['page', '판매 페이지 기준']].forEach(function (m) { h += '<button type="button" class="chip" data-act="pmode" data-key="' + m[0] + '" aria-pressed="' + ((S.pmode === 'page' ? 'page' : 'item') === m[0]) + '">' + m[1] + '</button>'; });
     h += '<button type="button" class="chip" data-act="pcsv">엑셀로 받기 (CSV)</button></div>' + searchBar() + '<div class="scroll" id="pbody">' + body + '</div></section>';
-    h += costSide(X) + '</div>';
+    h += '<div class="row">' + costSide(X) + '</div>';
     h += '<div id="pcompare">' + compareHtml() + '</div>';
     return h;
   }
