@@ -6,10 +6,10 @@
 (function (root) {
   'use strict';
   var C = root.TTCalc;
-  var DATA = null;      // 정리된 데이터
+  var DATA = null, RAW = null;      // 정리된 데이터
   var META = {};        // 불러오기 결과(기타마켓 연결 여부 등)
   var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '', tpage: 0, topen: '' };
-  var READY = { home: 1, sales: 1, ads: 1, products: 1, customers: 1 }; // 옮겨온 메뉴
+  var READY = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, data: 1 }; // 옮겨온 메뉴
   var STORE_KEY = 'tt6_state';
 
   var VIEWS = [
@@ -17,8 +17,10 @@
     { id: 'sales', label: '매출', group: 'view' },
     { id: 'ads', label: '광고', group: 'view' },
     { id: 'products', label: '상품', group: 'view' },
-    { id: 'customers', label: '고객/유입', group: 'view' }
+    { id: 'customers', label: '고객/유입', group: 'view' },
+    { id: 'data', label: '데이터 관리', group: 'manage' }
   ];
+  var SNS_URL = 'https://script.google.com/macros/s/AKfycbwPP2q4xCM9g5XQwGLELKyS8lxRY9Nz1K9xMSb6wB3lSJtb4y1hmDIKb7gruPMcvMz-bA/exec';
 
   /* ───────── 도우미 ───────── */
   function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -1009,6 +1011,139 @@
     saveCsv(lines, 'tomtomi_traffic_' + S.from + '_' + S.to + '.csv');
   }
 
+  /* ───────── 데이터 관리: 파일 올리기, 상태 점검, 백업 ─────────
+   * 파일 읽기는 v5 파서를 그대로 쓴다(v6/parsers.js). 지금 클라우드 데이터의 복사본에 파일을 적용해 보고,
+   * 바뀌는 (채널, 날짜)만 골라 보여준 뒤, 확인을 누르면 그 줄만 저장한다. 그날 첫 저장 전에는 백업을 자동으로 받는다.
+   */
+  var UP = { busy: false, msg: '', plan: null, saving: false };
+  var CH_LABEL = { naver: '네이버 판매', naverProd: '네이버 상품별 판매', naverVisit: '유입경로', naverProdVisit: '상품별 유입', naverOrder: '주문조회', naverAd: '네이버 SA', naverAdBoost: '애드부스트', metaAd: '메타', coupAd: '쿠팡애즈', coupStock: '쿠팡 입고' };
+  var BK_KEY = 'tt6_backup_day';
+  function backupDay() { try { return localStorage.getItem(BK_KEY) || ''; } catch (e) { return ''; } }
+  function canon(rows) { return JSON.stringify(rows.map(function (r) { return JSON.stringify(r, Object.keys(r).sort()); }).sort()); }
+  function rowsOf(src, ch, d) { return (src[ch] || []).filter(function (e) { return (e && (e.d || e.date)) === d; }); }
+  function readFile(f) {
+    return new Promise(function (ok, fail) { var r = new FileReader(); r.onload = function () { ok(r.result); }; r.onerror = function () { fail(new Error('파일을 읽지 못했습니다: ' + f.name)); }; r.readAsArrayBuffer(f); });
+  }
+  function onUpload(files) {
+    files = Array.prototype.slice.call(files || []); if (!files.length) return;
+    UP.busy = true; UP.msg = ''; UP.plan = null; render();
+    loadXlsx().then(function () {
+      // 지금 클라우드 데이터의 복사본 (원본 RAW는 건드리지 않는다)
+      var DB = JSON.parse(JSON.stringify(RAW)); ['naverAdRaw', 'metaAdRaw', 'coupAdRaw', 'naverRaw'].forEach(function (k) { DB[k] = DB[k] || []; });
+      Object.keys(CH_LABEL).forEach(function (k) { DB[k] = DB[k] || []; });
+      var P = root.TTParse.make(DB), list = [];
+      return files.reduce(function (pr, f) {
+        return pr.then(function () { return readFile(f); }).then(function (buf) {
+          var name = f.name.normalize('NFC'), type = P.detect(name), item = { name: name, type: type, ok: false, keys: [], notes: [] };
+          list.push(item);
+          if (!type) { item.err = '어떤 파일인지 알 수 없습니다 (파일 이름을 확인해 주세요)'; return; }
+          if (!root.TTParse.SUPPORTED[type]) { item.err = 'v6에서는 아직 받지 않는 파일입니다. v5 화면에서 올려 주세요'; return; }
+          var before = Object.keys(P.touched).length, nb = P.notes.length, ok;
+          try {
+            if (/\.csv$/i.test(name)) ok = P.parseCSV(new TextDecoder('utf-8').decode(buf), type);
+            else ok = P.parseXLSX(root.XLSX.read(buf, { type: 'array', cellDates: true, raw: false }), type, name);
+          } catch (e) { ok = false; item.err = '읽는 중 오류: ' + (e && e.message); }
+          item.ok = !!ok; item.notes = P.notes.slice(nb);
+          if (!ok && !item.err) item.err = '양식이 달라 읽지 못했습니다';
+          item.keys = Object.keys(P.touched).slice(before);
+        });
+      }, Promise.resolve()).then(function () { UP.plan = makePlan(DB, list, P.touched); });
+    }).catch(function (e) { UP.msg = '파일을 읽지 못했습니다: ' + (e && e.message); }).then(function () { UP.busy = false; render(); });
+  }
+  // 바뀌는 (채널, 날짜) 정리: 새 날짜 / 값이 바뀌는 날짜 / 같은 날짜
+  function makePlan(DB, list, touched) {
+    var meta = RAW._meta || {}, rows = [], st = { add: 0, change: 0, same: 0 }, blocked = {};
+    var byKey = {};
+    Object.keys(touched).forEach(function (k) {
+      var sp = k.split('|'), ch = sp[0], d = sp[1];
+      var a = rowsOf(RAW, ch, d), b = rowsOf(DB, ch, d), kind = !a.length ? 'add' : canon(a) === canon(b) ? 'same' : 'change';
+      if (meta[ch] && meta[ch].odd) blocked[ch] = meta[ch].odd;
+      byKey[k] = { ch: ch, d: d, kind: kind, before: a.length, after: b.length };
+      st[kind]++;
+      if (kind !== 'same') rows.push({ channel: ch, date: d, data: b });
+    });
+    list.forEach(function (it) {
+      var g = {};
+      it.keys.forEach(function (k) { var x = byKey[k]; if (!x) return; var o = g[x.ch] || (g[x.ch] = { ch: x.ch, from: x.d, to: x.d, add: 0, change: 0, same: 0, changes: [] }); if (x.d < o.from) o.from = x.d; if (x.d > o.to) o.to = x.d; o[x.kind]++; if (x.kind === 'change') o.changes.push(x); });
+      it.groups = Object.keys(g).map(function (c) { return g[c]; });
+    });
+    return { files: list, rows: rows, st: st, blocked: blocked };
+  }
+  function downloadBackup() {
+    var data = { ARCHIVE: {}, RAW: {}, v6: { at: new Date().toISOString() } };
+    Object.keys(RAW).forEach(function (k) { if (k.charAt(0) !== '_' && Array.isArray(RAW[k])) data.ARCHIVE[k] = RAW[k]; });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
+    a.download = 'archive_' + today().replace(/-/g, '') + '_' + new Date().toTimeString().slice(0, 5).replace(':', '') + '.json';
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { a.remove(); URL.revokeObjectURL(a.href); }, 1000);
+    try { localStorage.setItem(BK_KEY, today()); } catch (e) { /* 저장 못 하면 다음에도 백업을 받는다(안전한 쪽) */ }
+  }
+  function saveUpload() {
+    var pl = UP.plan; if (!pl || !pl.rows.length || UP.saving) return;
+    if (Object.keys(pl.blocked).length) { UP.msg = '저장 구조가 예상과 달라 저장을 멈췄습니다. 이 화면을 캡처해서 알려 주세요.'; render(); return; }
+    var needBk = backupDay() !== today();
+    if (needBk) downloadBackup();
+    UP.saving = true; render();
+    root.TTData.saveRows(pl.rows).then(function (n) {
+      UP.msg = '저장했습니다: ' + n + '줄 (새 날짜 ' + pl.st.add + ', 바뀐 날짜 ' + pl.st.change + ')' + (needBk ? '. 저장 전에 백업 파일을 받았습니다.' : '. 오늘 백업은 이미 받아서 건너뛰었습니다.');
+      UP.plan = null;
+      return reloadData();
+    }).catch(function (e) { UP.msg = '저장하지 못했습니다. ' + (e && e.message) + ' (일부만 저장됐을 수 있으니 다시 올려 주세요. 같은 날짜는 덮어쓰기라 다시 올려도 겹치지 않습니다)'; })
+      .then(function () { UP.saving = false; render(); });
+  }
+  function reloadData() {
+    return root.TTData.load().then(function (raw) { RAW = raw; DATA = C.normalize(raw); META = { otherOk: raw._otherOk }; PCACHE = { key: '', M: null }; ICACHE = { key: '', X: null }; IORDER = { key: '', list: null }; });
+  }
+  function viewData() {
+    var h = '';
+    // 파일 올리기
+    h += '<section class="card" aria-label="파일 올리기"><div class="card-h"><h2>파일 올리기</h2><span class="hint">여러 개를 한 번에 올려도 됩니다. 저장 전에 무엇이 바뀌는지 먼저 보여줍니다</span></div>';
+    h += '<label class="drop" data-drop="1"><input type="file" multiple accept=".xlsx,.csv" data-act="upfiles" hidden><b>' + (UP.busy ? '읽는 중…' : '여기로 파일을 끌어다 놓거나 눌러서 고르기') + '</b><span>받는 파일: ' + Object.keys(root.TTParse.SUPPORTED).map(function (k) { return root.TTParse.SUPPORTED[k]; }).join(', ') + '</span></label>';
+    if (UP.msg) h += '<p class="note"><b>' + esc(UP.msg) + '</b></p>';
+    var pl = UP.plan;
+    if (pl) {
+      h += '<div class="plan">';
+      pl.files.forEach(function (it) {
+        h += '<div class="pf"><div class="pf-h"><b>' + esc(it.name) + '</b><span>' + (it.err ? miss(esc(it.err)) : esc(root.TTParse.SUPPORTED[it.type])) + '</span></div>';
+        (it.groups || []).forEach(function (g) {
+          h += '<div class="pf-g"><span>' + esc(CH_LABEL[g.ch] || g.ch) + ' <small>' + dot(g.from) + (g.to !== g.from ? ' ~ ' + dot(g.to) : '') + '</small></span><span>' + (g.add ? '<b class="up">새 날짜 ' + g.add + '일</b> ' : '') + (g.change ? '<b class="warn">⚠️ 값이 바뀌는 날짜 ' + g.change + '일</b> ' : '') + (g.same ? '<span class="zero">이미 같은 값 ' + g.same + '일</span>' : '') + '</span></div>';
+          if (g.change) h += '<div class="pf-c">' + g.changes.slice(0, 6).map(function (x) { return dot(x.d) + ' (' + x.before + '줄 → ' + x.after + '줄)'; }).join(', ') + (g.changes.length > 6 ? ' 외 ' + (g.changes.length - 6) + '일' : '') + '</div>';
+        });
+        if (it.ok && !(it.groups || []).length) h += '<div class="pf-g"><span class="zero">바뀌는 내용이 없습니다</span></div>';
+        it.notes.forEach(function (n) { h += '<div class="pf-c">' + esc(n) + '</div>'; });
+        h += '</div>';
+      });
+      var bk = backupDay() === today();
+      if (Object.keys(pl.blocked).length) h += '<p class="note"><b class="down">저장 구조 점검에서 이상이 발견돼 저장할 수 없습니다: ' + esc(Object.keys(pl.blocked).join(', ')) + '</b></p>';
+      h += '<div class="plan-f"><span>저장할 줄: <b>' + pl.rows.length + '</b> (새 날짜 ' + pl.st.add + ', 바뀌는 날짜 ' + pl.st.change + ', 같아서 건너뜀 ' + pl.st.same + ')</span>';
+      h += pl.rows.length ? '<button type="button" class="btn" data-act="upsave"' + (UP.saving || Object.keys(pl.blocked).length ? ' disabled' : '') + '>' + (UP.saving ? '저장 중…' : bk ? '저장 (오늘 백업 받음)' : '백업 받고 저장') + '</button>' : '';
+      h += ' <button type="button" class="chip" data-act="upcancel">취소</button></div>';
+      if (pl.st.change) h += '<p class="note">⚠️ 값이 바뀌는 날짜는 기존 값을 새 파일 값으로 덮어씁니다. 같은 날짜를 다시 받은 파일이면 정상이고(환불 반영 등), 엉뚱한 파일이면 취소해 주세요.</p>';
+      h += '</div>';
+    }
+    h += '</section>';
+
+    // 데이터 상태
+    var hl = C.health(DATA, today()), td = today();
+    function lastOf(rows) { var m = ''; rows.forEach(function (e) { if (e.d > m) m = e.d; }); return m; }
+    function missing(rows, n) { var have = {}, cnt = 0, d, end = DATA.last; rows.forEach(function (e) { have[e.d] = 1; }); for (d = C.addDays(end, -(n - 1)); d <= end; d = C.addDays(d, 1)) if (!have[d]) cnt++; return cnt; }
+    var lines = [['네이버 판매 (sales_)', DATA.naver, true], ['유입 (visit_)', DATA.traffic, true], ['주문조회', DATA.orders, true], ['네이버 SA', DATA.ads.sa, true], ['메타', DATA.ads.meta, true], ['애드부스트', DATA.ads.boost, false], ['쿠팡애즈', DATA.ads.coupang, false], ['쿠팡 입고', DATA.coupang, false]];
+    h += '<section class="card flush" aria-label="데이터 상태"><div class="card-h pad"><h2>데이터 상태</h2><span class="hint">빠진 날짜는 데이터 기준일 ' + dot(DATA.last) + '까지 최근 30일 기준</span></div><div class="scroll"><table class="tbl"><thead><tr><th scope="col">데이터</th><th scope="col">마지막 날짜</th><th scope="col" class="r">빠진 날짜 (최근 30일)</th></tr></thead><tbody>';
+    lines.forEach(function (l) { var last = lastOf(l[1]), m = l[2] ? missing(l[1], 30) : null; h += '<tr><th scope="row">' + l[0] + '</th><td class="num">' + (last ? dot(last) + ' <small class="zero">(' + C.dayDiff(last, td) + '일 전)</small>' : '-') + '</td><td class="r num">' + (m === null ? '<span class="zero">집행한 날만 있음</span>' : m ? '<b class="warn">' + m + '일</b>' : '없음') + '</td></tr>'; });
+    h += '</tbody></table></div>';
+    h += '<div class="li"><span>주문조회와 판매 파일 대조 불일치</span><b class="num">' + (hl.mismatch === null ? '-' : hl.mismatch ? '<span class="warn">' + hl.mismatch + '일</span>' : '없음') + '</b></div>';
+    h += '<div class="li"><span>매핑표에 없는 옵션</span><b class="num">' + (hl.unmapped === null ? '-' : hl.unmapped ? '<span class="warn">' + hl.unmapped + '종</span>' : '없음') + '</b></div>';
+    h += '<div class="li"><span>기타마켓 구글 시트</span><b class="num">' + (META && META.otherOk ? '연결됨 (마지막 ' + dot(lastOf(DATA.other)) + ')' : '<span class="warn">연결 안 됨</span>') + '</b></div>';
+    h += '</section>';
+
+    // 백업, 그 밖의 관리
+    var bkd = backupDay();
+    h += '<div class="row"><section class="card grow1" aria-label="백업"><div class="card-h"><h2>백업</h2></div><p class="note">클라우드에 저장된 전체 데이터를 JSON 파일로 받습니다. 파일 올리기로 저장할 때는 그날 첫 저장 전에 자동으로 받습니다. 백업 파일은 공개 저장소(GitHub)에 올리지 마세요.</p><p class="note">이 브라우저에서 마지막 자동/수동 백업: <b>' + (bkd ? dot(bkd) : '기록 없음') + '</b></p><div><button type="button" class="chip" data-act="backup">지금 백업 받기</button></div></section>';
+    h += '<section class="card grow1" aria-label="그 밖의 관리"><div class="card-h"><h2>그 밖의 관리</h2></div><div class="li"><span>원가표 올리기</span><button type="button" class="chip" data-act="view" data-key="products">상품 메뉴로</button></div><div class="li"><span>옵션 매핑표 올리기, 상품성과, 검색어, 고객 파일</span><a class="chip" href="index.html">v5 화면에서</a></div><div class="li"><span>쿠팡 상품번호 매핑</span><span class="zero">새 쿠팡 상품이 생기면 Claude에게 알려 주세요</span></div></section></div>';
+    return h;
+  }
+
   function viewSoon(label) {
     return '<div class="empty"><b>' + esc(label) + ' 메뉴는 준비 중입니다</b><span>v6는 홈부터 순서대로 옮기고 있습니다. 그동안은 기존 화면에서 볼 수 있습니다.</span><a class="more" href="index.html">기존 화면(v5) 열기</a></div>';
   }
@@ -1021,13 +1156,16 @@
     var ok = (hl.mismatch === 0 || hl.mismatch === null) && (hl.unmapped === 0 || hl.unmapped === null);
     var h = '<div class="app"><nav class="side" aria-label="주 메뉴"><div class="brand"><b>톰토미</b><span>마케팅 대시보드 v6</span></div>';
     h += '<div class="nav"><span class="nav-h">보기</span>';
-    VIEWS.forEach(function (v) { h += '<button type="button" data-act="view" data-key="' + v.id + '"' + (v.id === cur.id ? ' aria-current="page"' : '') + '>' + v.label + (READY[v.id] ? '' : '<small>준비 중</small>') + '</button>'; });
+    function navBtn(v) { return '<button type="button" data-act="view" data-key="' + v.id + '"' + (v.id === cur.id ? ' aria-current="page"' : '') + '>' + v.label + (READY[v.id] ? '' : '<small>준비 중</small>') + '</button>'; }
+    VIEWS.filter(function (v) { return v.group === 'view'; }).forEach(function (v) { h += navBtn(v); });
     h += '</div><div class="nav"><span class="nav-h">관리</span>';
-    ['파일 올리기', '데이터 검사', '매핑표 / 원가', '백업'].forEach(function (t) { h += '<a href="index.html">' + t + '<small>v5</small></a>'; });
+    VIEWS.filter(function (v) { return v.group === 'manage'; }).forEach(function (v) { h += navBtn(v); });
+    h += '<a href="index.html">v5 화면<small>매핑표 등</small></a>';
+    h += '</div><div class="nav"><span class="nav-h">바로가기</span><a href="' + SNS_URL + '" target="_blank" rel="noopener">SNS 라이브러리<small>새 탭 ↗</small></a>';
     h += '</div><div class="side-status"><b class="' + (ok ? 'ok' : 'chk') + '">' + (ok ? '데이터 정상' : '확인 필요') + '</b><span>네이버 판매 ' + mdot(hl.lastNaver) + '까지</span><span>주문 ' + mdot(hl.lastOrders) + '까지</span></div></nav>';
     h += '<main class="main"><header class="head"><h1>' + cur.label + '</h1><span>데이터 기준일 ' + dot(DATA.last) + '</span></header>';
-    h += periodBar();
-    h += cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : cur.id === 'ads' ? viewAds() : cur.id === 'products' ? viewProducts() : cur.id === 'customers' ? viewCustomers() : viewSoon(cur.label);
+    if (cur.id !== 'data') h += periodBar(); // 데이터 관리는 기간과 상관없음
+    h += cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : cur.id === 'ads' ? viewAds() : cur.id === 'products' ? viewProducts() : cur.id === 'customers' ? viewCustomers() : cur.id === 'data' ? viewData() : viewSoon(cur.label);
     h += '</main></div>';
     app.innerHTML = h;
   }
@@ -1036,6 +1174,9 @@
     var el = ev.target.closest('[data-act]'); if (!el || el.tagName === 'INPUT') return;
     var act = el.getAttribute('data-act'), key = el.getAttribute('data-key');
     if (act === 'page') { var pf = el.getAttribute('data-field') || 'page'; S[pf] = (S[pf] || 0) + (key === 'older' ? 1 : -1); render(); return; }
+    if (act === 'upsave') { saveUpload(); return; }
+    if (act === 'upcancel') { UP.plan = null; UP.msg = ''; render(); return; }
+    if (act === 'backup') { downloadBackup(); UP.msg = '백업 파일을 받았습니다.'; render(); return; }
     if (act === 'topen') { S.topen = S.topen === key ? '' : key; render(); return; }
     if (act === 'tcsv') { downloadTrafficCsv(); return; }
     if (act === 'open') { S.open = S.open === key ? '' : key; refreshProdBody(); return; }
@@ -1063,6 +1204,7 @@
     var el = ev.target; if (!el.matches || !el.matches('input[data-act]')) return;
     var act = el.getAttribute('data-act'), v = el.value;
     if (act === 'q') { onSearch(ev); return; }
+    if (act === 'upfiles') { onUpload(el.files); el.value = ''; return; }
     if (act === 'sel') {
       var id = el.getAttribute('data-key'), at = S.sel.indexOf(id); S.selMsg = '';
       if (at >= 0) S.sel.splice(at, 1);
@@ -1102,7 +1244,7 @@
   }
 
   function start(raw) {
-    DATA = C.normalize(raw);
+    RAW = raw; DATA = C.normalize(raw);
     META = { otherOk: raw._otherOk };
     if (!DATA.last) { document.getElementById('app').innerHTML = '<div class="main"><div class="error">불러온 데이터가 없습니다.</div></div>'; return; }
     restore();
@@ -1111,6 +1253,10 @@
     document.addEventListener('click', onClick);
     document.addEventListener('change', onChange);
     document.addEventListener('input', onSearch);
+    // 파일 끌어다 놓기 (데이터 관리)
+    document.addEventListener('dragover', function (ev) { var z = ev.target.closest && ev.target.closest('[data-drop]'); if (z) { ev.preventDefault(); z.classList.add('over'); } });
+    document.addEventListener('dragleave', function (ev) { var z = ev.target.closest && ev.target.closest('[data-drop]'); if (z) z.classList.remove('over'); });
+    document.addEventListener('drop', function (ev) { var z = ev.target.closest && ev.target.closest('[data-drop]'); if (!z) return; ev.preventDefault(); z.classList.remove('over'); onUpload(ev.dataTransfer.files); });
     document.addEventListener('mousemove', onTip);
     document.addEventListener('click', onTip); // 터치 화면에서는 눌러서 본다
     render();
