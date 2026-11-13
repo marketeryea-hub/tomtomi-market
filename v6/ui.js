@@ -9,7 +9,7 @@
   var DATA = null, RAW = null;      // 정리된 데이터
   var META = {};        // 불러오기 결과(기타마켓 연결 여부 등)
   var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '', tpage: 0, topen: '' };
-  var READY = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, data: 1 }; // 옮겨온 메뉴
+  var READY = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, data: 1, slack: 1 }; // 옮겨온 메뉴
   var STORE_KEY = 'tt6_state';
 
   var VIEWS = [
@@ -18,6 +18,7 @@
     { id: 'ads', label: '광고', group: 'view' },
     { id: 'products', label: '상품', group: 'view' },
     { id: 'customers', label: '고객/유입', group: 'view' },
+    { id: 'slack', label: '슬랙 리포트', group: 'manage' },
     { id: 'data', label: '데이터 관리', group: 'manage' }
   ];
   var SNS_URL = 'https://script.google.com/macros/s/AKfycbwPP2q4xCM9g5XQwGLELKyS8lxRY9Nz1K9xMSb6wB3lSJtb4y1hmDIKb7gruPMcvMz-bA/exec';
@@ -1144,6 +1145,53 @@
     return h;
   }
 
+  /* ───────── 슬랙 리포트 ─────────
+   * 데일리는 위의 조회 기간과 비교 기간을 쓰고, 위클리와 먼슬리는 데이터 기준일까지 끝난 한 주, 한 달을 쓴다.
+   * 문구는 보내기 전에 고칠 수 있고, 맨 아래에 대시보드 주소가 붙는다.
+   */
+  var SL = { kind: 'daily', text: '', key: '', online: null, onlineLoading: false, msg: '', sending: false, edited: false };
+  function slackKey() { var cr = cmpRange(); return SL.kind + '|' + S.from + '|' + S.to + '|' + (cr ? cr.from + cr.to : '') + '|' + DATA.last + '|' + (SL.online ? 1 : 0); }
+  function slackText() {
+    var R = root.TTReport, cr = cmpRange();
+    if (SL.kind === 'weekly') return R.weekly(DATA, SL.online);
+    if (SL.kind === 'monthly') return R.monthly(DATA, SL.online);
+    if (SL.kind === 'competitor') return R.competitor(SL.online);
+    return R.daily(DATA, S.from, S.to, cr, SL.online);
+  }
+  function viewSlack() {
+    if (!SL.online && !SL.onlineLoading) {
+      SL.onlineLoading = true;
+      root.TTData.loadOnline().then(function (o) { SL.online = o; }).catch(function () { SL.online = { crm: null, competitor: null }; }).then(function () { SL.onlineLoading = false; if (S.view === 'slack' && !SL.edited) render(); });
+    }
+    var k = slackKey(); if (k !== SL.key && !SL.edited) { SL.text = slackText(); SL.key = k; }
+    var R = root.TTReport, w = R.lastWeek(DATA.last), m = R.lastMonth(DATA.last), h = '';
+    var desc = { daily: '위의 조회 기간 (' + dot(S.from) + (S.to !== S.from ? ' ~ ' + dot(S.to) : '') + ')과 비교 기간 기준', weekly: '데이터 기준일까지 끝난 한 주 ' + dot(w.from) + ' ~ ' + dot(w.to) + ', 전주 대비', monthly: m.y + '년 ' + m.m + '월, 전월 대비 (경쟁사 동향 포함)', competitor: '온라인 대시보드 구글 시트의 경쟁사 검색량, 전월 대비' }[SL.kind];
+    h += '<section class="card" aria-label="슬랙 리포트"><div class="card-h"><h2>슬랙 리포트</h2><div class="units">';
+    [['daily', '데일리'], ['weekly', '위클리'], ['monthly', '먼슬리'], ['competitor', '경쟁사']].forEach(function (x) { h += '<button type="button" class="chip" data-act="slkind" data-key="' + x[0] + '" aria-pressed="' + (SL.kind === x[0]) + '">' + x[1] + '</button>'; });
+    h += '</div></div><p class="note">' + esc(desc) + '. 문구는 보내기 전에 자유롭게 고칠 수 있고, 맨 아래에 대시보드 주소가 들어갑니다.' + (SL.onlineLoading ? ' (SNS 팔로워, 경쟁사 데이터 불러오는 중…)' : SL.online && !SL.online.crm ? ' SNS 팔로워 시트를 읽지 못해 그 줄은 빠졌습니다.' : '') + '</p>';
+    h += '<textarea class="sl-text" data-act="sltext" rows="22" aria-label="리포트 문구">' + esc(SL.text) + '</textarea>';
+    h += '<div class="plan-f"><span>' + (SL.edited ? '직접 고친 문구입니다. <button type="button" class="chip" data-act="slreset">처음 문구로 되돌리기</button>' : '') + '</span>';
+    h += '<button type="button" class="chip" data-act="slcopy">복사하기</button> <button type="button" class="btn" data-act="slsend"' + (SL.sending ? ' disabled' : '') + '>' + (SL.sending ? '보내는 중…' : '슬랙으로 보내기') + '</button></div>';
+    if (SL.msg) h += '<p class="note"><b>' + esc(SL.msg) + '</b></p>';
+    h += '</section>';
+    return h;
+  }
+  function copyText(t) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(t).then(function () { return true; }, function () { return false; });
+    try { var ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); var ok = document.execCommand('copy'); ta.remove(); return Promise.resolve(ok); } catch (e) { return Promise.resolve(false); }
+  }
+  function sendSlack() {
+    var el = document.querySelector('textarea[data-act="sltext"]'); if (el) SL.text = el.value;
+    if (!SL.text.trim()) { SL.msg = '보낼 문구가 없습니다.'; render(); return; }
+    SL.sending = true; SL.msg = ''; render();
+    root.TTData.loadWebhook().then(function (url) {
+      if (!url) throw new Error('슬랙 웹훅 주소가 설정되어 있지 않습니다 (v5 화면의 관리자 설정에서 등록)');
+      return root.TTData.sendSlack(url, SL.text);
+    }).then(function () { SL.msg = '슬랙으로 보냈습니다.'; }, function (e) {
+      return copyText(SL.text).then(function (ok) { SL.msg = '보내지 못했습니다: ' + (e && e.message) + (ok ? '. 문구는 클립보드에 복사해 두었으니 슬랙에 붙여넣어 주세요.' : ''); });
+    }).then(function () { SL.sending = false; render(); });
+  }
+
   function viewSoon(label) {
     return '<div class="empty"><b>' + esc(label) + ' 메뉴는 준비 중입니다</b><span>v6는 홈부터 순서대로 옮기고 있습니다. 그동안은 기존 화면에서 볼 수 있습니다.</span><a class="more" href="index.html">기존 화면(v5) 열기</a></div>';
   }
@@ -1165,7 +1213,7 @@
     h += '</div><div class="side-status"><b class="' + (ok ? 'ok' : 'chk') + '">' + (ok ? '데이터 정상' : '확인 필요') + '</b><span>네이버 판매 ' + mdot(hl.lastNaver) + '까지</span><span>주문 ' + mdot(hl.lastOrders) + '까지</span></div></nav>';
     h += '<main class="main"><header class="head"><h1>' + cur.label + '</h1><span>데이터 기준일 ' + dot(DATA.last) + '</span></header>';
     if (cur.id !== 'data') h += periodBar(); // 데이터 관리는 기간과 상관없음
-    h += cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : cur.id === 'ads' ? viewAds() : cur.id === 'products' ? viewProducts() : cur.id === 'customers' ? viewCustomers() : cur.id === 'data' ? viewData() : viewSoon(cur.label);
+    h += cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : cur.id === 'ads' ? viewAds() : cur.id === 'products' ? viewProducts() : cur.id === 'customers' ? viewCustomers() : cur.id === 'data' ? viewData() : cur.id === 'slack' ? viewSlack() : viewSoon(cur.label);
     h += '</main></div>';
     app.innerHTML = h;
   }
@@ -1174,6 +1222,10 @@
     var el = ev.target.closest('[data-act]'); if (!el || el.tagName === 'INPUT') return;
     var act = el.getAttribute('data-act'), key = el.getAttribute('data-key');
     if (act === 'page') { var pf = el.getAttribute('data-field') || 'page'; S[pf] = (S[pf] || 0) + (key === 'older' ? 1 : -1); render(); return; }
+    if (act === 'slkind') { SL.kind = key; SL.edited = false; SL.msg = ''; SL.key = ''; render(); return; }
+    if (act === 'slreset') { SL.edited = false; SL.key = ''; SL.msg = ''; render(); return; }
+    if (act === 'slcopy') { var te = document.querySelector('textarea[data-act="sltext"]'); if (te) SL.text = te.value; copyText(SL.text).then(function (ok) { SL.msg = ok ? '복사했습니다. 슬랙에 붙여넣으면 됩니다.' : '복사하지 못했습니다. 문구를 직접 선택해서 복사해 주세요.'; render(); }); return; }
+    if (act === 'slsend') { sendSlack(); return; }
     if (act === 'upsave') { saveUpload(); return; }
     if (act === 'upcancel') { UP.plan = null; UP.msg = ''; render(); return; }
     if (act === 'backup') { downloadBackup(); UP.msg = '백업 파일을 받았습니다.'; render(); return; }
@@ -1224,7 +1276,9 @@
 
   // 검색어 입력: 입력칸은 그대로 두고 표만 다시 그린다 (한글 입력 중에 글자가 끊기지 않게)
   function onSearch(ev) {
-    var el = ev.target; if (!el.matches || !el.matches('input[data-act="q"]')) return;
+    var el = ev.target; if (!el.matches) return;
+    if (el.matches('textarea[data-act="sltext"]')) { SL.text = el.value; SL.edited = true; return; }
+    if (!el.matches('input[data-act="q"]')) return;
     if (S.q === el.value) return;
     S.q = el.value; S.page = 0; S.open = ''; refreshProdBody();
   }
