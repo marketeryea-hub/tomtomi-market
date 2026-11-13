@@ -47,7 +47,7 @@
    */
   function normalize(raw) {
     raw = raw || {};
-    var out = { naver: [], naverProd: [], coupang: [], other: [], ads: { sa: [], meta: [], boost: [], coupang: [] }, orders: [], skuMap: [], visits: [] };
+    var out = { naver: [], naverProd: [], coupang: [], other: [], ads: { sa: [], meta: [], boost: [], coupang: [] }, orders: [], skuMap: [], visits: [], traffic: [], pvisit: [], query: [], cust: [] };
 
     // 네이버 일매출: 옛 양식 행은 r이 총 판매금액, 새 양식(newSales)은 r이 순매출
     var nd = {};
@@ -74,6 +74,24 @@
       var div = e.div || e.type || '';
       if (div !== '발주') return;
       out.coupang.push({ d: d, amount: num(e.a || e.amount), qty: num(e.qty), sku: String(e.sku || e.skuName || ''), skuNo: String(e.skuNo || ''), center: String(e.wh || e.center || '') });
+    });
+
+    // 유입 (네이버 visit 파일): 경로별, 상품별. 검색어와 고객은 2026-07 네이버 개편으로 수집 중단된 보관 데이터
+    (raw.naverVisit || []).forEach(function (e) {
+      var d = normDate(e && e.d); if (!d) return;
+      out.traffic.push({ d: d, p1: String(e.path1 || '(구분 없음)'), p2: String(e.path2 || '-'), p3: String(e.path3 || '-'), visits: num(e.visits), orders: num(e.orders), rev: num(e.rev) });
+    });
+    (raw.naverProdVisit || []).forEach(function (e) {
+      var d = normDate(e && e.d); if (!d) return;
+      out.pvisit.push({ d: d, prodId: String(e.prodId || ''), name: String(e.name || ''), visits: num(e.visits), orders: num(e.orders), rev: num(e.rev) });
+    });
+    (raw.naverQuery || []).forEach(function (e) {
+      var d = normDate(e && e.d); if (!d) return;
+      out.query.push({ d: d, q: String(e.query || ''), visits: num(e.visits), orders: num(e.orders), rev: num(e.rev) });
+    });
+    (raw.naverCustNew || []).forEach(function (e) {
+      var d = normDate(e && e.d); if (!d) return;
+      out.cust.push({ d: d, period: String(e.period || ''), seg: String(e.seg || ''), visitCust: num(e.visitCust), payCust: num(e.payCust), rev: num(e.rev) });
     });
 
     (raw.other || []).forEach(function (e) {
@@ -552,6 +570,95 @@
     return { labels: labels, series: series, unit: unit };
   }
 
+  /* ───────── 유입 (네이버) ───────── */
+  function spanOf(rows) { var f = '', l = ''; rows.forEach(function (e) { if (!f || e.d < f) f = e.d; if (e.d > l) l = e.d; }); return { first: f, last: l }; }
+  var TR_FIELDS = ['visits', 'orders', 'rev'];
+  function trafficDaily(data, from, to) {
+    var m = {}, out = [], d;
+    data.traffic.forEach(function (e) { if (!inRange(e.d, from, to)) return; var o = m[e.d] || (m[e.d] = { visits: 0, orders: 0, rev: 0 }); o.visits += e.visits; o.orders += e.orders; o.rev += e.rev; });
+    for (d = from; d <= to; d = addDays(d, 1)) { var o = m[d] || { visits: 0, orders: 0, rev: 0 }; out.push({ d: d, visits: o.visits, orders: o.orders, rev: o.rev, has: !!m[d] }); }
+    return out;
+  }
+  function trafficBucket(rows, unit) { return bucketBy(rows, unit, TR_FIELDS); }
+  function trafficTotal(rows) { return totalBy(rows, TR_FIELDS); }
+  // 유입경로: 큰 분류(path1) 아래 세부 경로(path2, path3가 있으면 붙임)
+  function trafficPaths(data, from, to) {
+    var G = {};
+    data.traffic.forEach(function (e) {
+      if (!inRange(e.d, from, to)) return;
+      var g = G[e.p1] || (G[e.p1] = { name: e.p1, visits: 0, orders: 0, rev: 0, subs: {} });
+      var sk = e.p2 + (e.p3 && e.p3 !== '-' ? ' > ' + e.p3 : ''), sb = g.subs[sk] || (g.subs[sk] = { name: sk, visits: 0, orders: 0, rev: 0 });
+      g.visits += e.visits; g.orders += e.orders; g.rev += e.rev; sb.visits += e.visits; sb.orders += e.orders; sb.rev += e.rev;
+    });
+    return Object.keys(G).map(function (k) {
+      var g = G[k]; g.subList = Object.keys(g.subs).map(function (s) { return g.subs[s]; }).sort(function (a, b) { return b.visits - a.visits; });
+      return g;
+    }).sort(function (a, b) { return b.visits - a.visits; });
+  }
+  // 판매 페이지(상품번호) → 품목코드.
+  // 그 페이지의 전체 기간 주문 수량 중 한 품목이 80% 이상이면 그 품목(주 품목)으로 본다 (추가구성 몇 개 때문에 흔들리지 않게).
+  // 아니면 '여러 품목' 페이지로 그대로 둔다. 주문 기록이 없으면 매핑표에 나오는 코드가 하나일 때만 그 품목.
+  var MAIN_SHARE = 0.8;
+  function pageCodes(data) {
+    var P = {}, all = products(data, '0000-01-01', '9999-12-31');
+    (data.skuMap || []).forEach(function (r) {
+      var id = String(r.k || '').split('|')[0]; if (!id) return;
+      var s = P[id] || (P[id] = { codes: {}, qty: {} });
+      (r.codes || []).forEach(function (c) { if (c.c) s.codes[c.c] = 1; });
+    });
+    all.prods.forEach(function (o) {
+      var s = P[o.prodId] || (P[o.prodId] = { codes: {}, qty: {} });
+      o.skuList.forEach(function (x) { if (x.code.charAt(0) !== '(') { s.qty[x.code] = (s.qty[x.code] || 0) + x.qty; s.codes[x.code] = 1; } });
+    });
+    var out = {};
+    Object.keys(P).forEach(function (id) {
+      var s = P[id], codes = Object.keys(s.codes), tot = 0, top = null;
+      codes.forEach(function (c) { var q = s.qty[c] || 0; tot += q; if (!top || q > (s.qty[top] || 0)) top = c; });
+      codes.sort(function (a, b) { return (s.qty[b] || 0) - (s.qty[a] || 0) || (a < b ? -1 : 1); });
+      var main = codes.length === 1 ? codes[0] : (tot > 0 && (s.qty[top] || 0) / tot >= MAIN_SHARE ? top : null);
+      out[id] = { codes: codes, main: main, share: tot > 0 && main ? (s.qty[main] || 0) / tot : null };
+    });
+    return out;
+  }
+  // 품목코드 기준 유입. 여러 품목이 섞인 페이지는 방문을 나눌 수 없어서 페이지 그대로 'MULTI:상품번호'로 둔다
+  function trafficItems(data, from, to) {
+    var pc = pageCodes(data), R = {};
+    function key(id) { var p = pc[id]; return !p || !p.codes.length ? NONE : p.main ? p.main : 'MULTI:' + id; }
+    data.pvisit.forEach(function (e) {
+      if (!inRange(e.d, from, to)) return;
+      var k = key(e.prodId), o = R[k] || (R[k] = { key: k, visits: 0, orders: 0, rev: 0, pages: {}, page: '', pageD: '' });
+      o.visits += e.visits; o.orders += e.orders; o.rev += e.rev; o.pages[e.prodId] = 1;
+      if (e.name && e.d >= o.pageD) { o.page = e.name; o.pageD = e.d; }
+    });
+    return { rows: R, pageCodes: pc };
+  }
+  // 품목 유입 목록 순서: 기간과 상관없이 전체 기간 누적 방문순으로 고정
+  function trafficOrder(data) {
+    var all = trafficItems(data, '0000-01-01', '9999-12-31').rows;
+    return Object.keys(all).filter(function (k) { return k !== NONE; }).sort(function (a, b) {
+      var ma = a.indexOf('MULTI:') === 0, mb = b.indexOf('MULTI:') === 0;
+      if (ma !== mb) return ma ? 1 : -1; // 단일 품목 먼저, 여러 품목 페이지는 뒤에
+      return all[b].visits - all[a].visits || (a < b ? -1 : 1);
+    });
+  }
+  // 보관 데이터: 검색어 (기간 무관, 보관 기간 전체)
+  function queryTop(data) {
+    var m = {};
+    data.query.forEach(function (e) { var o = m[e.q] || (m[e.q] = { q: e.q, visits: 0, orders: 0, rev: 0 }); o.visits += e.visits; o.orders += e.orders; o.rev += e.rev; });
+    var list = Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.visits - a.visits; });
+    return { list: list, span: spanOf(data.query) };
+  }
+  // 보관 데이터: 성별, 나이별 방문 고객 (보관 기간 합계)
+  function custDemo(data) {
+    var m = {}, tot = 0;
+    data.cust.forEach(function (e) {
+      if (e.seg === '전체합산' || !e.seg) return;
+      var o = m[e.seg] || (m[e.seg] = { seg: e.seg, visitCust: 0, payCust: 0, rev: 0 }); o.visitCust += e.visitCust; o.payCust += e.payCust; o.rev += e.rev; tot += e.visitCust;
+    });
+    var list = Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.visitCust - a.visitCust; });
+    return { list: list, total: tot, span: spanOf(data.cust) };
+  }
+
   // 상품 비교 차트용: 상품별 순매출 추이. 62일 이하는 날짜별, 그보다 길면 월별
   function productSeries(data, ids, from, to) {
     var byMonth = dayDiff(from, to) + 1 > 62, labels = [], pos = {}, d, k, want = {}, series = {};
@@ -660,7 +767,7 @@
     dailyFull: dailyFull, bucketFull: bucketFull, totalFull: totalFull, coupangTop: coupangTop, otherByMarket: otherByMarket, otherRows: otherRows,
     adsDaily: adsDaily, adsBucket: adsBucket, adsTotal: adsTotal, adsBreakdown: adsBreakdown, ratio: ratio,
     skuAggregate: skuAggregate, skuUnmapped: skuUnmapped, skuParseOpt: skuParseOpt, orderCheck: orderCheck,
-    costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products, productSeries: productSeries, items: items, itemOrder: itemOrder, itemSeries: itemSeries, itemMaster: itemMaster, NONE: NONE, COUP_MAP: COUP_MAP,
+    costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products, productSeries: productSeries, items: items, itemOrder: itemOrder, trafficDaily: trafficDaily, trafficBucket: trafficBucket, trafficTotal: trafficTotal, trafficPaths: trafficPaths, trafficItems: trafficItems, trafficOrder: trafficOrder, pageCodes: pageCodes, queryTop: queryTop, custDemo: custDemo, itemSeries: itemSeries, itemMaster: itemMaster, NONE: NONE, COUP_MAP: COUP_MAP,
     signals: signals, health: health
   };
 });
