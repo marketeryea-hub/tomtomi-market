@@ -25,11 +25,16 @@
         });
     }
     return page(0).then(function (rows) {
-      var raw = {};
+      var raw = {}, meta = {};
       rows.forEach(function (r) {
         if (!r || SKIP[r.channel] || !Array.isArray(r.data)) return;
         (raw[r.channel] = raw[r.channel] || []).push.apply(raw[r.channel], r.data);
+        // 저장 구조 점검용: 한 줄(채널, 날짜)에 다른 날짜 데이터가 섞여 있으면 odd로 센다
+        var m = meta[r.channel] || (meta[r.channel] = { rows: 0, odd: 0 });
+        m.rows++;
+        if (r.data.some(function (e) { return e && (e.d || e.date) !== r.date; })) m.odd++;
       });
+      raw._meta = meta;
       raw._rows = rows.length;
       return raw;
     });
@@ -93,5 +98,23 @@
     });
   }
 
-  root.TTData = { load: load, saveCost: saveCost };
+  // 파일 올리기 저장: (채널, 날짜) 한 줄씩 덮어쓰기(upsert). v5의 클라우드 동기화와 같은 방식
+  function saveRows(rows) {
+    var i = 0, CH = 50;
+    function next() {
+      if (i >= rows.length) return Promise.resolve(rows.length);
+      var part = rows.slice(i, i + CH); i += CH;
+      return fetch(SUPABASE_URL + '/rest/v1/tomtomi_data?on_conflict=channel,date', {
+        method: 'POST',
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(part)
+      }).then(function (res) {
+        if (!res.ok) return res.text().then(function (t) { throw new Error('저장 실패 (HTTP ' + res.status + ', ' + (i - CH) + '번째 줄부터) ' + String(t).slice(0, 120)); });
+        return next();
+      });
+    }
+    return next();
+  }
+
+  root.TTData = { load: load, saveCost: saveCost, saveRows: saveRows };
 })(window);

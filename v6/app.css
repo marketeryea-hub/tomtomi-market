@@ -239,3 +239,20 @@ h1, h2 { margin: 0; }
 .tbl.items .chtag { margin: 1px 0; }
 .tbl.items .exp, .tbl.items .iname { white-space: nowrap; }
 .card-h .tag { padding: 2px 8px; background: var(--warn-soft); color: var(--warn); }
+
+/* 데이터 관리 */
+.drop { display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center; min-height: 120px; padding: 18px; border: 2px dashed var(--ref-line); border-radius: var(--r-md); background: var(--bg); text-align: center; cursor: pointer; }
+.drop b { font-size: 15px; color: var(--accent-deep); }
+.drop span { font-size: 12px; color: var(--sub); }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.plan { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.pf { border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
+.pf-h { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: 14px; }
+.pf-h span { color: var(--sub); font-size: 13px; }
+.pf-g { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: 13px; }
+.pf-g small, .pf-c { color: var(--sub); font-size: 12px; }
+.plan-f { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 14px; }
+.plan-f span { margin-right: auto; }
+.warn { color: var(--warn); font-weight: 700; }
+.btn:disabled { opacity: .5; cursor: default; }
+a.chip { display: inline-flex; align-items: center; text-decoration: none; color: inherit; }
