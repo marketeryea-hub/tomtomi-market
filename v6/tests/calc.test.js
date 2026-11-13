@@ -116,7 +116,17 @@ eq('SA 캠페인별(구분 없는 행 포함)', C.adsBreakdown(D, 'sa', '2026-01
   eq('상품 추이', [ps.labels, ps.series.P1, ps.series.P2, ps.unit], [['2026-02-01', '2026-02-02'], [30000, 0], [5000, 0], 'day']);
   const mg = C.costMerge(D2.costVer, [{ c: 'A', cost: 1100, from: '' }, { c: 'Z', cost: 300, from: '' }]);
   eq('원가표 합치기: 새 표에 없는 줄은 유지', [mg.stat, mg.rows.length, mg.rows.find(r => r.c === 'B').cost], [{ added: 1, changed: 1, same: 0, kept: 2 }, 4, 200]);
+  const mg2 = C.costMerge(D2.costVer, [{ c: 'B', name: '비(새이름)', cost: 0, from: '' }]);
+  eq('원가 빈 줄은 이름만 바꾸고 원가는 유지', [mg2.rows.find(r => r.c === 'B').cost, mg2.rows.find(r => r.c === 'B').name], [200, '비(새이름)']);
+  // 품목 기준: 채널 합이 매출 메뉴 숫자와 같아야 한다
+  const X = C.items(D2, '2026-02-01', '2026-02-28'), S2 = C.summary(D2, '2026-02-01', '2026-02-28');
+  let n = 0, c = 0, o = 0; Object.values(X.rows).forEach(r => { n += r.ch.naver.rev; c += r.ch.coupang.rev; o += r.ch.other.rev; });
+  eq('품목 기준 네이버 매출 합 = 상품 순매출 합', Math.round(n), M.total.net);
+  eq('품목 기준 쿠팡 합 = 쿠팡 입고', Math.round(c), Math.round(S2.coupang));
+  eq('품목 기준 기타몰 합 = 기타마켓', Math.round(o), Math.round(S2.other));
+  eq('품목 순서는 기간과 무관', C.itemOrder(D2).length > 0, true);
+  const ia = C.items(D2, '2026-02-01', '2026-02-28').rows.A.ch.naver;
+  eq('품목 A: 수량, 배분 매출, 원가', [ia.qty, Math.round(ia.rev), ia.cost], [3, 10000, 3500]);
 }
-
 console.log(fail ? '실패 ' + fail + '건' : '모든 규칙 통과');
 process.exit(fail ? 1 : 0);

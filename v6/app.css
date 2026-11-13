@@ -171,7 +171,7 @@ h1, h2 { margin: 0; }
 .tbl .none { text-align: center; color: var(--sub); padding: 28px; white-space: normal; }
 .tbl tr.sum { border-top: 2px solid var(--text); background: var(--bg); }
 .tbl tr.sum th { font-weight: 700; }
-.tbl.wrap tbody th { white-space: normal; min-width: 200px; }
+.tbl.wrap tbody th { white-space: normal; min-width: 250px; }
 .tbl.wrap .exp { white-space: normal; }
 .search { display: flex; align-items: center; gap: 12px; padding-top: 0; padding-bottom: 12px; }
 .search input { flex: 1; min-width: 0; max-width: 420px; min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); font: inherit; font-size: 14px; color: var(--text); }
@@ -217,3 +217,24 @@ h1, h2 { margin: 0; }
   .kpi .val { font-size: 24px; }
 }
 .li b { white-space: nowrap; }
+
+/* 품목 기준 표 */
+.tbl tr.zero-row th, .tbl tr.zero-row td { color: var(--sub); opacity: .55; }
+.code { display: inline-block; min-width: 82px; font-size: 12px; font-weight: 700; color: var(--accent-deep); }
+.code.muted { color: var(--sub); font-weight: 500; }
+.iname { padding-top: 6px; }
+.nobox { display: inline-block; width: 18px; flex: none; }
+.chtag { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; margin: 1px 2px 1px 0; }
+.chtag.ch-naver { background: #E3F4EA; color: #0B5C3A; }
+.chtag.ch-coupang { background: #FDE7E4; color: #8A1C12; }
+.chtag.ch-other { background: var(--accent-soft); color: var(--accent-deep); }
+.tbl .subrow small, .li small { color: var(--sub); font-weight: 400; }
+.tbl.items tbody th { min-width: 0; white-space: nowrap; }
+.tbl.items td.nm { white-space: normal; min-width: 220px; }
+.tbl.items .code { min-width: 0; }
+.tbl.items thead small { font-weight: 400; }
+.tbl.items th, .tbl.items td { padding-left: 6px; padding-right: 6px; }
+.tbl.items th:first-child, .tbl.items td:first-child { padding-left: 18px; }
+.tbl.items th:last-child, .tbl.items td:last-child { padding-right: 18px; }
+.tbl.items .chtag { margin: 1px 0; }
+.tbl.items .exp, .tbl.items .iname { white-space: nowrap; }
