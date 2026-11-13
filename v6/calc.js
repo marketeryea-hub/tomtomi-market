@@ -396,9 +396,10 @@
     var touched = {};
     rows.forEach(function (r) {
       var k = r.c + '|' + (r.from || ''); touched[k] = 1;
+      var cost = r.cost > 0 ? r.cost : (m[k] ? m[k].cost : 0); // 원가 빈 줄(이름만)은 이전 원가를 지우지 않는다
       if (!m[k]) { order.push(k); st.added++; }
-      else if (m[k].cost !== r.cost) st.changed++; else st.same++;
-      m[k] = { c: r.c, name: r.name || (m[k] && m[k].name) || '', cost: r.cost, from: r.from || '', note: r.note || '' };
+      else if (m[k].cost !== cost || (r.name && m[k].name !== r.name)) st.changed++; else st.same++;
+      m[k] = { c: r.c, name: r.name || (m[k] && m[k].name) || '', cost: cost, from: r.from || '', note: r.note || (m[k] && m[k].note) || '' };
     });
     order.forEach(function (k) { if (!touched[k]) st.kept++; });
     return { rows: order.map(function (k) { return m[k]; }), stat: st };
@@ -454,6 +455,101 @@
       if (o.margin !== null) { t.cost += o.cost; t.margin += o.margin; t.netCosted += o.net; }
     });
     return { prods: prods, skus: skus, total: t, noCost: skus.filter(function (s) { return s.noCost > 0 && s.code.charAt(0) !== '('; }), hasCost: !!data.costVer };
+  }
+
+
+  /* ───────── 품목(내부 품목코드) 기준 ─────────
+   * 품목 마스터 = 원가표(이름은 원가표가 우선). 원가표가 없거나 빠진 품목은 아래 기본 목록 이름을 쓴다.
+   * 'CP:' 로 시작하는 코드는 ERP 코드가 없는 쿠팡 단독 묶음 상품(쿠팡 상품번호로 구분).
+   */
+  var ITEM_BASE = [["154673", "톰토미 미니 스티커북"], ["154932", "톰토미 IQ가방퍼즐"], ["155052", "톰토미 빅롤 색칠 스티커(동물)"], ["155069", "톰토미 빅롤 색칠 스티커(공룡)"], ["155076", "톰토미 빅롤 색칠 스티커 (바다동물)"], ["155410", "톰토미 IQ영재퍼즐"], ["163471", "톰토미 스티커 색칠놀이"], ["163488", "톰토미 스티커 놀이북"], ["164959", "톰토미 한글 튼튼"], ["164966", "톰토미 숫자 튼튼"], ["166076", "톰토미 두들색칠북"], ["172800", "톰토미 놀면서 배우는 학습 놀이북 - 동물탐험대"], ["172817", "톰토미 놀면서 배우는 학습 놀이북 - 안전 습관 히어로"], ["SOMD-0001", "톰토미 말랑 데코 스티커"], ["SOMD-0002", "톰토미 봉제인형 30cm"], ["SOMD-0003", "톰토미 모찌쿠션"], ["SOMD-0004", "톰토미 어깨끈 가방"], ["SOMD-0005", "톰토미 조리개형 가방"], ["SOMD-0006", "톰토미 노래하는 스티커북 (공룡)"], ["SOMD-0007", "톰토미 노래하는 스티커북 (동물)"], ["SOMD-0008", "톰토미 노래하는 스티커북 (특이한 생물)"], ["SOMD-0009", "톰토미 노래하는 스티커북 (탈것)"], ["SOMD-0010", "톰토미 노래하는 스티커북 (마트)"], ["SOMD-0011", "다다 뉴 봉제인형"], ["SOMD-0012", "루나 뉴 봉제인형"], ["SOMD-0013", "톰토미 봉제 미니키링"], ["SOMD-0014", "톰토미 뉴 봉제인형"], ["SOMD-0015", "톰토미 공룡 마이크"], ["SOMD-0016", "톰토미 스티커북 5종 세트"], ["SOMD-0017", "톰토미 스틱풍선"], ["SOMD-0018", "한국을 빛낸 100명의 위인들 사운드북"], ["SOMD-0019", "한국을 빛낸 100명의 위인들 위인카드"], ["SOMD-0020", "한국을 빛낸 100명의 위인들 사운드북 + 위인카드 풀세트"], ["SOMD-0021", "톰토미 스마트 피규어"], ["SOMD-0022", "루나 스마트 피규어"], ["SOMD-0023", "다다 스마트 피규어"], ["SOMD-0024", "지니 스마트 피규어"], ["SOMD-0025", "리오 스마트 피규어"], ["SOMD-0026", "톰토미와 친구들 스마트 피규어 풀세트"], ["SOCD-0318", "톰토미 명작동화 3CD"], ["SOCD-0320", "톰토미 크리스마스 캐롤 2CD"], ["SPTE-0001", "세이펜 톰토미 에디션 (Red)"], ["SPTE-0002", "세이펜 톰토미 에디션 (Pink)"], ["SPTE-0003", "세이펜 톰토미 에디션 (Blue)"], ["EDST-85008", "톰토미 빅도미노블럭100 공룡+동물"], ["EDST-85009", "톰토미 빅도미노블럭 50 공룡"], ["EDST-85010", "톰토미 빅도미노블럭 50 동물"], ["SOCD-0321", "톰토미 인기동요 123곡 3CD"], ["SOCD-0319", "톰토미 명작동화 3CD + 말랑 데코 스티커"], ["CP:81591376", "톰토미 인기동요 123곡 + 크리스마스 캐롤 5CD 세트"], ["CP:81590433", "톰토미 인기동요 123곡 + 명작동화 6CD 세트"], ["CP:81829620", "톰토미 명작동화 + 크리스마스 캐롤 5CD 세트"]];
+  // 쿠팡 상품번호 → 품목코드 (2026-11-13 예영 확인본)
+  var COUP_MAP = {"19916952": "SOCD-0318", "19949679": "SOCD-0319", "52189718": "SOMD-0016", "54055219": "SOCD-0320", "54411706": "SOMD-0007", "54411911": "SOMD-0008", "54412650": "SOMD-0010", "54413097": "SOMD-0009", "54413701": "SOMD-0006", "54705393": "SOMD-0012", "54705754": "SOMD-0013", "54706311": "EDST-85010", "54707122": "SOMD-0015", "54707469": "EDST-85008", "54708214": "EDST-85009", "54709000": "SOMD-0011", "66403651": "SOMD-0018", "66540248": "SOMD-0019", "67321412": "SOMD-0020", "54707922": "SOMD-0014", "78901666": "SOCD-0321", "77099086": "SOMD-0026", "76298119": "SOMD-0021", "76296905": "SOMD-0022", "76293118": "SOMD-0023", "76297718": "SOMD-0024", "76300285": "SOMD-0025", "81591376": "CP:81591376", "81590433": "CP:81590433", "81829620": "CP:81829620"};
+  // 원가가 따로 없을 때 구성품 원가를 더해 쓰는 묶음 품목
+  var ITEM_PARTS = {"CP:81591376": "SOCD-0321 + SOCD-0320", "CP:81590433": "SOCD-0321 + SOCD-0318", "CP:81829620": "SOCD-0318 + SOCD-0320", "SOCD-0319": "SOCD-0318 + SOMD-0001"};
+
+  function itemCode(c) { return String(c || '').trim(); }
+  function parseParts(str) {
+    return String(str || '').split('+').map(function (p) {
+      var m = p.trim().match(/^(.*?)\s*\*\s*(\d+)$/); return { c: (m ? m[1] : p).trim(), q: m ? +m[2] : 1 };
+    }).filter(function (x) { return x.c; });
+  }
+  // 품목 1개의 그 날짜 원가: 원가표 값 → 없으면 구성품 원가 합 → 그래도 없으면 null
+  function itemCost(cx, code, d) {
+    var c = costAt(cx, code, d); if (c !== null) return c;
+    if (!ITEM_PARTS[code]) return null;
+    var sum = 0, ok = true;
+    parseParts(ITEM_PARTS[code]).forEach(function (x) { var v = costAt(cx, x.c, d); if (v === null) ok = false; else sum += v * x.q; });
+    return ok ? sum : null;
+  }
+  function itemMaster(data) {
+    var M = {}, order = [];
+    function add(c, n, src) { c = itemCode(c); if (!c || c.charAt(0) === '(') return; if (!M[c]) { M[c] = { code: c, name: '', src: src }; order.push(c); } if (n && (!M[c].name || src === 'cost')) { M[c].name = n; M[c].src = src; } }
+    ITEM_BASE.forEach(function (r) { add(r[0], r[1], 'base'); });
+    var ix = skuIndex(data.skuMap); Object.keys(ix.names).forEach(function (c) { add(c, ix.names[c], 'map'); });
+    if (data.costVer) data.costVer.rows.forEach(function (r) { add(r.c, r.name, 'cost'); });
+    data.other.forEach(function (e) { if (e.code) add(e.code, '', 'other'); });
+    return M;
+  }
+  var NONE = '(품목 미지정)';
+  // 품목별 채널 실적. 매출: 네이버 = 순매출을 SKU 수량 비율로 배분, 쿠팡 = 입고 금액, 기타몰 = 매출액
+  function items(data, from, to) {
+    var cx = costIndex(data.costVer), master = itemMaster(data), R = {};
+    function row(code) {
+      var m = master[code];
+      return R[code] || (R[code] = { code: code, name: m ? m.name : '', none: code === NONE, ch: { naver: z(), coupang: z(), other: z() } });
+    }
+    function z() { return { qty: 0, rev: 0, cost: 0, noCost: 0, est: false, n: 0 }; }
+    function put(code, ch, q, rev, d, est) {
+      var o = row(code).ch[ch]; o.qty += q; o.rev += rev; o.n++; if (est) o.est = true;
+      if (code === NONE || !q) return;
+      var c = itemCost(cx, code, d);
+      if (c === null) o.noCost += q; else o.cost += c * q;
+    }
+    // 네이버: 상품별 순매출을 그 상품의 SKU 수량 비율로 나눈다 (products()와 같은 규칙)
+    var P = products(data, from, to);
+    P.prods.forEach(function (o) {
+      if (!(o.oqty > 0)) { if (o.net) put(NONE, 'naver', 0, o.net, from, false); return; }
+      o.skuList.forEach(function (s) {
+        var none = s.code.charAt(0) === '(', r = row(none ? NONE : s.code).ch.naver, rev = o.net * s.qty / o.oqty; // 매핑 없음, 종류 미상은 품목 미지정으로
+        r.qty += s.qty; r.rev += rev; r.n++; if (o.skuList.length > 1) r.est = true;
+        if (none) return;
+        r.cost += s.cost; r.noCost += s.noCost;
+      });
+    });
+    data.coupang.forEach(function (e) {
+      if (!inRange(e.d, from, to)) return;
+      var code = COUP_MAP[e.skuNo] || NONE;
+      if (code === NONE) { var o = row(NONE).ch.coupang; o.qty += e.qty; o.rev += e.amount; o.n++; return; }
+      put(code, 'coupang', e.qty, e.amount, e.d, false);
+    });
+    data.other.forEach(function (e) {
+      if (!inRange(e.d, from, to)) return;
+      put(itemCode(e.code) || NONE, 'other', e.qty, e.amount, e.d, false);
+    });
+    return { rows: R, master: master };
+  }
+  // 품목 목록 순서: 기간과 상관없이 전체 기간 누적 매출(모든 채널) 순으로 고정
+  function itemOrder(data) {
+    var all = items(data, '0000-01-01', '9999-12-31'), tot = {};
+    Object.keys(all.master).forEach(function (c) { tot[c] = 0; });
+    Object.keys(all.rows).forEach(function (c) { var ch = all.rows[c].ch; tot[c] = ch.naver.rev + ch.coupang.rev + ch.other.rev; });
+    return Object.keys(tot).filter(function (c) { return c !== NONE; }).sort(function (a, b) { return tot[b] - tot[a] || (a < b ? -1 : 1); });
+  }
+  // 고른 품목들의 날짜별(62일 넘으면 월별) 매출
+  function itemSeries(data, codes, from, to, chs) {
+    var byMonth = dayDiff(from, to) + 1 > 62, labels = [], pos = {}, d, k, series = {};
+    for (d = from; d <= to; d = addDays(d, 1)) { k = byMonth ? d.slice(0, 7) : d; if (pos[k] === undefined) { pos[k] = labels.length; labels.push(k); } }
+    codes.forEach(function (c) { series[c] = labels.map(function () { return 0; }); });
+    var unit = byMonth ? 'month' : 'day';
+    // 하루씩 계산하면 네이버 배분이 그날 주문 기준으로 정확해진다 (월별이면 달 단위로)
+    labels.forEach(function (lab, i) {
+      var f = byMonth ? (lab + '-01' < from ? from : lab + '-01') : lab;
+      var t = byMonth ? (addDays(addDays(lab + '-01', 32).slice(0, 7) + '-01', -1)) : lab; if (t > to) t = to;
+      var r = items(data, f, t).rows;
+      codes.forEach(function (c) { if (!r[c]) return; chs.forEach(function (ch) { series[c][i] += r[c].ch[ch].rev; }); });
+    });
+    return { labels: labels, series: series, unit: unit };
   }
 
   // 상품 비교 차트용: 상품별 순매출 추이. 62일 이하는 날짜별, 그보다 길면 월별
@@ -564,7 +660,7 @@
     dailyFull: dailyFull, bucketFull: bucketFull, totalFull: totalFull, coupangTop: coupangTop, otherByMarket: otherByMarket, otherRows: otherRows,
     adsDaily: adsDaily, adsBucket: adsBucket, adsTotal: adsTotal, adsBreakdown: adsBreakdown, ratio: ratio,
     skuAggregate: skuAggregate, skuUnmapped: skuUnmapped, skuParseOpt: skuParseOpt, orderCheck: orderCheck,
-    costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products, productSeries: productSeries,
+    costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products, productSeries: productSeries, items: items, itemOrder: itemOrder, itemSeries: itemSeries, itemMaster: itemMaster, NONE: NONE, COUP_MAP: COUP_MAP,
     signals: signals, health: health
   };
 });

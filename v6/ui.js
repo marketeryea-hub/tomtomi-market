@@ -8,7 +8,7 @@
   var C = root.TTCalc;
   var DATA = null;      // 정리된 데이터
   var META = {};        // 불러오기 결과(기타마켓 연결 여부 등)
-  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'naver', pmode: 'prod', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '' };
+  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '' };
   var READY = { home: 1, sales: 1, ads: 1, products: 1 }; // 옮겨온 메뉴
   var STORE_KEY = 'tt6_state';
 
@@ -225,9 +225,9 @@
   }
 
   /* ───────── 표 넘겨보기: 최근 날짜부터 10줄씩 ───────── */
-  var PAGE_SIZE = 10;
-  function pageOf(list) {
-    var pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+  var PAGE_SIZE_DEF = 10;
+  function pageOf(list, size) {
+    var PAGE_SIZE = size || PAGE_SIZE_DEF, pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
     if (S.page >= pages) S.page = pages - 1;
     if (S.page < 0) S.page = 0;
     return { rows: list.slice(S.page * PAGE_SIZE, (S.page + 1) * PAGE_SIZE), pages: pages, total: list.length };
@@ -588,32 +588,90 @@
     list.forEach(function (o) { t.qty += o.qty; t.net += o.net; if (o.margin !== null) { t.cost += o.cost; t.margin += o.margin; t.netCosted += o.net; } });
     return t;
   }
+  // 품목 기준 모델: 기간이 바뀌어도 품목 목록과 순서는 그대로, 숫자만 바뀐다
+  var ICACHE = { key: '', X: null }, IORDER = { key: '', list: null };
+  var CH_NAME = { naver: '네이버', coupang: '쿠팡', other: '기타몰' }, CHS = ['naver', 'coupang', 'other'], ITEM_PAGE = 20;
+  function itemModel(from, to) {
+    var key = from + '|' + to + '|' + (DATA.costVer ? DATA.costVer.ver : '');
+    if (ICACHE.key !== key) ICACHE = { key: key, X: C.items(DATA, from, to) };
+    return ICACHE.X;
+  }
+  function itemOrder() {
+    var key = DATA.costVer ? DATA.costVer.ver : '';
+    if (IORDER.key !== key || !IORDER.list) IORDER = { key: key, list: C.itemOrder(DATA) };
+    return IORDER.list;
+  }
+  function chList() { return S.pch === 'all' ? CHS : [S.pch]; }
+  // 한 품목의 선택 채널 합계
+  function iv(X, code) {
+    var r = X.rows[code], o = { qty: 0, rev: 0, cost: 0, noCost: 0, est: false, chs: [], margin: null };
+    if (!r) return o;
+    chList().forEach(function (c) { var x = r.ch[c]; if (!x.n) return; o.qty += x.qty; o.rev += x.rev; o.cost += x.cost; o.noCost += x.noCost; if (x.est) o.est = true; o.chs.push(c); });
+    o.margin = o.qty > 0 && o.noCost === 0 && code !== C.NONE ? o.rev - o.cost : null;
+    return o;
+  }
+  function itemName(X, code) { var m = X.master[code]; return m && m.name ? m.name : ''; }
+  function codeLabel(code) {
+    if (code === C.NONE) return '<span class="code muted">미지정</span>';
+    if (code.indexOf('CP:') === 0) return '<span class="code muted" title="ERP 품목코드 없음 (쿠팡 상품번호 ' + esc(code.slice(3)) + ')">코드 없음</span>';
+    return '<span class="code num">' + esc(code) + '</span>';
+  }
+  function itemLabel(X, code) { return codeLabel(code) + ' ' + esc(code === C.NONE ? '품목 미지정 (매핑 없음, 품번 빈칸)' : itemName(X, code)); }
+  function revName() { return S.pch === 'naver' ? '순매출 (배분)' : S.pch === 'coupang' ? '입고 금액' : S.pch === 'other' ? '매출액' : '매출'; }
+  function itemList() {
+    var X = itemModel(S.from, S.to), list = itemOrder().slice();
+    list.push(C.NONE); // 품목 미지정은 항상 맨 아래 (기간에 따라 목록이 흔들리지 않게)
+    return list.filter(function (c) { return qmatch([c, itemName(X, c)]); });
+  }
   // 표 부분만 따로 그린다 (검색어를 치는 동안 입력칸은 건드리지 않기 위해)
   function prodBody() {
-    var h = '', pch = S.pch === 'coupang' ? 'coupang' : 'naver', sumName = S.q.trim() ? '검색 결과 합계' : '합계';
-    if (pch === 'coupang') {
-      var rows = C.coupangTop(DATA, S.from, S.to).filter(function (o) { return qmatch([o.name, o.skuNo]); }), q = 0, a = 0;
-      rows.forEach(function (o) { q += o.qty; a += o.amount; });
-      PCOUNT = rows.length;
-      h += '<table class="tbl wrap"><thead><tr><th scope="col">품목</th><th scope="col">쿠팡 상품번호</th><th scope="col" class="r">수량</th><th scope="col" class="r">입고 금액</th></tr></thead><tbody>';
-      if (!rows.length) h += '<tr><td colspan="4" class="none">' + (S.q.trim() ? '검색 결과가 없습니다.' : '이 기간에 쿠팡 입고가 없습니다.') + '</td></tr>';
-      var cpg = pageOf(rows);
-      cpg.rows.forEach(function (o) { h += '<tr><th scope="row">' + esc(o.name) + '</th><td class="num">' + esc(o.skuNo) + '</td><td class="r num">' + n0(o.qty) + '</td><td class="r num b">' + n0(o.amount) + '</td></tr>'; });
-      if (rows.length) h += '<tr class="sum"><th scope="row">' + sumName + '</th><td></td><td class="r num">' + n0(q) + '</td><td class="r num b">' + n0(a) + '</td></tr>';
-      return h + '</tbody></table>' + pagerHtml(cpg);
-    }
+    if (S.pch === 'naver' && S.pmode === 'page') return pageBody();
+    var h = '', X = itemModel(S.from, S.to), cr = cmpRange(), PX = cr ? itemModel(cr.from, cr.to) : null, all = S.pch === 'all';
+    var list = itemList(), sumName = S.q.trim() ? '검색 결과 합계' : '합계', nc = 6 + (all ? 1 : 0) + (cr ? 1 : 0);
+    var t = { qty: 0, rev: 0, cost: 0, margin: 0, revCosted: 0, prev: 0 };
+    list.forEach(function (c) { var o = iv(X, c); t.qty += o.qty; t.rev += o.rev; if (o.margin !== null) { t.cost += o.cost; t.margin += o.margin; t.revCosted += o.rev; } if (PX) t.prev += iv(PX, c).rev; });
+    PCOUNT = list.length;
+    h += '<table class="tbl wrap"><thead><tr><th scope="col">품목 (체크하면 비교' + (all ? ', 누르면 채널별로 펼침' : '') + ')</th>' + (all ? '<th scope="col">팔린 채널</th>' : '') + '<th scope="col" class="r">수량</th><th scope="col" class="r">' + revName() + '</th>' + (cr ? '<th scope="col" class="r">비교 기간 대비</th>' : '') + '<th scope="col" class="r">원가</th><th scope="col" class="r">마진</th><th scope="col" class="r">마진율</th></tr></thead><tbody>';
+    if (!list.length) h += '<tr><td colspan="' + nc + '" class="none">검색 결과가 없습니다.</td></tr>';
+    var pg = pageOf(list, ITEM_PAGE);
+    pg.rows.forEach(function (c) {
+      var o = iv(X, c), pv = PX ? iv(PX, c) : null, open = all && S.open === c, zero = !o.qty && !o.rev, none = c === C.NONE;
+      h += '<tr' + (zero ? ' class="zero-row"' : '') + '><th scope="row"><span class="pick">';
+      h += none ? '<span class="nobox"></span>' : '<input type="checkbox" data-act="sel" data-key="' + esc(c) + '"' + (S.sel.indexOf(c) >= 0 ? ' checked' : '') + ' aria-label="비교에 넣기: ' + esc(itemName(X, c) || c) + '">';
+      h += all && !zero ? '<button type="button" class="exp" data-act="open" data-key="' + esc(c) + '" aria-expanded="' + open + '">' + (open ? '▾ ' : '▸ ') + itemLabel(X, c) + '</button>' : '<span class="iname">' + itemLabel(X, c) + '</span>';
+      h += '</span></th>';
+      if (all) h += '<td>' + (o.chs.length ? o.chs.map(function (k) { return '<span class="chtag ch-' + k + '">' + CH_NAME[k] + '</span>'; }).join(' ') : '<span class="zero">-</span>') + '</td>';
+      h += '<td class="r num">' + n0(o.qty) + '</td><td class="r num b">' + (o.est ? '약 ' : '') + n0(o.rev) + '</td>';
+      if (cr) h += '<td class="r num">' + (zero && !(pv && pv.rev) ? '-' : grow(o.rev, pv ? pv.rev : 0)) + '</td>';
+      h += '<td class="r num">' + (!o.qty || none ? '-' : o.noCost > 0 ? miss(o.noCost < o.qty ? '일부 미입력' : '미입력') : n0(o.cost)) + '</td>';
+      h += '<td class="r num">' + (o.margin === null ? '-' : n0(o.margin)) + '</td><td class="r num">' + (o.margin === null ? '-' : rate(o.margin, o.rev)) + '</td></tr>';
+      if (open) CHS.forEach(function (k) {
+        var x = X.rows[c] && X.rows[c].ch[k]; if (!x || !x.n) return;
+        var m = x.qty > 0 && x.noCost === 0 && !none ? x.rev - x.cost : null;
+        h += '<tr class="subrow"><th scope="row">└ ' + CH_NAME[k] + ' <small>(' + (k === 'naver' ? '순매출 배분' : k === 'coupang' ? '입고 금액' : '매출액') + ')</small></th><td></td><td class="r num">' + n0(x.qty) + '</td><td class="r num">' + (x.est ? '약 ' : '') + n0(x.rev) + '</td>' + (cr ? '<td></td>' : '');
+        h += '<td class="r num">' + (none ? '-' : x.noCost > 0 ? miss('미입력') : n0(x.cost)) + '</td><td class="r num">' + (m === null ? '-' : n0(m)) + '</td><td class="r num">' + (m === null ? '-' : rate(m, x.rev)) + '</td></tr>';
+      });
+    });
+    if (list.length) h += '<tr class="sum"><th scope="row">' + sumName + ' <small>(원가, 마진은 원가가 다 입력된 품목만)</small></th>' + (all ? '<td></td>' : '') + '<td class="r num">' + n0(t.qty) + '</td><td class="r num b">' + n0(t.rev) + '</td>' + (cr ? '<td class="r num">' + grow(t.rev, t.prev) + '</td>' : '') + '<td class="r num">' + (t.revCosted > 0 ? n0(t.cost) : '-') + '</td><td class="r num">' + (t.revCosted > 0 ? n0(t.margin) : '-') + '</td><td class="r num">' + (t.revCosted > 0 ? rate(t.margin, t.revCosted) : '-') + '</td></tr>';
+    h += '</tbody></table>' + pagerHtml(pg);
+    if (S.pch !== 'coupang' && S.pch !== 'other') h += '<p class="note pad">네이버 매출은 판매 페이지별 순매출을 그 페이지에서 팔린 품목 수량 비율로 나눈 값입니다. 세트나 추가구성처럼 여러 품목이 섞인 페이지에서 온 금액이 있으면 "약"을 붙였습니다.</p>';
+    return h;
+  }
+  // 네이버 판매 페이지(스마트스토어 상품번호) 기준 표
+  function pageBody() {
+    var h = '', sumName = S.q.trim() ? '검색 결과 합계' : '합계';
     var M = prodModel(S.from, S.to), cr = cmpRange(), PM = cr ? prodModel(cr.from, cr.to) : null;
-    if (S.pmode !== 'sku') {
+    {
       var prev = {}; if (PM) PM.prods.forEach(function (o) { prev[o.prodId] = o; });
       var list = M.prods.filter(function (o) { return qmatch([o.name, o.prodId].concat(o.skuList.map(function (x) { return x.code + ' ' + x.name; }))); });
       var t = prodTotals(list), nc = cr ? 7 : 6, pn = 0;
       PCOUNT = list.length;
-      h += '<table class="tbl wrap"><thead><tr><th scope="col">상품 (체크하면 비교, 이름을 누르면 SKU 펼침)</th><th scope="col" class="r">수량</th><th scope="col" class="r">순매출</th>' + (cr ? '<th scope="col" class="r">비교 기간 대비</th>' : '') + '<th scope="col" class="r">원가</th><th scope="col" class="r">마진</th><th scope="col" class="r">마진율</th></tr></thead><tbody>';
+      h += '<table class="tbl wrap"><thead><tr><th scope="col">판매 페이지 (누르면 품목 펼침)</th><th scope="col" class="r">수량</th><th scope="col" class="r">순매출</th>' + (cr ? '<th scope="col" class="r">비교 기간 대비</th>' : '') + '<th scope="col" class="r">원가</th><th scope="col" class="r">마진</th><th scope="col" class="r">마진율</th></tr></thead><tbody>';
       if (!list.length) h += '<tr><td colspan="' + nc + '" class="none">' + (S.q.trim() ? '검색 결과가 없습니다.' : '이 기간에 판매된 상품이 없습니다.') + '</td></tr>';
       var pg = pageOf(list);
       pg.rows.forEach(function (o) {
         var open = S.open === o.prodId, pv = prev[o.prodId];
-        h += '<tr><th scope="row"><span class="pick"><input type="checkbox" data-act="sel" data-key="' + esc(o.prodId) + '"' + (S.sel.indexOf(o.prodId) >= 0 ? ' checked' : '') + ' aria-label="비교에 넣기: ' + esc(o.name || o.prodId) + '">';
+        h += '<tr><th scope="row"><span class="pick">';
         h += '<button type="button" class="exp" data-act="open" data-key="' + esc(o.prodId) + '" aria-expanded="' + open + '">' + (open ? '▾ ' : '▸ ') + esc(o.name || o.prodId) + '</button></span></th>';
         h += '<td class="r num">' + n0(o.qty) + '</td><td class="r num b">' + n0(o.net) + '</td>';
         if (cr) h += '<td class="r num">' + grow(o.net, pv ? pv.net : 0) + '</td>';
@@ -631,53 +689,40 @@
       if (list.length) h += '<tr class="sum"><th scope="row">' + sumName + ' <small>(원가, 마진은 원가가 다 입력된 상품만)</small></th><td class="r num">' + n0(t.qty) + '</td><td class="r num b">' + n0(t.net) + '</td>' + (cr ? '<td class="r num">' + grow(t.net, pn) + '</td>' : '') + '<td class="r num">' + (t.netCosted > 0 ? n0(t.cost) : '-') + '</td><td class="r num">' + (t.netCosted > 0 ? n0(t.margin) : '-') + '</td><td class="r num">' + (t.netCosted > 0 ? rate(t.margin, t.netCosted) : '-') + '</td></tr>';
       return h + '</tbody></table>' + pagerHtml(pg);
     }
-    var skus = M.skus.filter(function (x) { return qmatch([x.code, x.name]); }), sq = 0, sc = 0, sr = 0;
-    PCOUNT = skus.length;
-    h += '<table class="tbl wrap"><thead><tr><th scope="col">SKU코드</th><th scope="col">품명</th><th scope="col" class="r">주문 수량</th><th scope="col" class="r">취소/반품</th><th scope="col" class="r">매출 (배분)</th><th scope="col" class="r">개당 원가</th><th scope="col" class="r">원가 합계</th></tr></thead><tbody>';
-    if (!skus.length) h += '<tr><td colspan="7" class="none">' + (S.q.trim() ? '검색 결과가 없습니다.' : '이 기간에 주문조회 기록이 없습니다.') + '</td></tr>';
-    var sg = pageOf(skus);
-    skus.forEach(function (x) { sq += x.qty; sc += x.cancel; sr += x.rev; });
-    sg.rows.forEach(function (x) {
-      h += '<tr><th scope="row" class="num">' + esc(x.code) + '</th><td>' + esc(x.name) + '</td><td class="r num b">' + n0(x.qty) + '</td><td class="r num">' + (x.cancel ? n0(x.cancel) : '<span class="zero">0</span>') + '</td>';
-      h += '<td class="r num">' + (x.est ? '약 ' : '') + n0(x.rev) + '</td>';
-      h += '<td class="r num">' + (x.unit === null ? (x.qty > 0 ? miss('미입력') : '-') : n0(x.unit)) + '</td><td class="r num">' + (x.noCost > 0 ? (x.unit === null ? '-' : miss('일부 미입력')) : n0(x.cost)) + '</td></tr>';
-    });
-    if (skus.length) h += '<tr class="sum"><th scope="row">' + sumName + '</th><td></td><td class="r num b">' + n0(sq) + '</td><td class="r num">' + n0(sc) + '</td><td class="r num">' + n0(sr) + '</td><td></td><td></td></tr>';
-    h += '</tbody></table>' + pagerHtml(sg);
-    h += '<p class="note pad">매출 (배분): 상품 순매출을 그 상품에서 팔린 SKU 수량 비율로 나눈 값입니다. SKU가 하나뿐인 상품은 정확하고, 세트나 추가구성처럼 여러 SKU가 섞인 상품에서 온 금액이 있으면 "약"을 붙였습니다.' + (Math.abs(M.total.unalloc) >= 1 && !S.q.trim() ? ' 이 기간에 주문조회 기록이 없어 나누지 못한 매출 ' + n0(M.total.unalloc) + '원이 따로 있습니다.' : '') + '</p>';
     return h;
   }
   function searchBar() {
-    return '<div class="search pad"><input type="search" data-act="q" value="' + esc(S.q) + '" placeholder="' + (S.pch === 'coupang' ? '품목명, 쿠팡 상품번호로 검색' : '상품명, 상품번호, SKU코드로 검색') + '" aria-label="상품 검색" autocomplete="off">' +
+    var ph = S.pch === 'naver' && S.pmode === 'page' ? '상품명, 상품번호, 품목코드로 검색' : '품목코드, 품목명으로 검색';
+    return '<div class="search pad"><input type="search" data-act="q" value="' + esc(S.q) + '" placeholder="' + ph + '" aria-label="품목 검색" autocomplete="off">' +
       '<span class="hint">결과 <b id="pcount" class="num">' + PCOUNT + '</b>개</span></div>';
   }
-  // 고른 상품 비교 (최대 5개)
+  // 고른 품목 비교 (최대 5개). 기간을 바꿔도 고른 품목은 그대로 남는다
   function compareHtml() {
-    if (S.pch === 'coupang' || S.pmode === 'sku' || !S.sel.length) return '';
-    var M = prodModel(S.from, S.to), cr = cmpRange(), PM = cr ? prodModel(cr.from, cr.to) : null, by = {}, pby = {};
-    M.prods.forEach(function (o) { by[o.prodId] = o; }); if (PM) PM.prods.forEach(function (o) { pby[o.prodId] = o; });
-    var items = S.sel.map(function (id) { var o = by[id], pv = pby[id]; return { id: id, o: o || null, pv: pv || null, name: (o && o.name) || (pv && pv.name) || id }; });
-    var h = '<section class="card flush" aria-label="상품 비교"><div class="card-h pad"><h2>상품 비교</h2><span class="hint">' + dot(S.from) + ' ~ ' + dot(S.to) + ', ' + items.length + '개 선택 (최대 ' + SEL_MAX + '개)</span><button type="button" class="chip" data-act="selclear">선택 모두 해제</button></div>';
+    if ((S.pch === 'naver' && S.pmode === 'page') || !S.sel.length) return '';
+    var X = itemModel(S.from, S.to), cr = cmpRange(), PX = cr ? itemModel(cr.from, cr.to) : null;
+    var items = S.sel.map(function (c) { return { id: c, o: iv(X, c), pv: PX ? iv(PX, c) : null, name: itemName(X, c) || c }; });
+    var h = '<section class="card flush" aria-label="품목 비교"><div class="card-h pad"><h2>품목 비교</h2><span class="hint">' + dot(S.from) + ' ~ ' + dot(S.to) + ', ' + (S.pch === 'all' ? '전체 채널' : CH_NAME[S.pch]) + ', ' + items.length + '개 선택 (최대 ' + SEL_MAX + '개)</span><button type="button" class="chip" data-act="selclear">선택 모두 해제</button></div>';
     if (S.selMsg) h += '<p class="note pad"><b>' + esc(S.selMsg) + '</b></p>';
-    if (items.length < 2) return h + '<p class="note pad">하나 더 체크하면 나란히 비교합니다. 검색어를 바꿔도 체크한 상품은 유지됩니다.</p></section>';
+    if (items.length < 2) return h + '<p class="note pad">하나 더 체크하면 나란히 비교합니다. 검색어나 기간을 바꿔도 체크한 품목은 유지됩니다.</p></section>';
     function row(label, f) { var r = '<tr><th scope="row">' + label + '</th>'; items.forEach(function (it) { r += '<td class="r num">' + f(it) + '</td>'; }); return r + '</tr>'; }
     h += '<div class="scroll"><table class="tbl wrap cmp"><thead><tr><th scope="col">항목</th>';
-    items.forEach(function (it, i) { h += '<th scope="col" class="r"><span class="dotc" style="background:' + CMP_COLORS[i] + '"></span>' + esc(it.name) + '</th>'; });
+    items.forEach(function (it, i) { h += '<th scope="col" class="r"><span class="dotc" style="background:' + CMP_COLORS[i] + '"></span>' + codeLabel(it.id) + '<br>' + esc(it.name) + '</th>'; });
     h += '</tr></thead><tbody>';
-    h += row('수량', function (it) { return it.o ? n0(it.o.qty) : '<span class="zero">0</span>'; });
-    h += row('순매출', function (it) { return '<b>' + (it.o ? n0(it.o.net) : '0') + '</b>'; });
+    h += row('수량', function (it) { return it.o.qty ? n0(it.o.qty) : '<span class="zero">0</span>'; });
+    h += row(revName(), function (it) { return '<b>' + (it.o.est ? '약 ' : '') + n0(it.o.rev) + '</b>'; });
+    if (S.pch === 'all') CHS.forEach(function (k) { h += row('└ ' + CH_NAME[k], function (it) { var x = X.rows[it.id] && X.rows[it.id].ch[k]; return x && x.rev ? n0(x.rev) : '<span class="zero">0</span>'; }); });
     if (cr) {
-      h += row('비교 기간 순매출 <small>(' + mdot(cr.from) + ' ~ ' + mdot(cr.to) + ')</small>', function (it) { return it.pv ? n0(it.pv.net) : '<span class="zero">0</span>'; });
-      h += row('순매출 증감', function (it) { return grow(it.o ? it.o.net : 0, it.pv ? it.pv.net : 0); });
-      h += row('수량 증감', function (it) { return grow(it.o ? it.o.qty : 0, it.pv ? it.pv.qty : 0); });
+      h += row('비교 기간 ' + revName() + ' <small>(' + mdot(cr.from) + ' ~ ' + mdot(cr.to) + ')</small>', function (it) { return it.pv.rev ? n0(it.pv.rev) : '<span class="zero">0</span>'; });
+      h += row('매출 증감', function (it) { return grow(it.o.rev, it.pv.rev); });
+      h += row('수량 증감', function (it) { return grow(it.o.qty, it.pv.qty); });
     }
-    h += row('개당 평균 매출', function (it) { return it.o && it.o.qty > 0 ? n0(it.o.net / it.o.qty) : '-'; });
-    h += row('원가', function (it) { return !it.o || it.o.oqty === 0 ? '-' : it.o.noCost > 0 ? miss('미입력') : n0(it.o.cost); });
-    h += row('마진', function (it) { return it.o && it.o.margin !== null ? n0(it.o.margin) : '-'; });
-    h += row('마진율', function (it) { return it.o && it.o.margin !== null ? rate(it.o.margin, it.o.net) : '-'; });
+    h += row('개당 평균 매출', function (it) { return it.o.qty > 0 ? n0(it.o.rev / it.o.qty) : '-'; });
+    h += row('원가', function (it) { return !it.o.qty ? '-' : it.o.noCost > 0 ? miss('미입력') : n0(it.o.cost); });
+    h += row('마진', function (it) { return it.o.margin !== null ? n0(it.o.margin) : '-'; });
+    h += row('마진율', function (it) { return it.o.margin !== null ? rate(it.o.margin, it.o.rev) : '-'; });
     h += '</tbody></table></div>';
-    var ps = C.productSeries(DATA, S.sel, S.from, S.to);
-    if (ps.labels.length >= 2) h += '<div class="pad cmpchart">' + multiLine(ps, items) + '<span class="note">' + (ps.unit === 'day' ? '날짜별' : '월별') + ' 순매출. 선 위에 마우스를 올리면 값이 보입니다.</span></div>';
+    var ps = C.itemSeries(DATA, S.sel, S.from, S.to, chList());
+    if (ps.labels.length >= 2) h += '<div class="pad cmpchart">' + multiLine(ps, items) + '<span class="note">' + (ps.unit === 'day' ? '날짜별' : '월별') + ' ' + revName() + '. 선 위에 마우스를 올리면 값이 보입니다.</span></div>';
     else h += '<p class="note pad">조회 기간이 하루라서 추이 차트는 생략했습니다. 기간을 넓히면 차트가 나옵니다.</p>';
     return h + '</section>';
   }
@@ -705,30 +750,24 @@
     return g + '</div>';
   }
   function viewProducts() {
-    var pch = S.pch === 'coupang' ? 'coupang' : 'naver', h = '', body = prodBody();
+    var pch = CH_NAME[S.pch] || S.pch === 'all' ? S.pch : 'all'; S.pch = pch;
+    var h = '', body = prodBody(), X = itemModel(S.from, S.to), page = pch === 'naver' && S.pmode === 'page';
     h += '<div class="tabs" role="tablist" aria-label="채널">';
-    [['naver', '네이버'], ['coupang', '쿠팡 입고']].forEach(function (c) { h += '<button type="button" role="tab" class="tab" data-act="pch" data-key="' + c[0] + '" aria-selected="' + (c[0] === pch) + '">' + c[1] + '</button>'; });
+    [['all', '전체'], ['naver', '네이버'], ['coupang', '쿠팡'], ['other', '기타몰']].forEach(function (c) { h += '<button type="button" role="tab" class="tab" data-act="pch" data-key="' + c[0] + '" aria-selected="' + (c[0] === pch) + '">' + c[1] + '</button>'; });
     h += '</div>';
-    if (pch === 'coupang') {
-      var all = C.coupangTop(DATA, S.from, S.to), q = 0, a = 0;
-      all.forEach(function (o) { q += o.qty; a += o.amount; });
-      h += '<section class="strip" aria-label="쿠팡 입고 요약">' + cell('입고 품목 수', n0(all.length) + '개', '') + cell('입고 수량', n0(q), '') + cell('입고 금액', n0(a), '') + '</section>';
-      h += '<span class="note tight">쿠팡 품목은 아직 ERP 코드, 원가와 연결되어 있지 않아 수량과 입고 금액만 보여줍니다.</span>';
-      h += '<section class="card flush" aria-label="쿠팡 품목별 입고"><div class="card-h pad"><h2>품목별 입고</h2><span class="hint">요약 칸은 조회 기간 전체</span><button type="button" class="chip" data-act="pcsv">엑셀로 받기 (CSV)</button></div>' + searchBar() + '<div class="scroll" id="pbody">' + body + '</div></section>';
-      return h;
-    }
-    var M = prodModel(S.from, S.to), t = M.total, mode = S.pmode === 'sku' ? 'sku' : 'prod';
-    h += '<section class="strip" aria-label="상품 요약">';
-    h += cell('판매 상품 수', n0(t.count) + '개', '');
-    h += cell('판매 수량', n0(t.qty), '');
-    h += cell('순매출', n0(t.net), '');
-    h += cell('마진 (원가 입력분)', M.hasCost && t.netCosted > 0 ? n0(t.margin) : '-', !M.hasCost ? '원가표를 올리면 계산됩니다' : t.netCosted > 0 ? '마진율 ' + rate(t.margin, t.netCosted) + ', 매출의 ' + rate(t.netCosted, t.net) + '에 원가 입력됨' : '이 기간 판매 상품에 입력된 원가가 없습니다');
+    var t = { n: 0, qty: 0, rev: 0, cost: 0, margin: 0, revCosted: 0 };
+    Object.keys(X.rows).forEach(function (c) { var o = iv(X, c); if (o.qty > 0 && c !== C.NONE) t.n++; t.qty += o.qty; t.rev += o.rev; if (o.margin !== null) { t.cost += o.cost; t.margin += o.margin; t.revCosted += o.rev; } });
+    h += '<section class="strip" aria-label="품목 요약">';
+    h += cell('팔린 품목 수', n0(t.n) + '개', '전체 ' + n0(itemOrder().length) + '개 중');
+    h += cell(pch === 'coupang' ? '입고 수량' : '판매 수량', n0(t.qty), '');
+    h += cell(revName().replace(' (배분)', ''), n0(t.rev), pch === 'all' ? '매출 메뉴의 실매출과 같은 기준' : '');
+    h += cell('마진 (원가 입력분)', DATA.costVer && t.revCosted > 0 ? n0(t.margin) : '-', !DATA.costVer ? '원가표를 올리면 계산됩니다' : t.revCosted > 0 ? '마진율 ' + rate(t.margin, t.revCosted) + ', 매출의 ' + rate(t.revCosted, t.rev) + '에 원가 입력됨' : '이 기간 판매 품목에 입력된 원가가 없습니다');
     h += '</section>';
-    h += '<span class="note tight">마진 = 순매출 - 원가 (부가세 포함 기준). 수수료, 배송비, 광고비는 빼지 않은 값입니다. 수량과 순매출은 결제일 기준, SKU 수량과 원가는 주문일 기준이라 기간 경계에서 조금 다를 수 있습니다.</span>';
-    h += '<div class="row"><section class="card grow3 flush" aria-label="상품별 성과"><div class="card-h pad"><h2>' + (mode === 'prod' ? '상품별 성과' : 'SKU별 성과') + '</h2><span class="hint">요약 칸은 조회 기간 전체</span>';
-    [['prod', '상품 기준'], ['sku', 'SKU 기준']].forEach(function (m) { h += '<button type="button" class="chip" data-act="pmode" data-key="' + m[0] + '" aria-pressed="' + (mode === m[0]) + '">' + m[1] + '</button>'; });
+    h += '<span class="note tight">매출 기준: 네이버 = 순매출, 쿠팡 = 입고 금액, 기타몰 = 매출액. 마진 = 매출 - 원가 (부가세 포함 기준)이고 수수료, 배송비, 광고비는 빼지 않은 값입니다.</span>';
+    h += '<div class="row"><section class="card grow3 flush" aria-label="품목별 성과"><div class="card-h pad"><h2>' + (page ? '판매 페이지별 성과' : '품목별 성과') + '</h2><span class="hint">목록과 순서는 기간과 상관없이 고정 (전체 기간 누적 매출순)</span>';
+    if (pch === 'naver') [['item', '품목 기준'], ['page', '판매 페이지 기준']].forEach(function (m) { h += '<button type="button" class="chip" data-act="pmode" data-key="' + m[0] + '" aria-pressed="' + ((S.pmode === 'page' ? 'page' : 'item') === m[0]) + '">' + m[1] + '</button>'; });
     h += '<button type="button" class="chip" data-act="pcsv">엑셀로 받기 (CSV)</button></div>' + searchBar() + '<div class="scroll" id="pbody">' + body + '</div></section>';
-    h += costSide(M) + '</div>';
+    h += costSide(X) + '</div>';
     h += '<div id="pcompare">' + compareHtml() + '</div>';
     return h;
   }
@@ -736,27 +775,29 @@
     var el = document.getElementById('pbody'), c = document.getElementById('pcount'); if (!el) return;
     el.innerHTML = prodBody(); if (c) c.textContent = PCOUNT;
   }
-  function costSide(M) {
+  function costSide(X) {
     var h = '';
-    var cv = DATA.costVer, unm = M.skus.filter(function (s) { return s.code === '(매핑 없음)'; })[0];
+    var cv = DATA.costVer;
     h += '<section class="card grow1 flush" aria-label="원가표와 확인할 것"><div class="card-h pad"><h2>원가표</h2><label class="chip filebtn">원가표 올리기<input type="file" accept=".xlsx" data-act="costfile" hidden></label></div>';
     h += '<p class="note pad">' + (cv ? '저장된 원가표: ' + esc(cv.ver) + ' 저장, ' + n0(cv.rows.length) + '줄' : '아직 저장된 원가표가 없습니다.') + '</p>';
     if (S.costMsg) h += '<p class="note pad"><b>' + esc(S.costMsg) + '</b></p>';
     var d = S.draft;
     if (d) {
-      h += '<div class="draft"><b>저장하기 전에 확인</b><span>읽은 원가 ' + d.rows.length + '줄 (기준: ' + (d.vat === 'excl' ? 'VAT 제외, 1.1을 곱해 저장' : 'VAT 포함') + ')</span>';
+      h += '<div class="draft"><b>저장하기 전에 확인</b><span>읽은 줄 ' + d.rows.length + '줄 (원가 있는 줄 ' + (d.rows.length - d.blank) + ') (기준: ' + (d.vat === 'excl' ? 'VAT 제외, 1.1을 곱해 저장' : 'VAT 포함') + ')</span>';
       h += '<span>새로 추가 ' + d.merged.stat.added + ', 값 변경 ' + d.merged.stat.changed + ', 그대로 ' + d.merged.stat.same + ', 이전 값 유지 ' + d.merged.stat.kept + '</span>';
-      if (d.blank) h += '<span>원가 빈 줄 ' + d.blank + '개는 건너뜀</span>';
+      if (d.blank) h += '<span>원가 빈 줄 ' + d.blank + '개는 품목 이름만 저장 (기존 원가는 지우지 않음)</span>';
       if (d.bad.length) h += '<span class="miss">읽지 못한 줄 ' + d.bad.length + '개: ' + esc(d.bad.slice(0, 5).join(', ')) + (d.bad.length > 5 ? ' 외' : '') + '</span>';
       h += '<div><button type="button" class="chip" data-act="costsave" aria-pressed="true"' + (S.saving ? ' disabled' : '') + '>' + (S.saving ? '저장 중…' : '저장') + '</button> <button type="button" class="chip" data-act="costcancel">취소</button></div></div>';
     }
     h += '<div class="card-h pad"><h2>확인이 필요한 것</h2></div>';
-    if (unm && unm.qty) h += '<div class="li"><span>매핑표에 없는 옵션</span><b class="num">' + n0(unm.qty) + '개</b></div>';
-    if (!M.noCost.length) h += '<p class="note pad">' + (M.skus.length ? '이 기간에 팔린 SKU는 모두 원가가 입력되어 있습니다.' : '이 기간에 주문 기록이 없습니다.') + '</p>';
+    var nr = X.rows[C.NONE], nn = 0;
+    if (nr) CHS.forEach(function (k) { var x = nr.ch[k]; if (x.n && Math.round(x.rev)) { nn++; h += '<div class="li"><span>' + CH_NAME[k] + ' 품목 미지정 매출 <small>(' + (k === 'naver' ? '매핑 없는 옵션, 종류 미상' : k === 'coupang' ? '매핑 없는 쿠팡 상품번호' : '구글 시트 품번 빈칸') + ')</small></span><b class="num">' + n0(x.rev) + '</b></div>'; } });
+    var nc = Object.keys(X.rows).filter(function (c) { return c !== C.NONE && iv(X, c).noCost > 0; }).map(function (c) { return { c: c, q: iv(X, c).noCost }; }).sort(function (a, b) { return b.q - a.q; });
+    if (!nc.length) h += '<p class="note pad">' + (nn ? '' : '품목 미지정 매출이 없습니다. ') + '이 기간에 팔린 품목은 모두 원가가 입력되어 있습니다.</p>';
     else {
-      h += '<p class="note pad">원가 미입력 SKU ' + M.noCost.length + '개 (이 기간 주문 수량 순)</p>';
-      M.noCost.slice(0, 8).forEach(function (s) { h += '<div class="li"><span><span class="num">' + esc(s.code) + '</span> ' + esc(s.name) + '</span><b class="num">' + n0(s.noCost) + '개</b></div>'; });
-      if (M.noCost.length > 8) h += '<p class="note pad">외 ' + (M.noCost.length - 8) + '개는 [SKU 기준] 표에서 볼 수 있습니다.</p>';
+      h += '<p class="note pad">원가 미입력 품목 ' + nc.length + '개 (이 기간 수량 순)</p>';
+      nc.slice(0, 8).forEach(function (o) { h += '<div class="li"><span>' + codeLabel(o.c) + ' ' + esc(itemName(X, o.c)) + '</span><b class="num">' + n0(o.q) + '개</b></div>'; });
+      if (nc.length > 8) h += '<p class="note pad">외 ' + (nc.length - 8) + '개는 표에서 원가 칸이 "미입력"으로 보입니다.</p>';
     }
     h += '</section>';
     return h;
@@ -770,23 +811,26 @@
   }
   function downloadProductsCsv() {
     var lines = [], tag = S.from + '_' + S.to;
-    if (S.pch === 'coupang') {
-      lines.push(['품목', '쿠팡 상품번호', '수량', '입고 금액']);
-      C.coupangTop(DATA, S.from, S.to).forEach(function (o) { lines.push([o.name, o.skuNo, o.qty, Math.round(o.amount)]); });
-      return saveCsv(lines, 'tomtomi_products_coupang_' + tag + '.csv');
+    if (S.pch === 'naver' && S.pmode === 'page') {
+      var M = C.products(DATA, S.from, S.to);
+      lines.push(['상품번호', '상품명', '품목코드', '품목명', '수량', '순매출', '원가', '마진', '마진율(%)']);
+      M.prods.forEach(function (o) {
+        lines.push([o.prodId, o.name, '', '', o.qty, Math.round(o.net), o.margin === null ? '' : Math.round(o.cost), o.margin === null ? '' : Math.round(o.margin), o.margin === null || !(o.net > 0) ? '' : (o.margin / o.net * 100).toFixed(1)]);
+        o.skuList.forEach(function (x) { lines.push([o.prodId, o.name, x.code, x.name, x.qty, Math.round(x.rev), x.noCost > 0 ? '' : Math.round(x.cost), '', '']); });
+      });
+      return saveCsv(lines, 'tomtomi_naver_pages_' + tag + '.csv');
     }
-    var M = C.products(DATA, S.from, S.to);
-    if (S.pmode === 'sku') {
-      lines.push(['SKU코드', '품명', '주문 수량', '취소/반품', '매출 (배분)', '배분 추정 여부', '개당 원가', '원가 합계', '원가 미입력 수량']);
-      M.skus.forEach(function (s) { lines.push([s.code, s.name, s.qty, s.cancel, Math.round(s.rev), s.est ? '추정' : '정확', s.unit === null ? '' : s.unit, Math.round(s.cost), s.noCost]); });
-      return saveCsv(lines, 'tomtomi_products_sku_' + tag + '.csv');
-    }
-    lines.push(['상품번호', '상품명', 'SKU코드', 'SKU 품명', '수량', '순매출', '원가', '마진', '마진율(%)']);
-    M.prods.forEach(function (o) {
-      lines.push([o.prodId, o.name, '', '', o.qty, Math.round(o.net), o.margin === null ? '' : Math.round(o.cost), o.margin === null ? '' : Math.round(o.margin), o.margin === null || !(o.net > 0) ? '' : (o.margin / o.net * 100).toFixed(1)]);
-      o.skuList.forEach(function (s) { lines.push([o.prodId, o.name, s.code, s.name, s.qty, '', s.noCost > 0 ? '' : Math.round(s.cost), '', '']); });
+    var X = itemModel(S.from, S.to);
+    lines.push(['품목코드', '품목명', '채널', '수량', '매출', '배분 추정', '원가', '원가 미입력 수량', '마진', '마진율(%)']);
+    itemList().forEach(function (c) {
+      var r = X.rows[c], code = c === C.NONE ? '' : c.indexOf('CP:') === 0 ? '(코드 없음, 쿠팡 ' + c.slice(3) + ')' : c, nm = c === C.NONE ? '품목 미지정' : itemName(X, c);
+      chList().forEach(function (k) {
+        var x = r ? r.ch[k] : null; if (!x || !x.n) { lines.push([code, nm, CH_NAME[k], 0, 0, '', '', '', '', '']); return; }
+        var m = x.qty > 0 && x.noCost === 0 && c !== C.NONE ? x.rev - x.cost : null;
+        lines.push([code, nm, CH_NAME[k], x.qty, Math.round(x.rev), x.est ? '추정' : '', c === C.NONE ? '' : Math.round(x.cost), x.noCost, m === null ? '' : Math.round(m), m === null || !(x.rev > 0) ? '' : (m / x.rev * 100).toFixed(1)]);
+      });
     });
-    saveCsv(lines, 'tomtomi_products_' + tag + '.csv');
+    saveCsv(lines, 'tomtomi_items_' + S.pch + '_' + tag + '.csv');
   }
 
   /* ───────── 원가표 올리기 ───────── */
@@ -820,7 +864,12 @@
     var rows = [], bad = [], blank = 0, seen = {};
     for (i = hr + 1; i < aoa.length; i++) {
       var r = aoa[i], code = String(r[cCode] === undefined ? '' : r[cCode]).trim(); if (!code) continue;
-      var raw = r[cCost]; if (raw === '' || raw === null || raw === undefined) { blank++; continue; }
+      var raw = r[cCost];
+      if (raw === '' || raw === null || raw === undefined) { // 원가 빈 줄: 품목 마스터(코드, 이름)로만 저장
+        blank++; var bf = cFrom >= 0 ? xlDate(r[cFrom]) : '';
+        if (bf !== null && !seen[code + '|' + bf]) { seen[code + '|' + bf] = 1; rows.push({ c: code, name: cName >= 0 ? String(r[cName] || '').trim() : '', cost: 0, from: bf, note: cNote >= 0 ? String(r[cNote] || '').trim() : '' }); }
+        continue;
+      }
       var cost = typeof raw === 'number' ? raw : (/^[\d,.\s원]+$/.test(String(raw)) ? C.num(String(raw).replace(/원/g, '')) : NaN);
       var from = cFrom >= 0 ? xlDate(r[cFrom]) : '';
       if (!(cost > 0) || from === null) { bad.push(code + (from === null ? ' (날짜)' : ' (원가)')); continue; }
