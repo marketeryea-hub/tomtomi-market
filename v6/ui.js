@@ -8,7 +8,7 @@
   var C = root.TTCalc;
   var DATA = null, RAW = null;      // 정리된 데이터
   var META = {};        // 불러오기 결과(기타마켓 연결 여부 등)
-  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '', tpage: 0, topen: '', acOpen: {}, acSel: null, acBasis: 'ad' };
+  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '', tpage: 0, topen: '', acOpen: {}, acSel: null, acBasis: 'ad', adView: 'camp', aitem: '', amd: 'all', apage: 0, aopen: {} };
   var READY = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, data: 1, slack: 1 }; // 옮겨온 메뉴
   var STORE_KEY = 'tt6_state';
 
@@ -37,7 +37,7 @@
   function pctText(p) { return (p > 0 ? '+' : '') + Math.round(p * 100).toLocaleString('ko-KR') + '%'; }
   function today() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
   // 열 때마다 기간은 '최근 1일'에서 시작한다. 보던 메뉴, 채널, 차트 단위만 기억한다.
-  var KEEP = ['view', 'ch', 'unit', 'ad', 'pch', 'pmode'];
+  var KEEP = ['view', 'ch', 'unit', 'ad', 'pch', 'pmode', 'adView', 'amd', 'aitem'];
   function save() { try { var o = {}; KEEP.forEach(function (k) { o[k] = S[k]; }); localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) { /* 저장 못 해도 화면은 동작 */ } }
   function restore() { try { var v = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); if (v && typeof v === 'object') KEEP.forEach(function (k) { if (typeof v[k] === 'string') S[k] = v[k]; }); } catch (e) { /* 무시 */ } }
 
@@ -445,8 +445,14 @@
     var prows = has ? C.adsBucket(C.adsDaily(DATA, cr.from, cr.to), unit) : null;
     return { cr: cr, has: has, unit: unit, rows: rows, prows: prows, t: C.adsTotal(rows), pt: has ? C.adsTotal(prows) : null };
   }
+  function adViewToggle() {
+    var h = '<div class="viewtoggle" role="group" aria-label="광고 보기 방식">';
+    [['camp', '캠페인 기준'], ['item', '상품 기준']].forEach(function (v) { h += '<button type="button" class="chip" data-act="adview" data-key="' + v[0] + '" aria-pressed="' + (S.adView === v[0]) + '">' + v[1] + '</button>'; });
+    return h + '</div>';
+  }
   function viewAds() {
-    var M = adsModel(), md = S.ad, t = M.t, pt = M.pt, has = M.has, R = C.ratio, h = '';
+    if (S.adView === 'item') return adViewToggle() + viewAdItem();
+    var M = adsModel(), md = S.ad, t = M.t, pt = M.pt, has = M.has, R = C.ratio, h = adViewToggle();
     var mdName = MEDIA.filter(function (c) { return c[0] === md; })[0][1];
     h += '<div class="tabs" role="tablist" aria-label="광고 매체">';
     MEDIA.forEach(function (c) { h += '<button type="button" role="tab" class="tab" data-act="ad" data-key="' + c[0] + '" aria-selected="' + (c[0] === md) + '">' + c[1] + '</button>'; });
@@ -554,6 +560,86 @@
     if (md === 'sa' || md === 'coupang') h += adTreeHtml(md);
     return h;
   }
+  /* ───────── 상품 기준 보기: 품목 하나 × 날짜 × 광고 ─────────
+   * 기간 동안 몇 개가 팔렸고(전체 판매), 그중 광고로 몇 개가 팔렸는지(광고 판매)를 날짜별로 본다.
+   */
+  function dowOf(d) { var p = d.split('-'); return ['일', '월', '화', '수', '목', '금', '토'][new Date(+p[0], +p[1] - 1, +p[2]).getDay()]; }
+  var AIC = { key: '', v: null };
+  function aiCache(k, f) { if (AIC.key !== k) AIC = { key: k, v: f() }; return AIC.v; }
+  function itemQtyRange(key, from, to) { // 그 품목의 전체 판매 수량, 매출 (네이버 + 쿠팡 입고 + 기타몰)
+    if (key.indexOf('MULTI:') === 0) return null;
+    var r = C.items(DATA, from, to).rows[key]; if (!r) return { qty: 0, rev: 0 };
+    return { qty: r.ch.naver.qty + r.ch.coupang.qty + r.ch.other.qty, rev: r.ch.naver.rev + r.ch.coupang.rev + r.ch.other.rev };
+  }
+  function aiLabel(key) {
+    if (key.indexOf('MULTI:') === 0) { var p = C.pageCodes(DATA)[key.slice(6)], cr = null; Object.keys(DATA.adDet.creatives).some(function (a) { if (DATA.adDet.creatives[a].mall === key.slice(6)) { cr = DATA.adDet.creatives[a]; return true; } return false; }); return '여러 품목: ' + (cr ? cr.name : '판매 페이지 ' + key.slice(6)) + (p ? ' (' + p.codes.slice(0, 4).join(', ') + ')' : ''); }
+    return (key.indexOf('CP:') === 0 ? '코드 없음' : key) + ' ' + itemName(itemModel(S.from, S.to), key);
+  }
+  function viewAdItem() {
+    var h = '', md = S.amd, cr = cmpRange(), has = !!cr;
+    var list = aiCache('list|' + md + '|' + S.from + '|' + S.to, function () { return C.adItemList(DATA, S.from, S.to, md); });
+    if (!S.aitem || !list.some(function (o) { return o.key === S.aitem; })) { if (!S.aitem && list.length) S.aitem = list[0].key; }
+    var key = S.aitem;
+    h += '<div class="tabs" role="tablist" aria-label="광고 매체">';
+    [['all', '전체'], ['sa', '네이버 SA'], ['coupang', '쿠팡애즈']].forEach(function (c) { h += '<button type="button" role="tab" class="tab" data-act="amd" data-key="' + c[0] + '" aria-selected="' + (md === c[0]) + '">' + c[1] + '</button>'; });
+    h += '</div>';
+    h += '<section class="card" aria-label="품목 고르기"><label class="aipick"><span>품목</span><select data-act="aitem">';
+    if (!list.some(function (o) { return o.key === key; }) && key) h += '<option value="' + esc(key) + '" selected>' + esc(aiLabel(key)) + ' (이 기간 광고 없음)</option>';
+    list.forEach(function (o) { h += '<option value="' + esc(o.key) + '"' + (o.key === key ? ' selected' : '') + '>' + esc(aiLabel(o.key)) + ' — 광고비 ' + n0(o.cost) + '원</option>'; });
+    if (!list.length && !key) h += '<option value="">이 기간에 광고가 있었던 품목이 없습니다</option>';
+    h += '</select></label><span class="note">이 기간에 광고가 있었던 품목만 광고비 순으로 나옵니다. 기간을 넓히면 더 많이 보여요.</span></section>';
+    if (!key) return h;
+
+    var rows = aiCache('d|' + key + '|' + md + '|' + S.from + '|' + S.to, function () { return C.adItemDaily(DATA, key, S.from, S.to, md); });
+    var prow = has ? aiCache('p|' + key + '|' + md + '|' + cr.from + '|' + cr.to, function () { return C.adItemDaily(DATA, key, cr.from, cr.to, md); }) : null;
+    function sum(rs) { var t = { cost: 0, rev: 0, qty: 0, clicks: 0, imp: 0 }; (rs || []).forEach(function (o) { t.cost += o.cost; t.rev += o.rev; t.qty += o.qty; t.clicks += o.clicks; t.imp += o.imp; }); return t; }
+    var t = sum(rows), pt = sum(prow), multi = key.indexOf('MULTI:') === 0;
+    var tq = itemQtyRange(key, S.from, S.to), pq = has ? itemQtyRange(key, cr.from, cr.to) : null;
+    var qName = md === 'sa' ? '광고 전환 (건)' : md === 'all' ? '광고로 팔린 수량' : '광고로 팔린 수량';
+    h += '<section class="strip" aria-label="품목 광고 요약">';
+    h += cell('전체 판매 수량', tq ? n0(tq.qty) + '개' : '-', tq && has ? dsub(tq.qty, pq.qty, true) : multi ? '여러 품목 판매 페이지라 전체 수량은 품목별로 봐 주세요' : '네이버 + 쿠팡 입고 + 기타몰');
+    h += cell(qName, n0(t.qty) + (md === 'sa' ? '건' : '개'), dsub(t.qty, pt.qty, has));
+    h += cell('광고 비중', tq && tq.qty > 0 ? pctOf(Math.min(t.qty, tq.qty), tq.qty) : '-', '전체 판매 중 광고로 팔린 몫');
+    h += cell('광고비', n0(t.cost), dsub(t.cost, pt.cost, has));
+    h += cell('광고매출', n0(t.rev), dsub(t.rev, pt.rev, has));
+    h += cell('ROAS', roasText(C.ratio(t.rev, t.cost)), has ? '이전 ' + roasText(C.ratio(pt.rev, pt.cost)) : '');
+    h += '</section>';
+    h += '<span class="note tight">광고비는 이 품목을 광고한 비용, 광고매출과 광고 판매는 광고를 보고 이 품목이 실제로 팔린 것 (다른 상품 광고를 보고 산 경우 포함)' + (md !== 'coupang' ? '. 네이버 SA는 판매 수량 대신 전환수(건)로 셉니다.' : '.') + ' 전체 판매의 쿠팡 몫은 쿠팡 입고(발주) 수량이라 소비자 판매와 날짜가 다를 수 있습니다.</span>';
+
+    // 차트: 전체 판매 수량(선, 비교 기간 점선) + 광고비(막대)
+    var byMonth = rows.length > 62, ser = [], pser = [];
+    function bucketize(rs, from) {
+      var out = [], m = {};
+      rs.forEach(function (o) { var k = byMonth ? o.d.slice(0, 7) : o.d; if (!m[k]) { m[k] = { label: byMonth ? k.slice(2, 4) + '.' + k.slice(5, 7) : o.d.slice(5, 7) + '.' + o.d.slice(8, 10), key: k, from: o.d, to: o.d, ad: 0, adq: 0 }; out.push(m[k]); } m[k].to = o.d; m[k].ad += o.cost; m[k].adq += o.qty; });
+      return out;
+    }
+    ser = bucketize(rows); if (prow) pser = bucketize(prow);
+    var qcache = aiCache('q|' + key + '|' + S.from + '|' + S.to + '|' + (cr ? cr.from : ''), function () {
+      return { c: ser.map(function (b) { var q = itemQtyRange(key, b.from, b.to); return q ? q.qty : 0; }), p: pser.map(function (b) { var q = itemQtyRange(key, b.from, b.to); return q ? q.qty : 0; }) };
+    });
+    ser.forEach(function (b, i) { b.sales = qcache.c[i]; }); pser.forEach(function (b, i) { b.sales = qcache.p[i]; });
+    h += '<section class="card" aria-label="품목 추이"><div class="card-h"><h2>' + esc(aiLabel(key)) + '</h2><span class="legend"><span class="lg-line"></span>전체 판매 수량</span>' + (has ? '<span class="legend"><span class="lg-dash"></span>비교 기간</span>' : '') + '<span class="legend"><span class="lg-bar"></span>광고비</span></div>';
+    h += ser.length >= 2 ? chartSvg(ser, has ? pser : null, null, { line: '전체 판매', bar: '광고비', unit: '개', barUnit: '원' }) : '<p class="note">조회 기간이 하루라서 차트는 생략했습니다.</p>';
+    h += '<span class="note">' + (byMonth ? '월별' : '날짜별') + (multi ? '. 여러 품목 판매 페이지는 전체 판매 수량을 품목별로 나눌 수 없어 0으로 보입니다.' : '') + '</span></section>';
+
+    // 날짜별 표 (최근부터 10줄)
+    var list2 = rows.slice().reverse(), pg = pageOf(list2, 10, 'apage');
+    h += '<section class="card flush" aria-label="날짜별 광고 성과"><div class="card-h pad"><h2>날짜별</h2><span class="hint">날짜를 누르면 그날 어느 캠페인, 광고그룹이었는지 펼쳐집니다' + (has ? '. 비교 칸은 비교 기간의 같은 순번 날짜' : '') + '</span></div><div class="scroll">';
+    h += '<table class="tbl wrap"><thead><tr><th scope="col">날짜</th><th scope="col" class="r">광고비</th><th scope="col" class="r">광고매출</th><th scope="col" class="r">ROAS</th><th scope="col" class="r">' + (md === 'sa' ? '광고 전환' : '광고 판매') + '</th><th scope="col" class="r">전체 판매</th><th scope="col" class="r">광고 비중</th>' + (has ? '<th scope="col" class="r">비교: 전체 / 광고 판매</th>' : '') + '</tr></thead><tbody>';
+    pg.rows.forEach(function (o) {
+      var q = itemQtyRange(key, o.d, o.d), open = !!S.aopen[o.d], idx = C.dayDiff(S.from, o.d), pd = has ? C.addDays(cr.from, idx) : null, po = prow && prow[idx], pq2 = pd && pd <= cr.to ? itemQtyRange(key, pd, pd) : null;
+      var zero = !o.cost && !o.rev && !(q && q.qty);
+      h += '<tr' + (zero ? ' class="zero-row"' : '') + '><th scope="row">' + (o.lines.length ? '<button type="button" class="exp" data-act="aopen" data-key="' + o.d + '" aria-expanded="' + open + '">' + (open ? '▾ ' : '▸ ') + dot(o.d) + ' ' + dowOf(o.d) + '</button>' : '<span class="iname">' + dot(o.d) + ' ' + dowOf(o.d) + '</span>') + '</th>';
+      h += '<td class="r num b">' + n0(o.cost) + '</td><td class="r num">' + n0(o.rev) + '</td><td class="r num">' + roasText(C.ratio(o.rev, o.cost)) + '</td><td class="r num b">' + n0(o.qty) + '</td><td class="r num">' + (q ? n0(q.qty) : '-') + '</td><td class="r num">' + (q && q.qty > 0 ? pctOf(Math.min(o.qty, q.qty), q.qty) : '-') + '</td>';
+      if (has) h += '<td class="r num">' + (pq2 ? n0(pq2.qty) : '-') + ' / ' + (po ? n0(po.qty) : '-') + ' <small class="zero">' + (pd && pd <= cr.to ? dot(pd).slice(5) : '') + '</small></td>';
+      h += '</tr>';
+      if (open) o.lines.forEach(function (l) { h += '<tr class="subrow"><th scope="row">└ ' + (l.medium === 'sa' ? '네이버' : '쿠팡') + ' / ' + esc(l.camp) + ' / ' + esc(l.group) + '</th><td class="r num">' + n0(l.cost) + '</td><td class="r num">' + n0(l.rev) + '</td><td class="r num">' + roasText(C.ratio(l.rev, l.cost)) + '</td><td class="r num">' + n0(l.qty) + '</td><td></td><td></td>' + (has ? '<td></td>' : '') + '</tr>'; });
+    });
+    h += '<tr class="sum"><th scope="row">합계</th><td class="r num b">' + n0(t.cost) + '</td><td class="r num">' + n0(t.rev) + '</td><td class="r num">' + roasText(C.ratio(t.rev, t.cost)) + '</td><td class="r num b">' + n0(t.qty) + '</td><td class="r num">' + (tq ? n0(tq.qty) : '-') + '</td><td class="r num">' + (tq && tq.qty > 0 ? pctOf(Math.min(t.qty, tq.qty), tq.qty) : '-') + '</td>' + (has ? '<td class="r num">' + (pq ? n0(pq.qty) : '-') + ' / ' + n0(pt.qty) + '</td>' : '') + '</tr>';
+    h += '</tbody></table>' + pagerHtml(pg) + '</div></section>';
+    return h;
+  }
+
   /* ───────── 캠페인 ▸ 광고그룹 ▸ 상품 ───────── */
   var ATCACHE = { key: '', T: null };
   function adTreeModel(md) {
@@ -1354,6 +1440,9 @@
     var el = ev.target.closest('[data-act]'); if (!el || el.tagName === 'INPUT') return;
     var act = el.getAttribute('data-act'), key = el.getAttribute('data-key');
     if (act === 'page') { var pf = el.getAttribute('data-field') || 'page'; S[pf] = (S[pf] || 0) + (key === 'older' ? 1 : -1); render(); return; }
+    if (act === 'adview') { S.adView = key; render(); return; }
+    if (act === 'amd') { S.amd = key; S.apage = 0; S.aopen = {}; render(); return; }
+    if (act === 'aopen') { if (S.aopen[key]) delete S.aopen[key]; else S.aopen[key] = 1; render(); return; }
     if (act === 'acopen') { if (S.acOpen[key]) delete S.acOpen[key]; else S.acOpen[key] = 1; render(); return; }
     if (act === 'acsel') { S.acSel = key ? JSON.parse(key) : null; render(); return; }
     if (act === 'acbasis') { S.acBasis = key; S.acSel = null; render(); return; }
@@ -1374,7 +1463,7 @@
     if (act === 'costcancel') { S.draft = null; S.costMsg = ''; render(); return; }
     if (act === 'pch' || act === 'pmode') { if (act === 'pch') S.pch = key; else S.pmode = key; S.open = ''; S.page = 0; save(); render(); return; }
     if (act === 'view') S.open = '';
-    if (act !== 'csv' && act !== 'adcsv') { S.page = 0; S.tpage = 0; } // 기간, 메뉴, 채널이 바뀌면 첫 쪽으로
+    if (act !== 'csv' && act !== 'adcsv') { S.page = 0; S.tpage = 0; S.apage = 0; } // 기간, 메뉴, 채널이 바뀌면 첫 쪽으로
     if (act === 'view') S.view = key;
     else if (act === 'preset') applyPreset(key);
     else if (act === 'cmp') {
@@ -1389,10 +1478,11 @@
     save(); render();
   }
   function onChange(ev) {
-    var el = ev.target; if (!el.matches || !el.matches('input[data-act]')) return;
+    var el = ev.target; if (!el.matches || !el.matches('input[data-act], select[data-act]')) return;
     var act = el.getAttribute('data-act'), v = el.value;
     if (act === 'q') { onSearch(ev); return; }
     if (act === 'upfiles') { onUpload(el.files); el.value = ''; return; }
+    if (act === 'aitem') { S.aitem = el.value; S.apage = 0; S.aopen = {}; render(); return; }
     if (act === 'sel') {
       var id = el.getAttribute('data-key'), at = S.sel.indexOf(id); S.selMsg = '';
       if (at >= 0) S.sel.splice(at, 1);
@@ -1407,7 +1497,7 @@
     else if (act === 'to') { S.to = v; if (S.to < S.from) S.from = S.to; S.preset = ''; }
     else if (act === 'cmpFrom') { S.cmpFrom = v; if (S.cmpTo && S.cmpFrom > S.cmpTo) S.cmpTo = S.cmpFrom; }
     else if (act === 'cmpTo') { S.cmpTo = v; if (S.cmpFrom && S.cmpTo < S.cmpFrom) S.cmpFrom = S.cmpTo; }
-    S.page = 0; S.tpage = 0; clampDates(); save(); render();
+    S.page = 0; S.tpage = 0; S.apage = 0; clampDates(); save(); render();
   }
 
   // 검색어 입력: 입력칸은 그대로 두고 표만 다시 그린다 (한글 입력 중에 글자가 끊기지 않게)

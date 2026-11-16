@@ -268,3 +268,6 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; color
 .cover b { color: var(--warn); }
 .cover.ok { background: var(--accent-soft); color: var(--accent-deep); }
 .linkbtn { border: 0; background: none; padding: 0; color: var(--accent-deep); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.viewtoggle { display: flex; gap: 8px; margin-bottom: 12px; }
+.aipick { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-weight: 700; }
+.aipick select { flex: 1; min-width: 0; max-width: 640px; min-height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; font-size: 14px; font-weight: 400; }
