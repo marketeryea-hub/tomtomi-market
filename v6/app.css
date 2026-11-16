@@ -271,3 +271,13 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; color
 .viewtoggle { display: flex; gap: 8px; margin-bottom: 12px; }
 .aipick { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-weight: 700; }
 .aipick select { flex: 1; min-width: 0; max-width: 640px; min-height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; font-size: 14px; font-weight: 400; }
+.aibox { position: relative; flex: 1; min-width: 0; max-width: 640px; }
+.aibox input { width: 100%; min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--text); font: inherit; font-size: 15px; font-weight: 400; }
+.aibox input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.aisug { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(20, 16, 60, .12); overflow: hidden; }
+.aisug-i { display: flex; justify-content: space-between; gap: 12px; width: 100%; padding: 10px 14px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--text); font: inherit; font-size: 14px; font-weight: 400; text-align: left; cursor: pointer; }
+.aisug-i:first-child { border-top: 0; }
+.aisug-i:hover, .aisug-i:focus, .aisug-i.first { background: var(--accent-soft); outline: none; }
+.aisug-i small { color: var(--sub); white-space: nowrap; }
+.aisug-none { padding: 12px 14px; color: var(--sub); font-size: 14px; }
+.aicur { margin: 12px 0 0; font-size: 14px; }

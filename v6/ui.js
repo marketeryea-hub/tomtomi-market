@@ -8,7 +8,7 @@
   var C = root.TTCalc;
   var DATA = null, RAW = null;      // 정리된 데이터
   var META = {};        // 불러오기 결과(기타마켓 연결 여부 등)
-  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '', tpage: 0, topen: '', acOpen: {}, acSel: null, acBasis: 'ad', adView: 'camp', aitem: '', amd: 'all', apage: 0, aopen: {} };
+  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '', tpage: 0, topen: '', acOpen: {}, acSel: null, acBasis: 'ad', adView: 'camp', aitem: '', amd: 'all', apage: 0, aopen: {}, aiq: '' };
   var READY = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, data: 1, slack: 1 }; // 옮겨온 메뉴
   var STORE_KEY = 'tt6_state';
 
@@ -575,19 +575,33 @@
     if (key.indexOf('MULTI:') === 0) { var p = C.pageCodes(DATA)[key.slice(6)], cr = null; Object.keys(DATA.adDet.creatives).some(function (a) { if (DATA.adDet.creatives[a].mall === key.slice(6)) { cr = DATA.adDet.creatives[a]; return true; } return false; }); return '여러 품목: ' + (cr ? cr.name : '판매 페이지 ' + key.slice(6)) + (p ? ' (' + p.codes.slice(0, 4).join(', ') + ')' : ''); }
     return (key.indexOf('CP:') === 0 ? '코드 없음' : key) + ' ' + itemName(itemModel(S.from, S.to), key);
   }
+  // 품목 검색 결과: 이 기간 광고가 있었던 품목(광고비 순) 먼저, 그다음 나머지 품목
+  function aiCandidates(list) {
+    var seen = {}, out = [];
+    list.forEach(function (o) { seen[o.key] = 1; out.push({ key: o.key, cost: o.cost }); });
+    itemOrder().forEach(function (c) { if (!seen[c]) out.push({ key: c, cost: 0 }); });
+    return out;
+  }
+  function aiSuggest(list) {
+    var q = S.aiq.trim().toLowerCase(); if (!q) return '';
+    var words = q.split(/\s+/), hits = aiCandidates(list).filter(function (o) { var t = aiLabel(o.key).toLowerCase(); return words.every(function (w) { return t.indexOf(w) >= 0; }); }).slice(0, 8);
+    if (!hits.length) return '<div class="aisug-none">검색 결과가 없습니다</div>';
+    return hits.map(function (o, i) { return '<button type="button" role="option" class="aisug-i' + (i === 0 ? ' first' : '') + '" data-act="aipick" data-key="' + esc(o.key) + '"><span>' + esc(aiLabel(o.key)) + '</span><small>' + (o.cost ? '광고비 ' + n0(o.cost) + '원' : '이 기간 광고 없음') + '</small></button>'; }).join('');
+  }
+  var AILIST = [];
   function viewAdItem() {
     var h = '', md = S.amd, cr = cmpRange(), has = !!cr;
-    var list = aiCache('list|' + md + '|' + S.from + '|' + S.to, function () { return C.adItemList(DATA, S.from, S.to, md); });
+    var list = aiCache('list|' + md + '|' + S.from + '|' + S.to, function () { return C.adItemList(DATA, S.from, S.to, md); }); AILIST = list;
     if (!S.aitem || !list.some(function (o) { return o.key === S.aitem; })) { if (!S.aitem && list.length) S.aitem = list[0].key; }
     var key = S.aitem;
     h += '<div class="tabs" role="tablist" aria-label="광고 매체">';
     [['all', '전체'], ['sa', '네이버 SA'], ['coupang', '쿠팡애즈']].forEach(function (c) { h += '<button type="button" role="tab" class="tab" data-act="amd" data-key="' + c[0] + '" aria-selected="' + (md === c[0]) + '">' + c[1] + '</button>'; });
     h += '</div>';
-    h += '<section class="card" aria-label="품목 고르기"><label class="aipick"><span>품목</span><select data-act="aitem">';
-    if (!list.some(function (o) { return o.key === key; }) && key) h += '<option value="' + esc(key) + '" selected>' + esc(aiLabel(key)) + ' (이 기간 광고 없음)</option>';
-    list.forEach(function (o) { h += '<option value="' + esc(o.key) + '"' + (o.key === key ? ' selected' : '') + '>' + esc(aiLabel(o.key)) + ' — 광고비 ' + n0(o.cost) + '원</option>'; });
-    if (!list.length && !key) h += '<option value="">이 기간에 광고가 있었던 품목이 없습니다</option>';
-    h += '</select></label><span class="note">이 기간에 광고가 있었던 품목만 광고비 순으로 나옵니다. 기간을 넓히면 더 많이 보여요.</span></section>';
+    h += '<section class="card" aria-label="품목 고르기"><div class="aipick"><label for="aiq">품목</label><div class="aibox">';
+    h += '<input id="aiq" type="search" data-act="aiq" value="' + esc(S.aiq) + '" placeholder="품목코드나 품목명으로 검색 (예: 캐롤, SOCD-0320)" autocomplete="off" aria-autocomplete="list" aria-controls="aisug">';
+    h += '<div id="aisug" class="aisug" role="listbox"' + (S.aiq.trim() ? '' : ' hidden') + '>' + aiSuggest(list) + '</div></div></div>';
+    h += key ? '<p class="aicur">지금 보는 품목: <b>' + esc(aiLabel(key)) + '</b>' + (list.some(function (o) { return o.key === key; }) ? '' : ' <span class="zero">(이 기간 광고 없음)</span>') + '</p>' : '<p class="note">품목을 검색해서 골라 주세요.</p>';
+    h += '</section>';
     if (!key) return h;
 
     var rows = aiCache('d|' + key + '|' + md + '|' + S.from + '|' + S.to, function () { return C.adItemDaily(DATA, key, S.from, S.to, md); });
@@ -1441,6 +1455,7 @@
     var act = el.getAttribute('data-act'), key = el.getAttribute('data-key');
     if (act === 'page') { var pf = el.getAttribute('data-field') || 'page'; S[pf] = (S[pf] || 0) + (key === 'older' ? 1 : -1); render(); return; }
     if (act === 'adview') { S.adView = key; render(); return; }
+    if (act === 'aipick') { S.aitem = key; S.aiq = ''; S.apage = 0; S.aopen = {}; save(); render(); return; }
     if (act === 'amd') { S.amd = key; S.apage = 0; S.aopen = {}; render(); return; }
     if (act === 'aopen') { if (S.aopen[key]) delete S.aopen[key]; else S.aopen[key] = 1; render(); return; }
     if (act === 'acopen') { if (S.acOpen[key]) delete S.acOpen[key]; else S.acOpen[key] = 1; render(); return; }
@@ -1480,9 +1495,9 @@
   function onChange(ev) {
     var el = ev.target; if (!el.matches || !el.matches('input[data-act], select[data-act]')) return;
     var act = el.getAttribute('data-act'), v = el.value;
+    if (act === 'aiq') return; // 검색칸에서 포커스가 빠질 때 목록을 다시 그리면 누르던 결과가 사라져 클릭이 무시된다
     if (act === 'q') { onSearch(ev); return; }
     if (act === 'upfiles') { onUpload(el.files); el.value = ''; return; }
-    if (act === 'aitem') { S.aitem = el.value; S.apage = 0; S.aopen = {}; render(); return; }
     if (act === 'sel') {
       var id = el.getAttribute('data-key'), at = S.sel.indexOf(id); S.selMsg = '';
       if (at >= 0) S.sel.splice(at, 1);
@@ -1504,6 +1519,7 @@
   function onSearch(ev) {
     var el = ev.target; if (!el.matches) return;
     if (el.matches('textarea[data-act="sltext"]')) { SL.text = el.value; SL.edited = true; return; }
+    if (el.matches('input[data-act="aiq"]')) { S.aiq = el.value; var sg = document.getElementById('aisug'); if (sg) { sg.innerHTML = aiSuggest(AILIST); sg.hidden = !S.aiq.trim(); } return; }
     if (!el.matches('input[data-act="q"]')) return;
     if (S.q === el.value) return;
     S.q = el.value; S.page = 0; S.open = ''; refreshProdBody();
@@ -1533,6 +1549,12 @@
     document.addEventListener('click', onClick);
     document.addEventListener('change', onChange);
     document.addEventListener('input', onSearch);
+    document.addEventListener('keydown', function (ev) {
+      var el = ev.target; if (!el.matches || !el.matches('input[data-act="aiq"]')) return;
+      if (ev.key === 'Enter') { var f = document.querySelector('#aisug .aisug-i'); if (f) { ev.preventDefault(); f.click(); } }
+      else if (ev.key === 'Escape') { S.aiq = ''; el.value = ''; var sg = document.getElementById('aisug'); if (sg) sg.hidden = true; }
+      else if (ev.key === 'ArrowDown') { var b = document.querySelector('#aisug .aisug-i'); if (b) { ev.preventDefault(); b.focus(); } }
+    });
     // 파일 끌어다 놓기 (데이터 관리)
     document.addEventListener('dragover', function (ev) { var z = ev.target.closest && ev.target.closest('[data-drop]'); if (z) { ev.preventDefault(); z.classList.add('over'); } });
     document.addEventListener('dragleave', function (ev) { var z = ev.target.closest && ev.target.closest('[data-drop]'); if (z) z.classList.remove('over'); });
