@@ -8,8 +8,8 @@
   var C = root.TTCalc;
   var DATA = null, RAW = null;      // 정리된 데이터
   var META = {};        // 불러오기 결과(기타마켓 연결 여부 등)
-  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '', tpage: 0, topen: '', acOpen: {}, acSel: null, acBasis: 'ad', adView: 'camp', aitem: '', amd: 'all', apage: 0, aopen: {}, aiq: '' };
-  var READY = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, data: 1, slack: 1 }; // 옮겨온 메뉴
+  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '', tpage: 0, topen: '', acOpen: {}, acSel: null, acBasis: 'ad', adView: 'camp', aitem: '', amd: 'all', apage: 0, aopen: {}, aiq: '', ppage: 0 };
+  var READY = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, promo: 1, data: 1, slack: 1 }; // 옮겨온 메뉴
   var STORE_KEY = 'tt6_state';
 
   var VIEWS = [
@@ -18,6 +18,7 @@
     { id: 'ads', label: '광고', group: 'view' },
     { id: 'products', label: '상품', group: 'view' },
     { id: 'customers', label: '고객/유입', group: 'view' },
+    { id: 'promo', label: '프로모션', group: 'view' },
     { id: 'slack', label: '슬랙 리포트', group: 'manage' },
     { id: 'data', label: '데이터 관리', group: 'manage' }
   ];
@@ -1377,6 +1378,187 @@
     return h;
   }
 
+  /* ───────── 프로모션 ─────────
+   * 프로모션(기획전 등)을 등록해 두면 기간 매출, 평소 대비 증분, 비용, ROI를 계산한다. 계산 규칙은 calc.js promoCalc.
+   * 저장: channel=promo, date=프로모션 id 한 줄. 지우기는 del 표시만 한다(줄을 없애지 않음).
+   */
+  var PR = { form: null, open: '', msg: '', saving: false, q: '', delAsk: false, cache: {} };
+  var PKINDS = ['기획전', '기간 할인', '쿠폰', '사은품/증정', '라이브', '체험단', '기타'];
+  var PCH = [['naver', '네이버'], ['coupang', '쿠팡'], ['other', '기타몰'], ['all', '전체 채널']];
+  var PBASE = [['prev', '바로 앞 같은 길이'], ['lastYear', '작년 같은 기간'], ['custom', '직접 지정'], ['none', '비교하지 않음']];
+  var PADMODE = [['full', '기간 광고비 전부'], ['extra', '평소보다 더 쓴 만큼만'], ['none', '넣지 않음']];
+  function pName(list, key) { var f = list.filter(function (x) { return x[0] === key; })[0]; return f ? f[1] : list[0][1]; }
+  function promoGet(id) { return DATA.promos.filter(function (p) { return p.id === id; })[0] || null; }
+  function promoKey(p) { return p.id + '|' + (p.updated || '') + '|' + DATA.last + '|' + (DATA.costVer ? DATA.costVer.ver : ''); }
+  function promoRes(p) { var k = promoKey(p); return PR.cache[k] || (PR.cache[k] = C.promoCalc(DATA, p)); }
+  function pItemLabel(code) { return (code.indexOf('CP:') === 0 ? '코드 없음' : code) + ' ' + itemName(itemModel(S.from, S.to), code); }
+  function signed(v) { return (v > 0 ? '+' : '') + n0(v); }
+  function roiText(v) { return v === null || v === undefined ? '-' : (v > 0 ? '+' : '') + n0(v * 100) + '%'; }
+  function promoBlank() {
+    var last = DATA.promos.filter(function (p) { return p.fee !== undefined && p.fee !== '' && p.ch !== 'coupang' && p.ch !== 'other'; })[0]; // 수수료율은 지난번 값을 먼저 채워 둔다
+    return { id: '', name: '', kind: PKINDS[0], from: '', to: '', ch: 'naver', items: [], fee: last ? String(last.fee) : '', base: 'prev', baseFrom: '', ad: 'full', adExtra: '', coupon: '', gift: '', etc: '', memo: '' };
+  }
+  function promoToForm(p) {
+    var c = p.costs || {};
+    function t(v) { return v ? String(v) : ''; }
+    return { id: p.id, name: p.name || '', kind: p.kind || PKINDS[0], from: p.from, to: p.to, ch: p.ch || 'all', items: (p.items || []).slice(), fee: p.fee === undefined ? '' : String(p.fee), base: p.base || 'prev', baseFrom: p.baseFrom || '', ad: p.ad || 'full', adExtra: t(c.adExtra), coupon: t(c.coupon), gift: t(c.gift), etc: t(c.etc), memo: p.memo || '' };
+  }
+  function promoSuggest() {
+    var q = PR.q.trim().toLowerCase(); if (!q || !PR.form) return '';
+    var words = q.split(/\s+/), have = {}; PR.form.items.forEach(function (c) { have[c] = 1; });
+    var hits = itemOrder().filter(function (c) { if (have[c]) return false; var t = pItemLabel(c).toLowerCase(); return words.every(function (w) { return t.indexOf(w) >= 0; }); }).slice(0, 8);
+    if (!hits.length) return '<div class="aisug-none">검색 결과가 없습니다</div>';
+    return hits.map(function (c, i) { return '<button type="button" role="option" class="aisug-i' + (i === 0 ? ' first' : '') + '" data-act="ppick" data-key="' + esc(c) + '"><span>' + esc(pItemLabel(c)) + '</span><small>추가</small></button>'; }).join('');
+  }
+  function promoFormHtml() {
+    var f = PR.form, h = '';
+    function txt(label, field, ph, cls, hint) { return '<label' + (cls ? ' class="' + cls + '"' : '') + '><span>' + label + '</span><input type="text" data-pf="' + field + '" value="' + esc(f[field]) + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : '') + ' autocomplete="off">' + (hint ? '<small>' + hint + '</small>' : '') + '</label>'; }
+    function won1(label, field, hint) { return '<label><span>' + label + '</span><input type="text" inputmode="numeric" data-pf="' + field + '" value="' + esc(f[field]) + '" placeholder="0" autocomplete="off">' + (hint ? '<small>' + hint + '</small>' : '') + '</label>'; }
+    function date(label, field) { return '<label><span>' + label + '</span><input type="date" data-pf="' + field + '" value="' + esc(f[field]) + '"></label>'; }
+    function sel(label, field, opts, hint) { return '<label><span>' + label + '</span><select data-pf="' + field + '">' + opts.map(function (o) { var v = Array.isArray(o) ? o[0] : o, n = Array.isArray(o) ? o[1] : o; return '<option value="' + esc(v) + '"' + (f[field] === v ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select>' + (hint ? '<small>' + hint + '</small>' : '') + '</label>'; }
+    h += '<section class="card" aria-label="프로모션 등록"><div class="card-h"><h2>' + (f.id ? '프로모션 수정' : '프로모션 등록') + '</h2><span class="hint">기간이 미래여도 미리 등록할 수 있습니다</span></div>';
+    h += '<div class="pform">' + txt('이름', 'name', '예: 11월 위인 기획전', 'w2') + sel('종류', 'kind', PKINDS) + sel('채널', 'ch', PCH, '어느 채널 매출로 볼지') + date('시작일', 'from') + date('종료일', 'to');
+    h += sel('평소 매출 (비교 기준)', 'base', PBASE, '시즌 상품은 작년 같은 기간이 더 맞습니다') + (f.base === 'custom' ? date('비교 기간 시작일', 'baseFrom') : '') + '</div>';
+    h += '<div class="pitems"><b>대상 품목</b><div class="pchips">';
+    if (!f.items.length) h += '<span class="zero">고르지 않으면 이 채널의 전체 매출로 계산합니다</span>';
+    f.items.forEach(function (c) { h += '<span class="pchip">' + esc(pItemLabel(c)) + '<button type="button" data-act="pitemdel" data-key="' + esc(c) + '" aria-label="' + esc(c) + ' 빼기">×</button></span>'; });
+    h += '</div><div class="aibox"><input id="pq" type="search" data-act="pq" value="' + esc(PR.q) + '" placeholder="품목코드나 품목명으로 검색해서 추가 (예: 위인, SOMD-0018)" autocomplete="off" aria-controls="psug"><div id="psug" class="aisug" role="listbox"' + (PR.q.trim() ? '' : ' hidden') + '>' + promoSuggest() + '</div></div></div>';
+    h += '<div class="pform">' + sel('광고비 (자동으로 가져옴)', 'ad', PADMODE, '대상 품목의 네이버 SA, 쿠팡애즈 광고비') + won1('그 밖의 광고비 (원)', 'adExtra', '메타, 인플루언서처럼 품목에 연결 안 되는 광고');
+    h += won1('쿠폰/할인 부담액 (원)', 'coupon', '판매가를 낮춘 할인은 넣지 않습니다 (매출에 이미 반영)') + won1('사은품/증정 (원)', 'gift') + won1('기타 비용 (원)', 'etc', '참가비, 제작비 등');
+    h += (f.ch === 'coupang' || f.ch === 'other' ? '' : txt('네이버 수수료율 (%)', 'fee', '예: 5.5', '', '이 프로모션 때의 수수료율. 저장해 두면 나중에 바뀌어도 이 값으로 계산')) + txt('메모', 'memo', '', 'w2') + '</div>';
+    h += '<p class="note" id="pmsg"' + (PR.msg ? '' : ' hidden') + '><b class="warn">' + esc(PR.msg) + '</b></p>';
+    h += '<div class="plan-f"><span></span>';
+    if (f.id) h += PR.delAsk ? '<button type="button" class="chip" data-act="pdel"' + (PR.saving ? ' disabled' : '') + '>정말 지우기</button>' : '<button type="button" class="chip" data-act="pdelask">지우기</button>';
+    h += '<button type="button" class="chip" data-act="pcancel">취소</button><button type="button" class="btn" data-act="psave"' + (PR.saving ? ' disabled' : '') + '>' + (PR.saving ? '저장 중…' : '저장') + '</button></div></section>';
+    return h;
+  }
+  function promoWrite(rec, okMsg) {
+    PR.saving = true; PR.msg = ''; render();
+    root.TTData.saveRows([{ channel: 'promo', date: rec.id, data: [rec] }]).then(function () {
+      RAW.promo = (RAW.promo || []).filter(function (p) { return p && p.id !== rec.id; }); RAW.promo.push(rec);
+      DATA.promos = C.promoList(RAW.promo); PR.form = null; PR.q = ''; PR.delAsk = false; PR.open = rec.del ? '' : rec.id; PR.msg = okMsg; S.ppage = 0;
+    }).catch(function (e) { PR.msg = '저장하지 못했습니다. ' + (e && e.message); })
+      .then(function () { PR.saving = false; render(); });
+  }
+  function promoSave() {
+    var f = PR.form; if (!f || PR.saving) return;
+    var name = f.name.trim(), fee = f.fee.trim() === '' ? 0 : C.num(f.fee);
+    function bad(m) { PR.msg = m; render(); }
+    if (!name) return bad('이름을 적어 주세요.');
+    if (!f.from || !f.to) return bad('시작일과 종료일을 골라 주세요.');
+    if (f.from > f.to) return bad('종료일이 시작일보다 빠릅니다.');
+    if (f.base === 'custom' && !f.baseFrom) return bad('비교 기간 시작일을 골라 주세요.');
+    if (f.base === 'custom' && f.baseFrom <= f.to && C.addDays(f.baseFrom, C.dayDiff(f.from, f.to)) >= f.from) return bad('비교 기간이 프로모션 기간과 겹칩니다.');
+    if (!(fee >= 0 && fee < 100)) return bad('수수료율은 0 이상 100 미만의 숫자(%)로 적어 주세요.');
+    var costs = {}, neg = false;
+    ['adExtra', 'coupon', 'gift', 'etc'].forEach(function (k) { var v = C.num(f[k]); if (v < 0 || (f[k].trim() && isNaN(parseFloat(f[k].replace(/,/g, ''))))) neg = true; costs[k] = v || 0; });
+    if (neg) return bad('비용은 0 이상의 숫자로 적어 주세요.');
+    var naverSide = f.ch !== 'coupang' && f.ch !== 'other';
+    promoWrite({ d: f.id || 'p' + Date.now().toString(36), id: f.id || 'p' + Date.now().toString(36), name: name, kind: f.kind, from: f.from, to: f.to, ch: f.ch, items: f.items.slice(), fee: naverSide ? fee : 0, base: f.base, baseFrom: f.base === 'custom' ? f.baseFrom : '', ad: f.ad, costs: costs, memo: f.memo.trim(), updated: new Date().toISOString() }, '저장했습니다.');
+  }
+  function promoDelete() {
+    var p = PR.form && PR.form.id ? promoGet(PR.form.id) : null; if (!p || PR.saving) return;
+    var rec = {}; Object.keys(p).forEach(function (k) { rec[k] = p[k]; }); rec.del = 1; rec.updated = new Date().toISOString();
+    promoWrite(rec, '지웠습니다.');
+  }
+  function promoPeriod(p) { return dot(p.from) + ' ~ ' + dot(p.to) + ' <small class="zero">(' + (C.dayDiff(p.from, p.to) + 1) + '일)</small>'; }
+  function promoState(R) { return R.state === 'plan' ? '<span class="chtag wait">예정</span>' : R.state === 'run' ? '<span class="chtag on">진행 중</span>' : ''; }
+  function roiWhy(R) {
+    if (R.state === 'plan') return '아직 데이터 없음';
+    if (!R.b) return '비교 기준 없음';
+    if (!R.costOk) return '원가 미입력';
+    if (!(R.cost > 0)) return '비용 0원';
+    return '';
+  }
+  function promoDetailHtml(p) {
+    var R = promoRes(p), h = '', X = itemModel(S.from, S.to);
+    h += '<section class="card" aria-label="프로모션 요약"><div class="card-h"><h2>' + esc(p.name) + ' ' + promoState(R) + '</h2><span class="hint">' + esc(p.kind || '') + ', ' + pName(PCH, p.ch) + ', ' + dot(p.from) + ' ~ ' + dot(p.to) + '</span><button type="button" class="chip" data-act="pedit" data-key="' + esc(p.id) + '">수정</button></div>';
+    if (p.memo) h += '<p class="note">메모: ' + esc(p.memo) + '</p>';
+    if (R.state === 'plan') return h + '<p class="note">아직 이 기간의 판매 데이터가 없습니다. 데이터가 올라오면 자동으로 계산됩니다 (지금 데이터 기준일 ' + dot(DATA.last) + ').</p></section>';
+    if (R.state === 'run') h += '<p class="note"><b>진행 중:</b> 데이터가 있는 ' + dot(R.range.to) + '까지 ' + (C.dayDiff(R.range.from, R.range.to) + 1) + '일치로 계산했고, 비교 기간도 같은 길이로 맞췄습니다. 직접 입력한 비용은 전체 금액이라 끝나기 전에는 ROI가 낮게 보입니다.</p>';
+    h += '</section>';
+    var why = roiWhy(R), cur = R.cur, b = R.b;
+    h += '<section class="strip" aria-label="프로모션 성과">';
+    h += cell('판매 수량', n0(cur.qty) + '개', b ? '평소 ' + n0(b.qty) + '개' : '');
+    h += cell('매출', n0(cur.rev), 'ROAS ' + roasText(R.roas));
+    h += cell('증분 매출', R.incRev === null ? '-' : signed(R.incRev), b ? '평소 ' + n0(b.rev) + '원 (' + dot(R.base.from).slice(2) + ' ~ ' + dot(R.base.to).slice(2) + ')' : '비교 기준 없음');
+    h += cell('프로모션 비용', n0(R.cost), '광고 ' + n0(R.adCost) + ' + 직접 입력 ' + n0(R.manualSum));
+    h += cell('증분 이익', R.incProfit === null ? '-' : signed(R.incProfit), R.incProfit === null ? (why || '') : '증분 매출 - 원가' + (R.rate ? ' - 수수료' : '') + ' - 비용');
+    h += cell('ROI', roiText(R.roi), why || '증분 이익 ÷ 비용');
+    h += '</section>';
+    var notes = [];
+    if (R.baseShort) notes.push('⚠️ 비교 기간(' + dot(R.base.from) + ' ~ ' + dot(R.base.to) + ')이 데이터 시작일 ' + dot(DATA.first) + '보다 앞이라 평소 매출이 실제보다 작게 잡혔을 수 있습니다.');
+    if (!R.costOk) { var nc = {}; cur.noCostCodes.concat(b ? b.noCostCodes : []).forEach(function (c) { nc[c] = 1; }); var ncl = Object.keys(nc); notes.push('원가가 없어 ROI를 계산하지 않았습니다' + (ncl.length ? ': ' + ncl.slice(0, 8).join(', ') + (ncl.length > 8 ? ' 외 ' + (ncl.length - 8) + '개' : '') : '') + ((cur.unknown || (b && b.unknown)) ? (ncl.length ? ', ' : ': ') + '품목 미지정 매출 ' + n0(cur.unknown) + '원' : '') + '. 원가표를 올리면 자동으로 계산됩니다.'); }
+    if (cur.est) notes.push('네이버 매출은 판매 페이지 순매출을 품목 수량 비율로 나눈 값(약)입니다.');
+    notes.push('증분은 "프로모션이 없었다면 평소만큼 팔렸을 것"이라는 가정의 추정값입니다. 쿠팡은 입고(발주) 기준이라 소비자 판매와 날짜가 다를 수 있습니다.');
+    h += '<span class="note tight">' + notes.join(' ') + '</span>';
+
+    // 차트: 프로모션 기간(색칠) + 앞뒤, 평소 하루 평균(점선)
+    var len = C.dayDiff(R.range.from, R.range.to) + 1, pad = Math.min(14, len), wf = C.addDays(R.range.from, -pad), wt = C.addDays(p.to, pad);
+    if (wf < DATA.first) wf = DATA.first; if (wt > DATA.last) wt = DATA.last;
+    var days = C.dayDiff(wf, wt) + 1;
+    h += '<section class="card" aria-label="프로모션 추이"><div class="card-h"><h2>날짜별 매출</h2><span class="legend"><span class="lg-line"></span>대상 매출</span>' + (b ? '<span class="legend"><span class="lg-dash"></span>평소 하루 평균</span>' : '') + '<span class="legend"><span class="lg-bar"></span>광고비</span></div>';
+    if (days > 120) h += '<p class="note">기간이 120일을 넘어 차트는 생략했습니다.</p>';
+    else if (days < 2) h += '<p class="note">데이터가 하루뿐이라 차트는 생략했습니다.</p>';
+    else {
+      var dk = 'd|' + promoKey(p) + '|' + wf + '|' + wt, rows = PR.cache[dk] || (PR.cache[dk] = C.promoDaily(DATA, p, wf, wt));
+      var ser = rows.map(function (o) { return { key: o.d, label: o.d.slice(5, 7) + '.' + o.d.slice(8, 10), sales: o.rev, ad: o.ad }; }), a = -1, z = -1;
+      ser.forEach(function (o, i) { if (o.key >= R.range.from && o.key <= R.range.to) { if (a < 0) a = i; z = i; } });
+      var avg = b ? b.rev / len : 0, prev = b ? ser.map(function () { return { label: '평소 하루 평균', sales: avg }; }) : null;
+      h += chartSvg(ser, prev, a < 0 ? null : { a: a, b: z }, { line: '대상 매출', bar: '광고비' });
+      h += '<span class="note">색칠한 구간이 프로모션 기간입니다. 앞뒤 ' + pad + '일을 함께 보여줍니다.</span>';
+    }
+    h += '</section>';
+
+    // 품목별
+    var codes = Object.keys(cur.rows); if (b) Object.keys(b.rows).forEach(function (c) { if (!cur.rows[c]) codes.push(c); });
+    codes.sort(function (x, y) { return ((cur.rows[y] || {}).rev || 0) - ((cur.rows[x] || {}).rev || 0) || (x < y ? -1 : 1); });
+    var pg = pageOf(codes, 10, 'ppage');
+    h += '<div class="row"><section class="card flush grow2" aria-label="품목별 성과"><div class="card-h pad"><h2>품목별</h2><span class="hint">' + (p.items && p.items.length ? '대상 품목 ' + p.items.length + '개' : '대상 품목을 고르지 않아 채널 전체') + '</span></div><div class="scroll"><table class="tbl wrap items"><thead><tr><th scope="col">품목코드</th><th scope="col">품목명</th><th scope="col" class="r">수량</th><th scope="col" class="r">매출</th>' + (b ? '<th scope="col" class="r">평소 매출</th><th scope="col" class="r">증분</th>' : '') + '<th scope="col" class="r">원가</th><th scope="col" class="r">매출 - 원가</th></tr></thead><tbody>';
+    function z0() { return { qty: 0, rev: 0, cost: 0, noCost: 0 }; }
+    pg.rows.forEach(function (c) {
+      var o = cur.rows[c] || z0(), bo = b ? (b.rows[c] || z0()) : null, okc = o.noCost === 0 && c !== C.NONE;
+      h += '<tr><th scope="row">' + codeLabel(c) + '</th><td>' + esc(c === C.NONE ? '품목 미지정' : itemName(X, c)) + '</td><td class="r num">' + n0(o.qty) + '</td><td class="r num b">' + n0(o.rev) + '</td>' + (b ? '<td class="r num">' + n0(bo.rev) + '</td><td class="r num">' + signed(o.rev - bo.rev) + '</td>' : '') + '<td class="r num">' + (okc ? n0(o.cost) : miss('미입력')) + '</td><td class="r num">' + (okc ? n0(o.rev - o.cost) : '-') + '</td></tr>';
+    });
+    if (!codes.length) h += '<tr><td colspan="8" class="none">이 기간에 판매가 없습니다.</td></tr>';
+    h += '<tr class="sum"><th scope="row">합계</th><td></td><td class="r num">' + n0(cur.qty) + '</td><td class="r num b">' + n0(cur.rev) + '</td>' + (b ? '<td class="r num">' + n0(b.rev) + '</td><td class="r num">' + signed(R.incRev) + '</td>' : '') + '<td class="r num">' + (cur.noCost === 0 ? n0(cur.cost) : miss('일부 미입력')) + '</td><td class="r num">' + (cur.noCost === 0 ? n0(cur.rev - cur.cost) : '-') + '</td></tr>';
+    h += '</tbody></table>' + pagerHtml(pg, true) + '</div></section>';
+
+    // 비용 내역
+    h += '<section class="card flush grow1" aria-label="비용 내역"><div class="card-h pad"><h2>비용 내역</h2><span class="hint">광고비: ' + pName(PADMODE, R.adMode) + '</span></div>';
+    function li(n, v, sub) { return '<div class="li"><span>' + n + (sub ? ' <small>' + sub + '</small>' : '') + '</span><b class="num">' + v + '</b></div>'; }
+    if (R.adMode !== 'none') {
+      R.adCur.lines.slice(0, 6).forEach(function (l) { h += li(esc(l.name), n0(l.cost)); });
+      if (R.adCur.lines.length > 6) h += li('그 밖의 광고 ' + (R.adCur.lines.length - 6) + '개', n0(R.adCur.lines.slice(6).reduce(function (t, l) { return t + l.cost; }, 0)));
+      if (!R.adCur.lines.length) h += li('자동으로 잡힌 광고비', '0', p.ch === 'other' ? '기타몰은 광고 데이터 없음' : '이 기간 대상 품목 광고 없음');
+      if (R.adMode === 'extra' && R.adBase) h += li('평소 광고비 (뺌)', '-' + n0(Math.min(R.adBase.cost, R.adCur.cost)), '비교 기간 ' + n0(R.adBase.cost) + '원');
+    }
+    [['adExtra', '그 밖의 광고비'], ['coupon', '쿠폰/할인 부담액'], ['gift', '사은품/증정'], ['etc', '기타 비용']].forEach(function (k) { if (R.manual[k[0]]) h += li(k[1], n0(R.manual[k[0]]), '직접 입력'); });
+    h += '<div class="li sumli"><span>프로모션 비용 합계</span><b class="num">' + n0(R.cost) + '</b></div>';
+    if (R.rate) h += '<div class="ref" style="margin:12px 18px 16px"><b>네이버 수수료 ' + (R.rate * 100).toFixed(2).replace(/\.?0+$/, '') + '% (비용이 아니라 이익에서 뺌)</b><span>기간 네이버 매출 ' + n0(cur.naverRev) + '원의 수수료 약 ' + n0(R.fee) + '원' + (R.incFee !== null ? ', 증분 몫 ' + signed(R.incFee) + '원' : '') + '</span></div>';
+    else if (p.ch !== 'coupang' && p.ch !== 'other') h += '<p class="note pad">네이버 수수료율이 0%로 저장돼 있습니다. 수정에서 넣으면 이익 계산에 반영됩니다.</p>';
+    h += '</section></div>';
+    return h;
+  }
+  function viewPromo() {
+    var h = '', list = DATA.promos;
+    h += '<section class="card" aria-label="프로모션"><div class="card-h"><h2>프로모션 성과</h2><span class="hint">기획전, 할인, 쿠폰, 사은품 행사를 등록하면 평소 대비 얼마나 더 팔렸고 얼마가 남았는지 계산합니다</span>' + (PR.form ? '' : '<button type="button" class="btn" data-act="pnew">+ 프로모션 등록</button>') + '</div>';
+    if (PR.msg && !PR.form) h += '<p class="note"><b>' + esc(PR.msg) + '</b></p>';
+    h += '<p class="note">증분 매출 = 프로모션 기간 매출 - 평소 매출(비교 기간). ROAS = 매출 ÷ 비용. ROI = (증분 매출 - 증분 원가 - 네이버 수수료 - 비용) ÷ 비용. 원가를 모르는 품목이 섞이면 ROI는 비워 둡니다.</p></section>';
+    if (PR.form) h += promoFormHtml();
+    h += '<section class="card flush" aria-label="프로모션 목록"><div class="card-h pad"><h2>등록한 프로모션</h2><span class="hint">이름을 누르면 아래에 자세히 나옵니다</span></div><div class="scroll"><table class="tbl wrap"><thead><tr><th scope="col">이름</th><th scope="col">종류</th><th scope="col">기간</th><th scope="col">채널</th><th scope="col" class="r">매출</th><th scope="col" class="r">증분 매출</th><th scope="col" class="r">비용</th><th scope="col" class="r">ROAS</th><th scope="col" class="r">ROI</th></tr></thead><tbody>';
+    if (!list.length) h += '<tr><td colspan="9" class="none">아직 등록한 프로모션이 없습니다. 위의 [+ 프로모션 등록]으로 시작해 주세요.</td></tr>';
+    list.forEach(function (p) {
+      var R = promoRes(p), open = PR.open === p.id, plan = R.state === 'plan', why = roiWhy(R);
+      h += '<tr' + (open ? ' class="on"' : '') + '><th scope="row"><button type="button" class="exp" data-act="popen" data-key="' + esc(p.id) + '" aria-expanded="' + open + '">' + (open ? '▾ ' : '▸ ') + esc(p.name) + '</button> ' + promoState(R) + '</th><td>' + esc(p.kind || '') + '</td><td class="num">' + promoPeriod(p) + '</td><td>' + pName(PCH, p.ch) + '</td>';
+      h += '<td class="r num b">' + (plan ? '-' : n0(R.cur.rev)) + '</td><td class="r num">' + (plan || R.incRev === null ? '-' : signed(R.incRev)) + '</td><td class="r num">' + n0(R.cost) + '</td><td class="r num">' + (plan ? '-' : roasText(R.roas)) + '</td><td class="r num b">' + (R.roi === null || R.roi === undefined ? '<small class="zero">' + why + '</small>' : roiText(R.roi)) + '</td></tr>';
+    });
+    h += '</tbody></table></div></section>';
+    var op = PR.open ? promoGet(PR.open) : null;
+    if (op) h += promoDetailHtml(op);
+    return h;
+  }
+
   /* ───────── 슬랙 리포트 ─────────
    * 데일리는 위의 조회 기간과 비교 기간을 쓰고, 위클리와 먼슬리는 데이터 기준일까지 끝난 한 주, 한 달을 쓴다.
    * 문구는 보내기 전에 고칠 수 있고, 맨 아래에 대시보드 주소가 붙는다.
@@ -1444,8 +1626,8 @@
     h += '</div><div class="nav"><span class="nav-h">바로가기</span><a href="' + SNS_URL + '" target="_blank" rel="noopener">SNS 라이브러리<small>새 탭 ↗</small></a>';
     h += '</div><div class="side-status"><b class="' + (ok ? 'ok' : 'chk') + '">' + (ok ? '데이터 정상' : '확인 필요') + '</b><span>네이버 판매 ' + mdot(hl.lastNaver) + '까지</span><span>주문 ' + mdot(hl.lastOrders) + '까지</span></div></nav>';
     h += '<main class="main"><header class="head"><h1>' + cur.label + '</h1><span>데이터 기준일 ' + dot(DATA.last) + '</span></header>';
-    if (cur.id !== 'data') h += periodBar(); // 데이터 관리는 기간과 상관없음
-    h += cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : cur.id === 'ads' ? viewAds() : cur.id === 'products' ? viewProducts() : cur.id === 'customers' ? viewCustomers() : cur.id === 'data' ? viewData() : cur.id === 'slack' ? viewSlack() : viewSoon(cur.label);
+    if (cur.id !== 'data' && cur.id !== 'promo') h += periodBar(); // 데이터 관리, 프로모션은 위의 조회 기간과 상관없음
+    h += cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : cur.id === 'ads' ? viewAds() : cur.id === 'products' ? viewProducts() : cur.id === 'customers' ? viewCustomers() : cur.id === 'promo' ? viewPromo() : cur.id === 'data' ? viewData() : cur.id === 'slack' ? viewSlack() : viewSoon(cur.label);
     h += '</main></div>';
     app.innerHTML = h;
   }
@@ -1462,6 +1644,15 @@
     if (act === 'acsel') { S.acSel = key ? JSON.parse(key) : null; render(); return; }
     if (act === 'acbasis') { S.acBasis = key; S.acSel = null; render(); return; }
     if (act === 'accsv') { downloadAdTreeCsv(); return; }
+    if (act === 'pnew') { PR.form = promoBlank(); PR.q = ''; PR.msg = ''; PR.delAsk = false; render(); return; }
+    if (act === 'pedit') { var pe = promoGet(key); if (pe) { PR.form = promoToForm(pe); PR.q = ''; PR.msg = ''; PR.delAsk = false; render(); window.scrollTo(0, 0); } return; }
+    if (act === 'pcancel') { PR.form = null; PR.q = ''; PR.msg = ''; PR.delAsk = false; render(); return; }
+    if (act === 'psave') { promoSave(); return; }
+    if (act === 'pdelask') { PR.delAsk = true; render(); return; }
+    if (act === 'pdel') { promoDelete(); return; }
+    if (act === 'popen') { PR.open = PR.open === key ? '' : key; S.ppage = 0; if (!PR.form) PR.msg = ''; render(); return; }
+    if (act === 'ppick') { if (PR.form && PR.form.items.indexOf(key) < 0) PR.form.items.push(key); PR.q = ''; render(); var pq = document.getElementById('pq'); if (pq) pq.focus(); return; }
+    if (act === 'pitemdel') { if (PR.form) PR.form.items = PR.form.items.filter(function (c) { return c !== key; }); render(); return; }
     if (act === 'slkind') { SL.kind = key; SL.edited = false; SL.msg = ''; SL.key = ''; render(); return; }
     if (act === 'slreset') { SL.edited = false; SL.key = ''; SL.msg = ''; render(); return; }
     if (act === 'slcopy') { var te = document.querySelector('textarea[data-act="sltext"]'); if (te) SL.text = te.value; copyText(SL.text).then(function (ok) { SL.msg = ok ? '복사했습니다. 슬랙에 붙여넣으면 됩니다.' : '복사하지 못했습니다. 문구를 직접 선택해서 복사해 주세요.'; render(); }); return; }
@@ -1493,9 +1684,11 @@
     save(); render();
   }
   function onChange(ev) {
-    var el = ev.target; if (!el.matches || !el.matches('input[data-act], select[data-act]')) return;
+    var el = ev.target; if (!el.matches) return;
+    if (el.matches('[data-pf]')) { if (PR.form) { PR.form[el.getAttribute('data-pf')] = el.value; if (el.tagName === 'SELECT') render(); } return; } // 글자 칸은 다시 그리지 않는다 (누르던 버튼이 사라지지 않게)
+    if (!el.matches('input[data-act], select[data-act]')) return;
     var act = el.getAttribute('data-act'), v = el.value;
-    if (act === 'aiq') return; // 검색칸에서 포커스가 빠질 때 목록을 다시 그리면 누르던 결과가 사라져 클릭이 무시된다
+    if (act === 'aiq' || act === 'pq') return; // 검색칸에서 포커스가 빠질 때 목록을 다시 그리면 누르던 결과가 사라져 클릭이 무시된다
     if (act === 'q') { onSearch(ev); return; }
     if (act === 'upfiles') { onUpload(el.files); el.value = ''; return; }
     if (act === 'sel') {
@@ -1519,6 +1712,8 @@
   function onSearch(ev) {
     var el = ev.target; if (!el.matches) return;
     if (el.matches('textarea[data-act="sltext"]')) { SL.text = el.value; SL.edited = true; return; }
+    if (el.matches('[data-pf]')) { if (PR.form) { PR.form[el.getAttribute('data-pf')] = el.value; PR.msg = ''; var pm = document.getElementById('pmsg'); if (pm) pm.hidden = true; } return; }
+    if (el.matches('input[data-act="pq"]')) { PR.q = el.value; var ps = document.getElementById('psug'); if (ps) { ps.innerHTML = promoSuggest(); ps.hidden = !PR.q.trim(); } return; }
     if (el.matches('input[data-act="aiq"]')) { S.aiq = el.value; var sg = document.getElementById('aisug'); if (sg) { sg.innerHTML = aiSuggest(AILIST); sg.hidden = !S.aiq.trim(); } return; }
     if (!el.matches('input[data-act="q"]')) return;
     if (S.q === el.value) return;
@@ -1550,10 +1745,12 @@
     document.addEventListener('change', onChange);
     document.addEventListener('input', onSearch);
     document.addEventListener('keydown', function (ev) {
-      var el = ev.target; if (!el.matches || !el.matches('input[data-act="aiq"]')) return;
-      if (ev.key === 'Enter') { var f = document.querySelector('#aisug .aisug-i'); if (f) { ev.preventDefault(); f.click(); } }
-      else if (ev.key === 'Escape') { S.aiq = ''; el.value = ''; var sg = document.getElementById('aisug'); if (sg) sg.hidden = true; }
-      else if (ev.key === 'ArrowDown') { var b = document.querySelector('#aisug .aisug-i'); if (b) { ev.preventDefault(); b.focus(); } }
+      var el = ev.target; if (!el.matches || !el.matches('input[data-act="aiq"], input[data-act="pq"]')) return;
+      if (ev.isComposing) return; // 한글 조합 중의 Enter는 글자 확정용
+      var box = el.getAttribute('data-act') === 'pq' ? '#psug' : '#aisug';
+      if (ev.key === 'Enter') { ev.preventDefault(); var f = document.querySelector(box + ' .aisug-i'); if (f) f.click(); }
+      else if (ev.key === 'Escape') { if (box === '#psug') PR.q = ''; else S.aiq = ''; el.value = ''; var sg = document.querySelector(box); if (sg) sg.hidden = true; }
+      else if (ev.key === 'ArrowDown') { var b = document.querySelector(box + ' .aisug-i'); if (b) { ev.preventDefault(); b.focus(); } }
     });
     // 파일 끌어다 놓기 (데이터 관리)
     document.addEventListener('dragover', function (ev) { var z = ev.target.closest && ev.target.closest('[data-drop]'); if (z) { ev.preventDefault(); z.classList.add('over'); } });

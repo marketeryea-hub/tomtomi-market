@@ -148,6 +148,7 @@
     });
     out.skuMap = (raw.skuMap || []).filter(function (r) { return r && r.k; });
     out.costVer = costPick(raw.skuCost);
+    out.promos = promoList(raw.promo);
 
     // 조회 가능한 범위: 채널별 첫 날짜와 마지막 날짜
     function span(rows) {
@@ -698,6 +699,95 @@
     return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.cost - a.cost || b.rev - a.rev; });
   }
 
+  /* ───────── 프로모션 (기획전, 할인, 쿠폰, 사은품 등) ─────────
+   * 증분 매출 = 프로모션 기간 매출 - 기준선 기간 매출 (기준선: 바로 앞 같은 길이 / 작년 같은 기간 / 직접 지정)
+   * ROI = (증분 매출 - 증분 원가 - 증분 네이버 수수료 - 프로모션 비용) ÷ 프로모션 비용
+   *  - 원가를 모르는 판매가 하나라도 섞이면 ROI는 계산하지 않는다(null). 0원으로 치지 않는다
+   *  - 네이버 수수료율은 프로모션마다 그때 값을 적어 둔다. 쿠팡은 입고 금액(매가 확정)이라 수수료 없음
+   *  - 아직 데이터가 없는 날짜는 빼고, 기준선도 같은 길이로 맞춘다
+   */
+  function promoList(raw) {
+    var m = {};
+    (raw || []).forEach(function (p) { if (!p || !p.id) return; if (!m[p.id] || String(p.updated || '') >= String(m[p.id].updated || '')) m[p.id] = p; });
+    return Object.keys(m).map(function (k) { return m[k]; }).filter(function (p) { return !p.del && p.from && p.to && p.from <= p.to; })
+      .sort(function (a, b) { return a.from > b.from ? -1 : a.from < b.from ? 1 : (a.id > b.id ? -1 : 1); });
+  }
+  function promoChs(p) { return p.ch === 'naver' || p.ch === 'coupang' || p.ch === 'other' ? [p.ch] : ['naver', 'coupang', 'other']; }
+  function promoRange(data, p) { // 데이터가 있는 날짜까지만
+    if (!data.last || p.from > data.last) return null;
+    return { from: p.from, to: p.to > data.last ? data.last : p.to };
+  }
+  function promoBase(p, r) {
+    if (p.base === 'none') return null;
+    if (p.base === 'lastYear') return lastYear(r.from, r.to);
+    if (p.base === 'custom' && p.baseFrom) return { from: p.baseFrom, to: addDays(p.baseFrom, dayDiff(r.from, r.to)) };
+    return prevPeriod(r.from, r.to);
+  }
+  // 대상 품목(비어 있으면 그 채널 전체)의 기간 실적
+  function promoSales(data, p, from, to) {
+    var X = items(data, from, to), chs = promoChs(p), all = !(p.items && p.items.length);
+    var codes = all ? Object.keys(X.rows) : p.items, t = { qty: 0, rev: 0, naverRev: 0, cost: 0, noCost: 0, unknown: 0, est: false, rows: {}, noCostCodes: [] };
+    codes.forEach(function (code) {
+      var r = X.rows[code], o = { code: code, qty: 0, rev: 0, naverRev: 0, cost: 0, noCost: 0 };
+      if (r) chs.forEach(function (c) { var x = r.ch[c]; o.qty += x.qty; o.rev += x.rev; o.cost += x.cost; o.noCost += x.noCost; if (c === 'naver') o.naverRev += x.rev; if (x.est && x.rev) t.est = true; });
+      if (code === NONE) { t.unknown += o.rev; o.noCost = o.qty; } // 품목을 모르는 매출은 원가도 모른다
+      if (all && !o.qty && !o.rev) return;
+      if (o.noCost > 0 && code !== NONE) t.noCostCodes.push(code);
+      t.rows[code] = o; t.qty += o.qty; t.rev += o.rev; t.naverRev += o.naverRev; t.cost += o.cost; t.noCost += o.noCost;
+    });
+    return t;
+  }
+  // 그 기간 광고비: 대상 품목이 있으면 광고 상세(네이버 SA, 쿠팡애즈)에서 그 품목을 광고한 비용, 없으면 채널 광고비 전체
+  function promoAd(data, p, from, to) {
+    var out = { cost: 0, days: {}, lines: [] }, L = {}, ch = p.ch;
+    function add(d, name, cost) { if (!cost) return; out.cost += cost; out.days[d] = (out.days[d] || 0) + cost; L[name] = (L[name] || 0) + cost; }
+    if (ch === 'other') return out;
+    if (p.items && p.items.length) {
+      var md = ch === 'naver' ? 'sa' : ch === 'coupang' ? 'coupang' : 'all';
+      p.items.forEach(function (code) {
+        adItemDaily(data, code, from, to, md).forEach(function (o) { o.lines.forEach(function (l) { add(o.d, (l.medium === 'sa' ? '네이버 SA' : '쿠팡애즈') + ' / ' + l.camp, l.cost); }); });
+      });
+    } else {
+      adsDaily(data, from, to).forEach(function (o) {
+        if (ch !== 'coupang') { add(o.d, '네이버 SA', o.saCost); add(o.d, '메타', o.metaCost); add(o.d, '애드부스트', o.boostCost); }
+        if (ch !== 'naver') add(o.d, '쿠팡애즈', o.coupCost);
+      });
+    }
+    out.lines = Object.keys(L).map(function (k) { return { name: k, cost: L[k] }; }).sort(function (a, b) { return b.cost - a.cost; });
+    return out;
+  }
+  function promoCalc(data, p) {
+    var r = promoRange(data, p), c = p.costs || {};
+    var manual = { adExtra: num(c.adExtra), coupon: num(c.coupon), gift: num(c.gift), etc: num(c.etc) };
+    var manualSum = manual.adExtra + manual.coupon + manual.gift + manual.etc, rate = num(p.fee) / 100;
+    var out = { p: p, range: r, state: !r ? 'plan' : (p.to > data.last ? 'run' : 'done'), manual: manual, manualSum: manualSum, rate: rate };
+    if (!r) { out.cost = manualSum; return out; }
+    var base = promoBase(p, r), cur = promoSales(data, p, r.from, r.to), b = base ? promoSales(data, p, base.from, base.to) : null;
+    var adCur = promoAd(data, p, r.from, r.to), adBase = base ? promoAd(data, p, base.from, base.to) : null;
+    var adMode = p.ad === 'none' || p.ad === 'extra' ? p.ad : 'full';
+    var adCost = adMode === 'none' ? 0 : (adMode === 'extra' && adBase ? Math.max(0, adCur.cost - adBase.cost) : adCur.cost);
+    out.base = base; out.cur = cur; out.b = b; out.adCur = adCur; out.adBase = adBase; out.adMode = adMode; out.adCost = adCost;
+    out.baseShort = !!base && !!data.first && base.from < data.first; // 기준선 기간에 데이터가 없는 날이 있다
+    out.cost = adCost + manualSum;
+    out.fee = cur.naverRev * rate;
+    out.incRev = b ? cur.rev - b.rev : null;
+    out.incQty = b ? cur.qty - b.qty : null;
+    out.incFee = b ? (cur.naverRev - b.naverRev) * rate : null;
+    out.costOk = cur.noCost === 0 && (!b || b.noCost === 0);
+    out.incCogs = b && out.costOk ? cur.cost - b.cost : null;
+    out.incProfit = out.incCogs === null ? null : out.incRev - out.incCogs - out.incFee - out.cost;
+    out.roi = out.incProfit !== null && out.cost > 0 ? out.incProfit / out.cost : null;
+    out.roas = out.cost > 0 ? cur.rev / out.cost : null;
+    out.incRoas = out.incRev !== null && out.cost > 0 ? out.incRev / out.cost : null;
+    return out;
+  }
+  // 차트용: 대상 품목의 날짜별 매출, 수량, 광고비 (하루씩 계산)
+  function promoDaily(data, p, from, to) {
+    var ad = promoAd(data, p, from, to), out = [], d;
+    for (d = from; d <= to; d = addDays(d, 1)) { var s = promoSales(data, p, d, d); out.push({ d: d, rev: s.rev, qty: s.qty, ad: ad.days[d] || 0 }); }
+    return out;
+  }
+
   /* ───────── 유입 (네이버) ───────── */
   function spanOf(rows) { var f = '', l = ''; rows.forEach(function (e) { if (!f || e.d < f) f = e.d; if (e.d > l) l = e.d; }); return { first: f, last: l }; }
   var TR_FIELDS = ['visits', 'orders', 'rev'];
@@ -896,6 +986,7 @@
     adsDaily: adsDaily, adsBucket: adsBucket, adsTotal: adsTotal, adsBreakdown: adsBreakdown, ratio: ratio,
     skuAggregate: skuAggregate, skuUnmapped: skuUnmapped, skuParseOpt: skuParseOpt, orderCheck: orderCheck,
     costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products, productSeries: productSeries, items: items, itemOrder: itemOrder, adTree: adTree, adPathSeries: adPathSeries, adItemDaily: adItemDaily, adItemList: adItemList, coupAdCode: coupAdCode, AD_OTHER: AD_OTHER, trafficDaily: trafficDaily, trafficBucket: trafficBucket, trafficTotal: trafficTotal, trafficPaths: trafficPaths, trafficItems: trafficItems, trafficOrder: trafficOrder, pageCodes: pageCodes, queryTop: queryTop, custDemo: custDemo, itemSeries: itemSeries, itemMaster: itemMaster, NONE: NONE, COUP_MAP: COUP_MAP,
+    promoList: promoList, promoCalc: promoCalc, promoDaily: promoDaily, promoBase: promoBase, promoRange: promoRange,
     signals: signals, health: health
   };
 });
