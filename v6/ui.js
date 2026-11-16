@@ -8,7 +8,7 @@
   var C = root.TTCalc;
   var DATA = null, RAW = null;      // 정리된 데이터
   var META = {};        // 불러오기 결과(기타마켓 연결 여부 등)
-  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '', tpage: 0, topen: '' };
+  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '', tpage: 0, topen: '', acOpen: {}, acSel: null, acBasis: 'ad' };
   var READY = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, data: 1, slack: 1 }; // 옮겨온 메뉴
   var STORE_KEY = 'tt6_state';
 
@@ -551,7 +551,81 @@
       if (md === 'coupang' && bd.some(function (o) { return o.name === '(구분 없음)'; })) h += '<p class="note pad">일부 기간은 하루 합계만 저장되어 캠페인 구분이 없습니다.</p>';
     }
     h += '</section></div>';
+    if (md === 'sa' || md === 'coupang') h += adTreeHtml(md);
     return h;
+  }
+  /* ───────── 캠페인 ▸ 광고그룹 ▸ 상품 ───────── */
+  var ATCACHE = { key: '', T: null };
+  function adTreeModel(md) {
+    var basis = md === 'coupang' ? S.acBasis : 'ad', key = md + '|' + basis + '|' + S.from + '|' + S.to;
+    if (ATCACHE.key !== key) ATCACHE = { key: key, T: C.adTree(DATA, md, S.from, S.to, basis) };
+    return ATCACHE.T;
+  }
+  function adItemLabel(T, key) {
+    var X = itemModel(S.from, S.to), muted = function (t) { return '<span class="code muted">' + t + '</span> '; };
+    if (key === 'PL') return muted('파워링크') + '글 광고 (상품 없음)';
+    if (key.indexOf('MULTI:') === 0) { var p = T.pageCodes && T.pageCodes[key.slice(6)]; return muted('여러 품목') + esc(T.names[key] || '판매 페이지 ' + key.slice(6)) + (p ? '<br><small>' + esc(p.codes.slice(0, 6).join(', ') + (p.codes.length > 6 ? ' 외' : '')) + '</small>' : ''); }
+    if (key.indexOf('AD:') === 0) { var id = key.slice(3); return muted('소재') + esc(id.replace(/^nad-a001-0\d-0*/, '…')) + (/삭제/.test(id) ? ' (삭제된 소재)' : ' (소재 목록에 없음)'); }
+    if (key.indexOf(C.AD_OTHER + '|') === 0) return muted('타사 상품') + esc(key.split('|').slice(1).join('|').split(',')[0]);
+    if (key.indexOf(C.NONE + '|') === 0) return muted('미지정') + esc(key.split('|').slice(1).join('|').split(',')[0]);
+    if (key.charAt(0) === '(') return muted('-') + esc(key);
+    return codeLabel(key) + ' ' + esc(itemName(X, key));
+  }
+  function adTreeHtml(md) {
+    var T = adTreeModel(md), cp = md === 'coupang', sold = cp && S.acBasis === 'sold', h = '';
+    h += '<section class="card flush" aria-label="캠페인 분석"><div class="card-h pad"><h2>캠페인 ▸ 광고그룹 ▸ 상품</h2><span class="hint">이름을 누르면 펼치고, [추이]를 누르면 아래 차트가 그 줄로 바뀝니다</span>';
+    if (cp) [['ad', '광고한 상품 기준'], ['sold', '팔린 상품 기준']].forEach(function (b) { h += '<button type="button" class="chip" data-act="acbasis" data-key="' + b[0] + '" aria-pressed="' + (S.acBasis === b[0]) + '">' + b[1] + '</button>'; });
+    h += '<button type="button" class="chip" data-act="accsv">엑셀로 받기 (CSV)</button></div><div class="scroll">';
+    h += '<table class="tbl wrap adtree"><thead><tr><th scope="col">캠페인 / 광고그룹 / 상품</th><th scope="col" class="r">광고비</th><th scope="col" class="r">광고매출</th><th scope="col" class="r">ROAS</th><th scope="col" class="r">클릭</th><th scope="col" class="r">CTR</th><th scope="col" class="r">' + (cp ? '주문' : '전환') + '</th>' + (cp ? '<th scope="col" class="r">판매 수량</th>' : '') + '<th scope="col"></th></tr></thead><tbody>';
+    function cells(m, lvl) {
+      var hideCost = sold && lvl === 3;
+      return '<td class="r num' + (lvl < 3 ? ' b' : '') + '">' + (hideCost ? '-' : n0(m.cost)) + '</td><td class="r num">' + n0(m.rev) + '</td><td class="r num">' + (hideCost ? '-' : roasText(C.ratio(m.rev, m.cost))) + '</td><td class="r num">' + (hideCost ? '-' : n0(m.clicks)) + '</td><td class="r num">' + (hideCost ? '-' : pct1(C.ratio(m.clicks, m.imp))) + '</td><td class="r num">' + n0(m.conv) + '</td>' + (cp ? '<td class="r num">' + n0(m.qty) + '</td>' : '');
+    }
+    function selBtn(path) { var k = JSON.stringify(path), on = S.acSel && JSON.stringify(S.acSel) === k; return '<td><button type="button" class="chip mini" data-act="acsel" data-key="' + esc(k) + '" aria-pressed="' + !!on + '">추이</button></td>'; }
+    if (!T.camps.length) h += '<tr><td colspan="9" class="none">이 기간에 집행 기록이 없습니다.</td></tr>';
+    T.camps.forEach(function (c) {
+      var ck = 'c|' + c.name, co = !!S.acOpen[ck];
+      h += '<tr class="lv1"><th scope="row"><button type="button" class="exp" data-act="acopen" data-key="' + esc(ck) + '" aria-expanded="' + co + '">' + (co ? '▾ ' : '▸ ') + esc(c.name) + '</button></th>' + cells(c.m, 1) + selBtn({ camp: c.name }) + '</tr>';
+      if (!co) return;
+      c.groups.forEach(function (g) {
+        var gk = 'g|' + c.name + '|' + g.name, go = !!S.acOpen[gk], hasI = g.items.length > 0;
+        h += '<tr class="lv2"><th scope="row">' + (hasI ? '<button type="button" class="exp" data-act="acopen" data-key="' + esc(gk) + '" aria-expanded="' + go + '">' + (go ? '▾ ' : '▸ ') + esc(g.name) + '</button>' : '<span class="iname">' + esc(g.name) + '</span>') + '</th>' + cells(g.m, 2) + selBtn({ camp: c.name, group: g.name }) + '</tr>';
+        if (!go) return;
+        g.items.forEach(function (it) { h += '<tr class="lv3"><th scope="row">' + adItemLabel(T, it.key) + '</th>' + cells(it.m, 3) + selBtn({ camp: c.name, group: g.name, item: it.key }) + '</tr>'; });
+      });
+    });
+    if (T.camps.length) h += '<tr class="sum"><th scope="row">합계</th>' + cells(T.total, 1) + '<td></td></tr>';
+    h += '</tbody></table></div>';
+    // 고른 줄의 추이
+    var path = S.acSel || {}, rows = C.adPathSeries(DATA, md, S.from, S.to, cp ? S.acBasis : 'ad', path), byMonth = rows.length > 62, ser = [], m = {};
+    rows.forEach(function (o) { var k = byMonth ? o.d.slice(0, 7) : o.d; if (!m[k]) { m[k] = { label: byMonth ? k.slice(2, 4) + '.' + k.slice(5, 7) : o.d.slice(5, 7) + '.' + o.d.slice(8, 10), key: k, sales: 0, ad: 0 }; ser.push(m[k]); } m[k].sales += o.rev; m[k].ad += o.cost; });
+    var title = !S.acSel ? '전체' : [path.camp, path.group, path.item ? adItemLabel(T, path.item).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : null].filter(Boolean).join(' ▸ ');
+    h += '<div class="pad cmpchart"><div class="card-h"><h2 style="font-size:15px">추이: ' + esc(title) + '</h2>' + (S.acSel ? '<button type="button" class="chip" data-act="acsel" data-key="">전체로</button>' : '') + '<span class="legend"><span class="lg-line"></span>광고매출 (왼쪽 눈금)</span><span class="legend"><span class="lg-bar"></span>광고비 (오른쪽 눈금)</span></div>';
+    h += ser.length >= 2 ? chartSvg(ser, null, null, { line: '광고매출', bar: '광고비', unit: '원' }) : '<p class="note">조회 기간이 하루라서 추이 차트는 생략했습니다. 기간을 넓히면 차트가 나옵니다.</p>';
+    h += '<span class="note">' + (byMonth ? '월별' : '날짜별') + ' 합계' + (sold && path.item ? '. 팔린 상품 기준이라 광고비는 그 상품이 팔린 줄에 붙은 광고비만 잡힙니다.' : '') + '</span></div>';
+    var notes = [];
+    if (md === 'sa') {
+      notes.push('광고그룹과 소재(상품)는 광고그룹이 들어간 보고서를 올린 날짜만 나옵니다. 그 전 날짜는 캠페인까지만 있습니다.');
+      if (!Object.keys(DATA.adDet.creatives).length) notes.push('<b>네이버 소재 목록 파일을 데이터 관리에 올리면 소재가 품목코드로 바뀝니다.</b>');
+      notes.push('상품은 소재의 스마트스토어 상품번호로 연결합니다. 세트나 택1 판매 페이지는 품목을 나눌 수 없어 "여러 품목"으로 보입니다.');
+    } else {
+      notes.push('광고한 상품 기준: 그 상품 광고에 쓴 광고비와 그 광고로 생긴 매출. 팔린 상품 기준: 실제로 팔린 상품별 매출 (다른 상품 광고를 보고 산 경우 포함).');
+      notes.push('쿠팡 광고 상품명은 이름 규칙으로 품목코드에 연결했습니다 (예영 확인 전 초안). 톰토미 상품이 아니면 "타사 상품"으로 보입니다.');
+      notes.push('2026-04-16 이후는 상세를 다시 올린 날짜만 광고그룹, 상품이 나옵니다.');
+    }
+    h += '<p class="note pad">' + notes.join('<br>') + '</p></section>';
+    return h;
+  }
+  function downloadAdTreeCsv() {
+    var md = S.ad, T = adTreeModel(md), lines = [['캠페인', '광고그룹', '상품 구분', '품목코드', '품목명/상품명', '광고비', '광고매출', 'ROAS(%)', '노출', '클릭', '전환/주문', '판매 수량']];
+    var X = itemModel(S.from, S.to);
+    function row(c, g, it, m) {
+      var code = '', nm = '', kind = '';
+      if (it) { var k = it.key; if (k === 'PL') kind = '파워링크'; else if (k.indexOf('MULTI:') === 0) { kind = '여러 품목'; nm = T.names[k] || ''; code = (T.pageCodes && T.pageCodes[k.slice(6)] ? T.pageCodes[k.slice(6)].codes.join(' / ') : ''); } else if (k.indexOf('AD:') === 0) { kind = '소재'; nm = k.slice(3); } else if (k.indexOf('|') > 0) { kind = k.split('|')[0]; nm = k.split('|').slice(1).join('|'); } else if (k.charAt(0) === '(') kind = k; else { kind = '품목'; code = k; nm = itemName(X, k); } }
+      lines.push([c, g, kind, code, nm, Math.round(m.cost), Math.round(m.rev), m.cost > 0 ? Math.round(m.rev / m.cost * 100) : '', m.imp, m.clicks, m.conv, m.qty]);
+    }
+    T.camps.forEach(function (c) { row(c.name, '', null, c.m); c.groups.forEach(function (g) { row(c.name, g.name, null, g.m); g.items.forEach(function (it) { row(c.name, g.name, it, it.m); }); }); });
+    saveCsv(lines, 'tomtomi_adtree_' + md + (md === 'coupang' ? '_' + S.acBasis : '') + '_' + S.from + '_' + S.to + '.csv');
   }
   function downloadAdsCsv() {
     var M = adsModel(), cols = adsColumns(S.ad), lines = [];
@@ -905,7 +979,7 @@
   }
 
   /* ───────── 고객/유입 (네이버 visit 파일) ───────── */
-  function pct1(a, b) { return b > 0 ? (a / b * 100).toFixed(1) + '%' : '-'; }
+  function pctOf(a, b) { return b > 0 ? (a / b * 100).toFixed(1) + '%' : '-'; }
   function viewCustomers() {
     var h = '', cr = cmpRange(), has = !!cr, tspan = (function () { var f = '', l = ''; DATA.traffic.forEach(function (e) { if (!f || e.d < f) f = e.d; if (e.d > l) l = e.d; }); return { first: f, last: l }; })();
     if (!tspan.first) return h + '<section class="card"><p class="note">아직 유입 데이터(visit 파일)가 없습니다.</p></section>';
@@ -916,7 +990,7 @@
     h += cell('방문', n0(cur.visits), dsub(cur.visits, prev ? prev.visits : 0, pHas));
     h += cell('주문', n0(cur.orders), dsub(cur.orders, prev ? prev.orders : 0, pHas));
     var cv = cur.visits ? cur.orders / cur.visits : 0, pv = prev && prev.visits ? prev.orders / prev.visits : 0;
-    h += cell('전환율 (주문 ÷ 방문)', pct1(cur.orders, cur.visits), pHas && pv ? (cv - pv >= 0 ? '<span class="up">+' : '<span class="down">') + ((cv - pv) * 100).toFixed(1) + '%p</span> 이전 ' + pct1(prev.orders, prev.visits) : '');
+    h += cell('전환율 (주문 ÷ 방문)', pctOf(cur.orders, cur.visits), pHas && pv ? (cv - pv >= 0 ? '<span class="up">+' : '<span class="down">') + ((cv - pv) * 100).toFixed(1) + '%p</span> 이전 ' + pctOf(prev.orders, prev.visits) : '');
     h += cell('방문당 결제금액', cur.visits ? n0(cur.rev / cur.visits) : '-', pHas && prev.visits ? '이전 ' + n0(prev.rev / prev.visits) : '');
     h += '</section>';
 
@@ -951,7 +1025,7 @@
       var o = TI.rows[k] || { visits: 0, orders: 0, rev: 0 }, pv = TP && TP.rows[k], multi = k.indexOf('MULTI:') === 0, none = k === C.NONE, zero = !o.visits;
       var code = multi ? '<span class="code muted">여러 품목</span>' : codeLabel(k);
       var name = none ? '품목 미지정 (매핑표에 없는 판매 페이지)' : multi ? esc(multiName(TI, k)) + '<br><small>' + esc(multiCodes(TI, k)) + '</small>' : esc(itemName(X, k));
-      h += '<tr' + (zero ? ' class="zero-row"' : '') + '><th scope="row">' + code + '</th><td class="nm">' + name + '</td><td class="r num b">' + n0(o.visits) + '</td><td class="r num">' + pct1(o.visits, cur.visits) + '</td><td class="r num">' + n0(o.orders) + '</td><td class="r num">' + pct1(o.orders, o.visits) + '</td><td class="r num">' + n0(o.rev) + '</td>';
+      h += '<tr' + (zero ? ' class="zero-row"' : '') + '><th scope="row">' + code + '</th><td class="nm">' + name + '</td><td class="r num b">' + n0(o.visits) + '</td><td class="r num">' + pctOf(o.visits, cur.visits) + '</td><td class="r num">' + n0(o.orders) + '</td><td class="r num">' + pctOf(o.orders, o.visits) + '</td><td class="r num">' + n0(o.rev) + '</td>';
       if (has) h += '<td class="r num">' + (zero && !(pv && pv.visits) ? '-' : grow(o.visits, pv ? pv.visits : 0)) + '</td>';
       h += '</tr>';
     });
@@ -973,7 +1047,7 @@
     h += '<p class="note pad">' + (cd.span.first ? dot(cd.span.first) + ' 주 ~ ' + dot(cd.span.last) + ' 주 합계. 7월 이후 데이터는 없습니다.' : '보관된 고객 데이터가 없습니다.') + '</p>';
     if (cd.list.length) {
       h += '<div class="scroll"><table class="tbl"><thead><tr><th scope="col">구분</th><th scope="col" class="r">방문 고객</th><th scope="col" class="r">비중</th><th scope="col" class="r">결제 고객</th><th scope="col" class="r">결제금액</th></tr></thead><tbody>';
-      cd.list.forEach(function (o) { h += '<tr><th scope="row">' + esc(o.seg) + '</th><td class="r num b">' + n0(o.visitCust) + '</td><td class="r num">' + pct1(o.visitCust, cd.total) + '</td><td class="r num">' + n0(o.payCust) + '</td><td class="r num">' + n0(o.rev) + '</td></tr>'; });
+      cd.list.forEach(function (o) { h += '<tr><th scope="row">' + esc(o.seg) + '</th><td class="r num b">' + n0(o.visitCust) + '</td><td class="r num">' + pctOf(o.visitCust, cd.total) + '</td><td class="r num">' + n0(o.payCust) + '</td><td class="r num">' + n0(o.rev) + '</td></tr>'; });
       h += '</tbody></table></div>';
     }
     h += '</section></div>';
@@ -990,12 +1064,12 @@
       var open = S.topen === g.key, o = g.o;
       t.visits += o.visits; t.orders += o.orders; t.rev += o.rev; t.prev += g.pv ? g.pv.visits : 0;
       h += '<tr><th scope="row"><button type="button" class="exp" data-act="topen" data-key="' + esc(g.key) + '" aria-expanded="' + open + '">' + (open ? '▾ ' : '▸ ') + esc(g.label) + '</button></th>';
-      h += '<td class="r num b">' + n0(o.visits) + '</td><td class="r num">' + pct1(o.visits, total) + '</td><td class="r num">' + n0(o.orders) + '</td><td class="r num">' + pct1(o.orders, o.visits) + '</td><td class="r num">' + n0(o.rev) + '</td>' + (has ? '<td class="r num">' + grow(o.visits, g.pv ? g.pv.visits : 0) + '</td>' : '') + '</tr>';
+      h += '<td class="r num b">' + n0(o.visits) + '</td><td class="r num">' + pctOf(o.visits, total) + '</td><td class="r num">' + n0(o.orders) + '</td><td class="r num">' + pctOf(o.orders, o.visits) + '</td><td class="r num">' + n0(o.rev) + '</td>' + (has ? '<td class="r num">' + grow(o.visits, g.pv ? g.pv.visits : 0) + '</td>' : '') + '</tr>';
       if (open) g.subs.forEach(function (x) {
-        h += '<tr class="subrow"><th scope="row">└ ' + esc(x.label) + '</th><td class="r num">' + n0(x.o.visits) + '</td><td class="r num">' + pct1(x.o.visits, total) + '</td><td class="r num">' + n0(x.o.orders) + '</td><td class="r num">' + pct1(x.o.orders, x.o.visits) + '</td><td class="r num">' + n0(x.o.rev) + '</td>' + (has ? '<td class="r num">' + grow(x.o.visits, x.pv ? x.pv.visits : 0) + '</td>' : '') + '</tr>';
+        h += '<tr class="subrow"><th scope="row">└ ' + esc(x.label) + '</th><td class="r num">' + n0(x.o.visits) + '</td><td class="r num">' + pctOf(x.o.visits, total) + '</td><td class="r num">' + n0(x.o.orders) + '</td><td class="r num">' + pctOf(x.o.orders, x.o.visits) + '</td><td class="r num">' + n0(x.o.rev) + '</td>' + (has ? '<td class="r num">' + grow(x.o.visits, x.pv ? x.pv.visits : 0) + '</td>' : '') + '</tr>';
       });
     });
-    if (groups.length) h += '<tr class="sum"><th scope="row">합계</th><td class="r num b">' + n0(t.visits) + '</td><td class="r num">100%</td><td class="r num">' + n0(t.orders) + '</td><td class="r num">' + pct1(t.orders, t.visits) + '</td><td class="r num">' + n0(t.rev) + '</td>' + (has ? '<td class="r num">' + grow(t.visits, t.prev) + '</td>' : '') + '</tr>';
+    if (groups.length) h += '<tr class="sum"><th scope="row">합계</th><td class="r num b">' + n0(t.visits) + '</td><td class="r num">100%</td><td class="r num">' + n0(t.orders) + '</td><td class="r num">' + pctOf(t.orders, t.visits) + '</td><td class="r num">' + n0(t.rev) + '</td>' + (has ? '<td class="r num">' + grow(t.visits, t.prev) + '</td>' : '') + '</tr>';
     return h + '</tbody></table>';
   }
   function downloadTrafficCsv() {
@@ -1017,7 +1091,7 @@
    * 바뀌는 (채널, 날짜)만 골라 보여준 뒤, 확인을 누르면 그 줄만 저장한다. 그날 첫 저장 전에는 백업을 자동으로 받는다.
    */
   var UP = { busy: false, msg: '', plan: null, saving: false };
-  var CH_LABEL = { naver: '네이버 판매', naverProd: '네이버 상품별 판매', naverVisit: '유입경로', naverProdVisit: '상품별 유입', naverOrder: '주문조회', naverAd: '네이버 SA', naverAdDetail: '네이버 SA 상세 (캠페인, 광고그룹, 소재)', coupAdDetail: '쿠팡애즈 상세 (캠페인, 광고그룹, 상품)', naverAdBoost: '애드부스트', metaAd: '메타', coupAd: '쿠팡애즈', coupStock: '쿠팡 입고' };
+  var CH_LABEL = { naver: '네이버 판매', naverProd: '네이버 상품별 판매', naverVisit: '유입경로', naverProdVisit: '상품별 유입', naverOrder: '주문조회', naverAd: '네이버 SA', naverAdDetail: '네이버 SA 상세 (캠페인, 광고그룹, 소재)', naverAdCreative: '네이버 소재 → 상품 연결표', coupAdDetail: '쿠팡애즈 상세 (캠페인, 광고그룹, 상품)', naverAdBoost: '애드부스트', metaAd: '메타', coupAd: '쿠팡애즈', coupStock: '쿠팡 입고' };
   var BK_KEY = 'tt6_backup_day';
   function backupDay() { try { return localStorage.getItem(BK_KEY) || ''; } catch (e) { return ''; } }
   function canon(rows) { return JSON.stringify(rows.map(function (r) { return JSON.stringify(r, Object.keys(r).sort()); }).sort()); }
@@ -1037,6 +1111,18 @@
         return pr.then(function () { return readFile(f); }).then(function (buf) {
           var name = f.name.normalize('NFC'), type = P.detect(name), item = { name: name, type: type, ok: false, keys: [], notes: [] };
           list.push(item);
+          if (!type && /\.xlsx$/i.test(name)) { // 이름으로 모르는 xlsx: 네이버 소재 목록인지 칸 이름으로 확인
+            var cwb = root.XLSX.read(buf, { type: 'array' }), cr = root.TTAdDetail.creatives(cwb);
+            if (cr && cr.length) {
+              var mp = {}; (DB.naverAdCreative || []).forEach(function (e) { mp[e.ad] = e; }); // 같은 업로드의 앞 파일까지 합친 상태에서 시작
+              cr.forEach(function (e) { mp[e.ad] = e; }); // 같은 소재는 새 파일 값으로, 없던 소재는 추가 (기존 소재는 지우지 않음)
+              DB.naverAdCreative = Object.keys(mp).sort().map(function (k) { return mp[k]; });
+              P.touched['naverAdCreative|map'] = 1;
+              item.type = 'adCreative'; item.label = '네이버 소재 목록 (소재 ID → 상품번호)'; item.ok = true; item.keys = ['naverAdCreative|map'];
+              item.notes = ['소재 ' + cr.length + '개를 읽었습니다' + (cr.filter(function (e) { return !e.mall; }).length ? ' (상품번호를 못 찾은 소재 ' + cr.filter(function (e) { return !e.mall; }).length + '개)' : '')];
+              return;
+            }
+          }
           if (!type) { item.err = '어떤 파일인지 알 수 없습니다 (파일 이름을 확인해 주세요)'; return; }
           if (!root.TTParse.SUPPORTED[type]) { item.err = 'v6에서는 아직 받지 않는 파일입니다. v5 화면에서 올려 주세요'; return; }
           var before = Object.keys(P.touched).length, nb = P.notes.length, ok;
@@ -1125,7 +1211,7 @@
     if (pl) {
       h += '<div class="plan">';
       pl.files.forEach(function (it) {
-        h += '<div class="pf"><div class="pf-h"><b>' + esc(it.name) + '</b><span>' + (it.err ? miss(esc(it.err)) : esc(root.TTParse.SUPPORTED[it.type])) + '</span></div>';
+        h += '<div class="pf"><div class="pf-h"><b>' + esc(it.name) + '</b><span>' + (it.err ? miss(esc(it.err)) : esc(it.label || root.TTParse.SUPPORTED[it.type])) + '</span></div>';
         (it.groups || []).forEach(function (g) {
           h += '<div class="pf-g"><span>' + esc(CH_LABEL[g.ch] || g.ch) + ' <small>' + dot(g.from) + (g.to !== g.from ? ' ~ ' + dot(g.to) : '') + '</small></span><span>' + (g.add ? '<b class="up">새 날짜 ' + g.add + '일</b> ' : '') + (g.change ? '<b class="warn">⚠️ 값이 바뀌는 날짜 ' + g.change + '일</b> ' : '') + (g.same ? '<span class="zero">이미 같은 값 ' + g.same + '일</span>' : '') + '</span></div>';
           if (g.change) h += '<div class="pf-c">' + g.changes.slice(0, 6).map(function (x) { return dot(x.d) + ' (' + x.before + '줄 → ' + x.after + '줄)'; }).join(', ') + (g.changes.length > 6 ? ' 외 ' + (g.changes.length - 6) + '일' : '') + '</div>';
@@ -1242,6 +1328,10 @@
     var el = ev.target.closest('[data-act]'); if (!el || el.tagName === 'INPUT') return;
     var act = el.getAttribute('data-act'), key = el.getAttribute('data-key');
     if (act === 'page') { var pf = el.getAttribute('data-field') || 'page'; S[pf] = (S[pf] || 0) + (key === 'older' ? 1 : -1); render(); return; }
+    if (act === 'acopen') { if (S.acOpen[key]) delete S.acOpen[key]; else S.acOpen[key] = 1; render(); return; }
+    if (act === 'acsel') { S.acSel = key ? JSON.parse(key) : null; render(); return; }
+    if (act === 'acbasis') { S.acBasis = key; S.acSel = null; render(); return; }
+    if (act === 'accsv') { downloadAdTreeCsv(); return; }
     if (act === 'slkind') { SL.kind = key; SL.edited = false; SL.msg = ''; SL.key = ''; render(); return; }
     if (act === 'slreset') { SL.edited = false; SL.key = ''; SL.msg = ''; render(); return; }
     if (act === 'slcopy') { var te = document.querySelector('textarea[data-act="sltext"]'); if (te) SL.text = te.value; copyText(SL.text).then(function (ok) { SL.msg = ok ? '복사했습니다. 슬랙에 붙여넣으면 됩니다.' : '복사하지 못했습니다. 문구를 직접 선택해서 복사해 주세요.'; render(); }); return; }
