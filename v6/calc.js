@@ -47,7 +47,7 @@
    */
   function normalize(raw) {
     raw = raw || {};
-    var out = { naver: [], naverProd: [], coupang: [], other: [], ads: { sa: [], meta: [], boost: [], coupang: [] }, orders: [], skuMap: [], visits: [], traffic: [], pvisit: [], query: [], cust: [] };
+    var out = { naver: [], naverProd: [], coupang: [], other: [], ads: { sa: [], meta: [], boost: [], coupang: [] }, orders: [], skuMap: [], visits: [], traffic: [], pvisit: [], query: [], cust: [], adDet: { sa: [], coupang: [], saDays: {}, coupDays: {}, creatives: {} } };
 
     // 네이버 일매출: 옛 양식 행은 r이 총 판매금액, 새 양식(newSales)은 r이 순매출
     var nd = {};
@@ -120,6 +120,27 @@
       var d = normDate(e && e.d); if (!d) return;
       out.ads.coupang.push({ d: d, cost: num(e.cost), rev: num(e.rev), clicks: num(e.clicks), imp: num(e.imp), conv: num(e.conv), campaign: String(e.campaign || '') });
     });
+
+    // 광고 상세 (캠페인, 광고그룹, 소재/상품). 상세가 있는 날짜는 상세를, 없는 날짜는 옛 기록(일별 또는 캠페인별)을 쓴다
+    (raw.naverAdDetail || []).forEach(function (e) {
+      var d = normDate(e && e.d); if (!d) return;
+      out.adDet.saDays[d] = 1;
+      out.adDet.sa.push({ d: d, camp: String(e.camp || ''), group: String(e.group || ''), ad: String(e.ad || ''), type: String(e.type || ''), cost: num(e.cost), rev: num(e.rev), clicks: num(e.clicks), imp: num(e.imp), conv: num(e.conv) });
+    });
+    out.ads.sa.forEach(function (e) {
+      if (out.adDet.saDays[e.d]) return;
+      out.adDet.sa.push({ d: e.d, camp: e.campaign, group: '', ad: '', type: '', cost: e.cost, rev: e.rev, clicks: e.clicks, imp: e.imp, conv: e.conv, old: 1 });
+    });
+    (raw.coupAdDetail || []).forEach(function (e) {
+      var d = normDate(e && e.d); if (!d) return;
+      out.adDet.coupDays[d] = 1;
+      out.adDet.coupang.push({ d: d, camp: String(e.camp || ''), group: String(e.group || ''), prod: String(e.prod || ''), convProd: String(e.convProd || ''), cost: num(e.cost), rev: num(e.rev), clicks: num(e.clicks), imp: num(e.imp), conv: num(e.orders), qty: num(e.qty) });
+    });
+    (raw.coupAd || []).forEach(function (e) {
+      var d = normDate(e && e.d); if (!d || out.adDet.coupDays[d]) return;
+      out.adDet.coupang.push({ d: d, camp: String(e.campaign || ''), group: String(e.group || ''), prod: String(e.prod || ''), convProd: String(e.conv_prod || ''), cost: num(e.cost), rev: num(e.rev), clicks: num(e.clicks), imp: num(e.imp), conv: num(e.orders !== undefined ? e.orders : e.conv), qty: num(e.qty), old: 1 });
+    });
+    (raw.naverAdCreative || []).forEach(function (e) { if (e && e.ad) out.adDet.creatives[String(e.ad)] = { mall: String(e.mall || ''), name: String(e.name || ''), status: String(e.status || '') }; });
 
     (raw.naverOrder || []).forEach(function (e) {
       var d = normDate(e && e.d); if (!d) return;
@@ -570,6 +591,75 @@
     return { labels: labels, series: series, unit: unit };
   }
 
+  /* ───────── 광고 캠페인 분석: 캠페인 ▸ 광고그룹 ▸ 상품(품목코드) ─────────
+   * 네이버: 소재ID → (소재 목록 파일) 몰상품 ID = 스마트스토어 상품번호 → 판매 페이지 품목(pageCodes)
+   * 쿠팡: 광고 상품명(이름+옵션 글자) → 아래 규칙으로 품목코드. 2026-11-16 초안, 예영 확인 전
+   */
+  var COUP_AD_RULES = [
+    [/위인.*(위인카드\s*세트|\+\s*위인카드)/, 'SOMD-0020'], [/위인카드/, 'SOMD-0019'], [/위인/, 'SOMD-0018'],
+    [/스티커북\s*5종/, 'SOMD-0016'],
+    [/스티커북.*공룡/, 'SOMD-0006'], [/스티커북.*동물/, 'SOMD-0007'], [/스티커북.*특이한\s*생물/, 'SOMD-0008'], [/스티커북.*탈것/, 'SOMD-0009'], [/스티커북.*마트/, 'SOMD-0010'],
+    [/공룡\s*마이크/, 'SOMD-0015'], [/톰토미.*명작동화/, 'SOCD-0318'], [/톰토미.*크리스마스\s*캐롤/, 'SOCD-0320'], [/톰토미.*인기동요/, 'SOCD-0321'],
+    [/톰토미.*도미노.*100/, 'EDST-85008'], [/톰토미.*미니\s*키링/, 'SOMD-0013'], [/톰토미.*뉴\s*봉제/, 'SOMD-0014'], [/톰토미.*스마트\s*피규어/, 'SOMD-0026']
+  ];
+  var AD_OTHER = '(타사 상품)';
+  function coupAdCode(name) {
+    var s = String(name || ''); if (!s) return '';
+    for (var i = 0; i < COUP_AD_RULES.length; i++) if (COUP_AD_RULES[i][0].test(s)) return COUP_AD_RULES[i][1];
+    return /톰토미|스타원/.test(s) ? NONE : AD_OTHER;
+  }
+  // 네이버 소재 → 상품 키: 품목코드 / 'MULTI:몰상품ID' / 'PL'(파워링크) / 'AD:소재ID'(목록에 없는 소재)
+  function saAdKey(data, e, pc) {
+    if (!e.ad) return '';
+    if (/^nad-a001-01-/.test(e.ad) || e.type === '파워링크') return 'PL';
+    var cr = data.adDet.creatives[e.ad.replace(/\(삭제\)$/, '')];
+    if (!cr || !cr.mall) return 'AD:' + e.ad;
+    var p = pc[cr.mall];
+    return p && p.main ? p.main : 'MULTI:' + cr.mall;
+  }
+  function zm() { return { cost: 0, rev: 0, clicks: 0, imp: 0, conv: 0, qty: 0 }; }
+  function addm(o, e) { o.cost += e.cost; o.rev += e.rev; o.clicks += e.clicks; o.imp += e.imp; o.conv += e.conv; o.qty += e.qty || 0; }
+  // basis: 쿠팡에서 상품을 '광고한 상품'(ad) 기준으로 볼지 '팔린 상품'(sold) 기준으로 볼지
+  function adTree(data, medium, from, to, basis) {
+    var src = medium === 'coupang' ? data.adDet.coupang : data.adDet.sa, pc = medium === 'sa' ? pageCodes(data) : null;
+    var C = {}, tot = zm(), names = {};
+    src.forEach(function (e) {
+      if (!inRange(e.d, from, to)) return;
+      var cn = e.camp || '(캠페인 정보 없음)', gn = e.group || '(광고그룹 정보 없음)', ik;
+      if (medium === 'coupang') { var pn = basis === 'sold' ? e.convProd : e.prod; ik = !e.prod && !e.convProd ? '' : pn ? coupAdCode(pn) : (basis === 'sold' ? '(전환 상품 정보 없음)' : ''); if (ik === NONE || ik === AD_OTHER) ik = ik + '|' + pn; names[ik] = pn; }
+      else { ik = saAdKey(data, e, pc); if (ik.indexOf('AD:') === 0) names[ik] = e.ad; if (ik.indexOf('MULTI:') === 0) { var cr = data.adDet.creatives[e.ad]; names[ik] = cr ? cr.name : ''; } }
+      var c = C[cn] || (C[cn] = { name: cn, m: zm(), G: {} }), g = c.G[gn] || (c.G[gn] = { name: gn, m: zm(), I: {} });
+      addm(tot, e); addm(c.m, e); addm(g.m, e);
+      if (ik) { var it = g.I[ik] || (g.I[ik] = { key: ik, m: zm() }); addm(it.m, e); }
+    });
+    function byCost(a, b) { return b.m.cost - a.m.cost || b.m.rev - a.m.rev; }
+    var camps = Object.keys(C).map(function (k) {
+      var c = C[k];
+      c.groups = Object.keys(c.G).map(function (gk) { var g = c.G[gk]; g.items = Object.keys(g.I).map(function (ik) { return g.I[ik]; }).sort(byCost); delete g.I; return g; }).sort(byCost);
+      delete c.G; return c;
+    }).sort(byCost);
+    return { camps: camps, total: tot, names: names, pageCodes: pc };
+  }
+  // 고른 줄(캠페인 / 광고그룹 / 상품)의 날짜별 광고비, 광고매출
+  function adPathSeries(data, medium, from, to, basis, path) {
+    var src = medium === 'coupang' ? data.adDet.coupang : data.adDet.sa, pc = medium === 'sa' ? pageCodes(data) : null, m = {}, out = [], d;
+    src.forEach(function (e) {
+      if (!inRange(e.d, from, to)) return;
+      var cn = e.camp || '(캠페인 정보 없음)', gn = e.group || '(광고그룹 정보 없음)';
+      if (path.camp && path.camp !== cn) return;
+      if (path.group !== undefined && path.group !== null && path.group !== gn) return;
+      if (path.item) {
+        var ik;
+        if (medium === 'coupang') { var pn = basis === 'sold' ? e.convProd : e.prod; ik = !e.prod && !e.convProd ? '' : pn ? coupAdCode(pn) : (basis === 'sold' ? '(전환 상품 정보 없음)' : ''); if (ik === NONE || ik === AD_OTHER) ik = ik + '|' + pn; }
+        else ik = saAdKey(data, e, pc);
+        if (ik !== path.item) return;
+      }
+      var o = m[e.d] || (m[e.d] = zm()); addm(o, e);
+    });
+    for (d = from; d <= to; d = addDays(d, 1)) { var o = m[d] || zm(); out.push({ d: d, cost: o.cost, rev: o.rev, clicks: o.clicks, imp: o.imp, conv: o.conv }); }
+    return out;
+  }
+
   /* ───────── 유입 (네이버) ───────── */
   function spanOf(rows) { var f = '', l = ''; rows.forEach(function (e) { if (!f || e.d < f) f = e.d; if (e.d > l) l = e.d; }); return { first: f, last: l }; }
   var TR_FIELDS = ['visits', 'orders', 'rev'];
@@ -767,7 +857,7 @@
     dailyFull: dailyFull, bucketFull: bucketFull, totalFull: totalFull, coupangTop: coupangTop, otherByMarket: otherByMarket, otherRows: otherRows,
     adsDaily: adsDaily, adsBucket: adsBucket, adsTotal: adsTotal, adsBreakdown: adsBreakdown, ratio: ratio,
     skuAggregate: skuAggregate, skuUnmapped: skuUnmapped, skuParseOpt: skuParseOpt, orderCheck: orderCheck,
-    costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products, productSeries: productSeries, items: items, itemOrder: itemOrder, trafficDaily: trafficDaily, trafficBucket: trafficBucket, trafficTotal: trafficTotal, trafficPaths: trafficPaths, trafficItems: trafficItems, trafficOrder: trafficOrder, pageCodes: pageCodes, queryTop: queryTop, custDemo: custDemo, itemSeries: itemSeries, itemMaster: itemMaster, NONE: NONE, COUP_MAP: COUP_MAP,
+    costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products, productSeries: productSeries, items: items, itemOrder: itemOrder, adTree: adTree, adPathSeries: adPathSeries, coupAdCode: coupAdCode, AD_OTHER: AD_OTHER, trafficDaily: trafficDaily, trafficBucket: trafficBucket, trafficTotal: trafficTotal, trafficPaths: trafficPaths, trafficItems: trafficItems, trafficOrder: trafficOrder, pageCodes: pageCodes, queryTop: queryTop, custDemo: custDemo, itemSeries: itemSeries, itemMaster: itemMaster, NONE: NONE, COUP_MAP: COUP_MAP,
     signals: signals, health: health
   };
 });

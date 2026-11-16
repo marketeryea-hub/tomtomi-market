@@ -92,12 +92,27 @@
     return rows.length ? apply(DB, 'coupAdDetail', rows, touched) : 0;
   }
 
+  // 네이버 광고 관리 화면의 소재 목록 다운로드(xlsx): '소재' 칸 끝에 스마트스토어 주소, 쇼핑상품 ID, 몰상품 ID가 붙어 있다
+  function creatives(wb) {
+    var X = root.XLSX, ws = wb.Sheets[wb.SheetNames[0]];
+    var all = X.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+    if (!all.length) return null;
+    var hdr = all[0].map(function (v) { return String(v || '').trim(); }), ic = hdr.indexOf('소재'), ii = hdr.indexOf('소재 ID'), is = hdr.indexOf('상태');
+    if (ic < 0 || ii < 0) return null;
+    var out = [];
+    all.slice(1).forEach(function (r) {
+      var id = String(r[ii] || '').trim(); if (!/^nad-/.test(id)) return;
+      var txt = String(r[ic] || ''), m = txt.match(/smartstore\.naver\.com\/[^,\s]*\/products\/(\d+)/), tail = txt.match(/(\d{8,})\s*$/);
+      out.push({ d: 'map', ad: id, mall: m ? m[1] : tail ? tail[1] : '', name: txt.split(',')[0].trim(), status: is >= 0 ? String(r[is] || '') : '' });
+    });
+    return out;
+  }
   // 광고그룹이나 소재 칸이 있는 보고서인지 (캠페인 단위 보고서와 구분)
   function isDetailCsv(text) {
     var lines = String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/).slice(0, 5);
     return lines.some(function (l) { return /캠페인/.test(l) && (/광고그룹/.test(l) || /소재/.test(l)); });
   }
-  var api = { naver: naver, coupang: coupang, isDetailCsv: isDetailCsv, _day: day, _num: num };
+  var api = { naver: naver, coupang: coupang, creatives: creatives, isDetailCsv: isDetailCsv, _day: day, _num: num };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.TTAdDetail = api;
 })(typeof window !== 'undefined' ? window : globalThis);
