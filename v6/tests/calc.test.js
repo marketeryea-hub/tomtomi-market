@@ -144,5 +144,32 @@ eq('SA 캠페인별(구분 없는 행 포함)', C.adsBreakdown(D, 'sa', '2026-01
   const ti = C.trafficItems(D3, '2026-06-01', '2026-06-01').rows;
   eq('주 품목 90% 페이지는 그 품목, 반반 페이지는 여러 품목, 매핑 없으면 미지정', [ti.A && ti.A.visits, ti['MULTI:P2'] && ti['MULTI:P2'].visits, ti[C.NONE] && ti[C.NONE].visits], [8, 4, 3]);
 }
+// 프로모션: 증분 매출, ROI, 원가 미입력이면 ROI 없음, 데이터가 없는 날짜는 빼고 기준선도 같은 길이
+{
+  const mk = cost => C.normalize({
+    naver: [{ d: '2026-03-10', r: 1, src: 'newSales' }],
+    other: [{ d: '2026-03-01', a: 1000, m: '몰', code: 'A', qty: 1 }, { d: '2026-03-05', a: 4000, m: '몰', code: 'A', qty: 4 }, { d: '2026-03-06', a: 2000, m: '몰', code: 'A', qty: 2 }, { d: '2026-03-05', a: 9000, m: '몰', code: 'B', qty: 1 }],
+    skuCost: cost ? [{ ver: '1', rows: [{ c: 'A', name: '에이', cost: 300, from: '' }] }] : [],
+    promo: [{ id: 'p1', from: '2026-03-05', to: '2026-03-08', ch: 'other', items: ['A'], fee: 5, base: 'prev', costs: { gift: 500 }, updated: '1' },
+      { id: 'p1', from: '2026-03-05', to: '2026-03-08', ch: 'other', items: ['A'], fee: 5, base: 'prev', costs: { gift: 1000 }, updated: '2' },
+      { id: 'p2', from: '2026-03-01', to: '2026-03-02', del: 1 }, { id: 'p3', from: '2026-04-01', to: '2026-04-02', ch: 'all', items: [], costs: {} }]
+  });
+  const D = mk(true), P = D.promos.find(p => p.id === 'p1'), r = C.promoCalc(D, P);
+  eq('프로모션: 같은 id는 마지막 저장분, 지운 것은 제외', [D.promos.length, P.costs.gift], [2, 1000]);
+  eq('프로모션: 기간 매출, 기준선, 증분', [r.cur.rev, r.b.rev, r.incRev, r.cur.qty], [6000, 1000, 5000, 6]);
+  eq('프로모션: 대상 품목만 센다 (B 제외), 기타몰은 수수료 없음', [r.cur.rows.B, r.incFee], [undefined, 0]);
+  eq('프로모션: ROI = (증분 매출 - 증분 원가 - 비용) ÷ 비용', [r.incCogs, r.incProfit, r.roi, r.roas], [1500, 2500, 2.5, 6]);
+  eq('프로모션: 원가가 없으면 ROI는 비운다', [C.promoCalc(mk(false), P).roi, C.promoCalc(mk(false), P).incRev], [null, 5000]);
+  eq('프로모션: 아직 데이터 없는 프로모션은 예정', C.promoCalc(D, D.promos.find(p => p.id === 'p3')).state, 'plan');
+  const run = C.promoCalc(D, Object.assign({}, P, { to: '2026-03-20' }));
+  eq('프로모션: 진행 중이면 데이터 있는 날까지, 기준선도 같은 길이', [run.state, run.range.to, run.base.from, run.base.to], ['run', '2026-03-10', '2026-02-27', '2026-03-04']);
+}
+// 쿠팡애즈 옛 행은 전환이 orders 칸에 있다: 요약과 캠페인 표의 전환 수가 같아야 한다
+{
+  const D = C.normalize({ naver: [{ d: '2026-04-09', r: 1, src: 'newSales' }], coupAd: [{ d: '2026-04-09', cost: 100, rev: 500, clicks: 3, imp: 50, orders: 2, campaign: '가' }, { d: '2026-04-08', cost: 50, rev: 0, clicks: 1, imp: 20, conv: 1 }] });
+  const a = C.adsTotal(C.adsDaily(D, '2026-04-08', '2026-04-09')), t = C.adTree(D, 'coupang', '2026-04-08', '2026-04-09', 'ad').total;
+  eq('쿠팡 요약 = 캠페인 표 (광고비, 매출, 클릭, 노출, 전환)', [a.coupCost, a.coupRev, a.coupClicks, a.coupImp, a.coupConv], [t.cost, t.rev, t.clicks, t.imp, t.conv]);
+  eq('쿠팡 전환 합', a.coupConv, 3);
+}
 console.log(fail ? '실패 ' + fail + '건' : '모든 규칙 통과');
 process.exit(fail ? 1 : 0);

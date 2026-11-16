@@ -281,3 +281,21 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; color
 .aisug-i small { color: var(--sub); white-space: nowrap; }
 .aisug-none { padding: 12px 14px; color: var(--sub); font-size: 14px; }
 .aicur { margin: 12px 0 0; font-size: 14px; }
+
+/* 프로모션 */
+.pform { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px 16px; margin-top: 14px; }
+.pform label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; min-width: 0; }
+.pform label.w2 { grid-column: span 2; }
+.pform input, .pform select { min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; font-size: 15px; font-weight: 400; width: 100%; }
+.pform input:focus, .pform select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pform small { font-size: 12px; font-weight: 400; color: var(--sub); }
+.pitems { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; font-size: 13px; }
+.pchips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 32px; }
+.pchip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-deep); font-size: 13px; }
+.pchip button { width: 24px; height: 24px; border: 0; border-radius: 50%; background: none; color: inherit; font-size: 16px; line-height: 1; cursor: pointer; }
+.pchip button:hover { background: var(--card); }
+.chtag.on { background: var(--accent-soft); color: var(--accent-deep); }
+.tbl tr.on { background: var(--accent-soft); }
+.li.sumli { border-top: 2px solid var(--text); font-weight: 700; }
+@media (max-width: 560px) { .pform label.w2 { grid-column: auto; } }
+.chtag.wait { background: var(--bg); color: var(--sub); border: 1px solid var(--line); }
