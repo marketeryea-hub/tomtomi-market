@@ -660,6 +660,44 @@
     return out;
   }
 
+  /* ───────── 상품 기준 광고 성과: 품목 하나 × 날짜 × 광고 ─────────
+   * 쿠팡: 광고비/노출/클릭은 그 품목을 '광고한' 줄, 광고매출/판매 수량은 그 품목이 '팔린' 줄
+   * 네이버 SA: 그 품목 소재 줄 (판매 수량 대신 전환수)
+   * medium: 'all' | 'sa' | 'coupang'
+   */
+  function adItemDaily(data, key, from, to, medium) {
+    var pc = pageCodes(data), m = {}, d, out = [];
+    function slot(day) { return m[day] || (m[day] = { cost: 0, imp: 0, clicks: 0, rev: 0, qty: 0, conv: 0, L: {} }); }
+    function line(o, md, e) { var k = md + '|' + (e.camp || '(캠페인 정보 없음)') + '|' + (e.group || '(광고그룹 정보 없음)'); return o.L[k] || (o.L[k] = { medium: md, camp: e.camp || '(캠페인 정보 없음)', group: e.group || '(광고그룹 정보 없음)', cost: 0, rev: 0, qty: 0, conv: 0, clicks: 0 }); }
+    if (medium !== 'sa') data.adDet.coupang.forEach(function (e) {
+      if (!inRange(e.d, from, to) || (!e.prod && !e.convProd)) return;
+      var adK = e.prod ? coupAdCode(e.prod) : '', soldK = e.convProd ? coupAdCode(e.convProd) : '';
+      if (adK !== key && soldK !== key) return;
+      var o = slot(e.d), l = line(o, 'coupang', e);
+      if (adK === key) { o.cost += e.cost; o.imp += e.imp; o.clicks += e.clicks; l.cost += e.cost; l.clicks += e.clicks; }
+      if (soldK === key) { o.rev += e.rev; o.qty += e.qty; o.conv += e.conv; l.rev += e.rev; l.qty += e.qty; l.conv += e.conv; }
+    });
+    if (medium !== 'coupang') data.adDet.sa.forEach(function (e) {
+      if (!inRange(e.d, from, to) || !e.ad || saAdKey(data, e, pc) !== key) return;
+      var o = slot(e.d), l = line(o, 'sa', e);
+      o.cost += e.cost; o.imp += e.imp; o.clicks += e.clicks; o.rev += e.rev; o.conv += e.conv; o.qty += e.conv;
+      l.cost += e.cost; l.clicks += e.clicks; l.rev += e.rev; l.conv += e.conv; l.qty += e.conv;
+    });
+    for (d = from; d <= to; d = addDays(d, 1)) {
+      var o = m[d] || { cost: 0, imp: 0, clicks: 0, rev: 0, qty: 0, conv: 0, L: {} };
+      out.push({ d: d, cost: o.cost, imp: o.imp, clicks: o.clicks, rev: o.rev, qty: o.qty, conv: o.conv, lines: Object.keys(o.L).map(function (k) { return o.L[k]; }).sort(function (a, b) { return b.cost - a.cost || b.rev - a.rev; }) });
+    }
+    return out;
+  }
+  // 광고가 있었던 품목 목록 (상품 기준 보기의 고르기 칸): 광고비 순
+  function adItemList(data, from, to, medium) {
+    var pc = pageCodes(data), m = {};
+    function add(k, cost, rev) { if (!k || k.charAt(0) === '(' || k === 'PL' || k.indexOf('AD:') === 0) return; var o = m[k] || (m[k] = { key: k, cost: 0, rev: 0 }); o.cost += cost; o.rev += rev; }
+    if (medium !== 'sa') data.adDet.coupang.forEach(function (e) { if (!inRange(e.d, from, to)) return; if (e.prod) add(coupAdCode(e.prod), e.cost, 0); if (e.convProd) add(coupAdCode(e.convProd), 0, e.rev); });
+    if (medium !== 'coupang') data.adDet.sa.forEach(function (e) { if (!inRange(e.d, from, to) || !e.ad) return; add(saAdKey(data, e, pc), e.cost, e.rev); });
+    return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.cost - a.cost || b.rev - a.rev; });
+  }
+
   /* ───────── 유입 (네이버) ───────── */
   function spanOf(rows) { var f = '', l = ''; rows.forEach(function (e) { if (!f || e.d < f) f = e.d; if (e.d > l) l = e.d; }); return { first: f, last: l }; }
   var TR_FIELDS = ['visits', 'orders', 'rev'];
@@ -857,7 +895,7 @@
     dailyFull: dailyFull, bucketFull: bucketFull, totalFull: totalFull, coupangTop: coupangTop, otherByMarket: otherByMarket, otherRows: otherRows,
     adsDaily: adsDaily, adsBucket: adsBucket, adsTotal: adsTotal, adsBreakdown: adsBreakdown, ratio: ratio,
     skuAggregate: skuAggregate, skuUnmapped: skuUnmapped, skuParseOpt: skuParseOpt, orderCheck: orderCheck,
-    costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products, productSeries: productSeries, items: items, itemOrder: itemOrder, adTree: adTree, adPathSeries: adPathSeries, coupAdCode: coupAdCode, AD_OTHER: AD_OTHER, trafficDaily: trafficDaily, trafficBucket: trafficBucket, trafficTotal: trafficTotal, trafficPaths: trafficPaths, trafficItems: trafficItems, trafficOrder: trafficOrder, pageCodes: pageCodes, queryTop: queryTop, custDemo: custDemo, itemSeries: itemSeries, itemMaster: itemMaster, NONE: NONE, COUP_MAP: COUP_MAP,
+    costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products, productSeries: productSeries, items: items, itemOrder: itemOrder, adTree: adTree, adPathSeries: adPathSeries, adItemDaily: adItemDaily, adItemList: adItemList, coupAdCode: coupAdCode, AD_OTHER: AD_OTHER, trafficDaily: trafficDaily, trafficBucket: trafficBucket, trafficTotal: trafficTotal, trafficPaths: trafficPaths, trafficItems: trafficItems, trafficOrder: trafficOrder, pageCodes: pageCodes, queryTop: queryTop, custDemo: custDemo, itemSeries: itemSeries, itemMaster: itemMaster, NONE: NONE, COUP_MAP: COUP_MAP,
     signals: signals, health: health
   };
 });
