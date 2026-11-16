@@ -118,7 +118,7 @@
     });
     (raw.coupAd || []).forEach(function (e) {
       var d = normDate(e && e.d); if (!d) return;
-      out.ads.coupang.push({ d: d, cost: num(e.cost), rev: num(e.rev), clicks: num(e.clicks), imp: num(e.imp), conv: num(e.conv), campaign: String(e.campaign || '') });
+      out.ads.coupang.push({ d: d, cost: num(e.cost), rev: num(e.rev), clicks: num(e.clicks), imp: num(e.imp), conv: num(e.conv !== undefined ? e.conv : e.orders), campaign: String(e.campaign || '') }); // 옛 상세 행은 전환이 orders 칸에 있다
     });
 
     // 광고 상세 (캠페인, 광고그룹, 소재/상품). 상세가 있는 날짜는 상세를, 없는 날짜는 옛 기록(일별 또는 캠페인별)을 쓴다
