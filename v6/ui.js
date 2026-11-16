@@ -1017,7 +1017,7 @@
    * 바뀌는 (채널, 날짜)만 골라 보여준 뒤, 확인을 누르면 그 줄만 저장한다. 그날 첫 저장 전에는 백업을 자동으로 받는다.
    */
   var UP = { busy: false, msg: '', plan: null, saving: false };
-  var CH_LABEL = { naver: '네이버 판매', naverProd: '네이버 상품별 판매', naverVisit: '유입경로', naverProdVisit: '상품별 유입', naverOrder: '주문조회', naverAd: '네이버 SA', naverAdBoost: '애드부스트', metaAd: '메타', coupAd: '쿠팡애즈', coupStock: '쿠팡 입고' };
+  var CH_LABEL = { naver: '네이버 판매', naverProd: '네이버 상품별 판매', naverVisit: '유입경로', naverProdVisit: '상품별 유입', naverOrder: '주문조회', naverAd: '네이버 SA', naverAdDetail: '네이버 SA 상세 (캠페인, 광고그룹, 소재)', coupAdDetail: '쿠팡애즈 상세 (캠페인, 광고그룹, 상품)', naverAdBoost: '애드부스트', metaAd: '메타', coupAd: '쿠팡애즈', coupStock: '쿠팡 입고' };
   var BK_KEY = 'tt6_backup_day';
   function backupDay() { try { return localStorage.getItem(BK_KEY) || ''; } catch (e) { return ''; } }
   function canon(rows) { return JSON.stringify(rows.map(function (r) { return JSON.stringify(r, Object.keys(r).sort()); }).sort()); }
@@ -1041,8 +1041,27 @@
           if (!root.TTParse.SUPPORTED[type]) { item.err = 'v6에서는 아직 받지 않는 파일입니다. v5 화면에서 올려 주세요'; return; }
           var before = Object.keys(P.touched).length, nb = P.notes.length, ok;
           try {
-            if (/\.csv$/i.test(name)) ok = P.parseCSV(new TextDecoder('utf-8').decode(buf), type);
-            else ok = P.parseXLSX(root.XLSX.read(buf, { type: 'array', cellDates: true, raw: false }), type, name);
+            if (/\.csv$/i.test(name)) {
+              var txt = new TextDecoder('utf-8').decode(buf);
+              ok = P.parseCSV(txt, type);
+              if (ok && type === 'naverAd') {
+                root.TTAdDetail.naver(txt, DB, P.touched); // 캠페인, 광고그룹, 소재 상세도 저장
+                // 광고그룹/소재 단위 보고서는 노출수가 캠페인 단위 보고서보다 적게 잡힌다(소재에 안 붙는 노출 제외).
+                // 그래서 이미 저장된 날짜의 일별 합계는 그대로 두고, 합계가 없는 날짜만 이 파일로 채운다.
+                if (root.TTAdDetail.isDetailCsv(txt)) {
+                  var keep = {}; (RAW.naverAd || []).forEach(function (e) { keep[e.d] = 1; });
+                  var kept = 0;
+                  DB.naverAd = DB.naverAd.filter(function (e) { return !keep[e.d]; }).concat((RAW.naverAd || []).filter(function (e) { return keep[e.d] && P.touched['naverAd|' + e.d]; }).map(function (e) { kept++; return JSON.parse(JSON.stringify(e)); }));
+                  // 파일에 없던 날짜인데 기존에만 있던 날짜도 원래대로
+                  (RAW.naverAd || []).forEach(function (e) { if (!P.touched['naverAd|' + e.d] && !DB.naverAd.some(function (x) { return x.d === e.d; })) DB.naverAd.push(JSON.parse(JSON.stringify(e))); });
+                  if (kept) P.notes.push('광고그룹/소재 단위 파일이라 이미 저장된 ' + kept + '일의 일별 합계(노출수 등)는 그대로 두고 상세만 저장합니다.');
+                }
+              }
+            } else {
+              var wb = root.XLSX.read(buf, { type: 'array', cellDates: true, raw: false });
+              ok = P.parseXLSX(wb, type, name);
+              if (ok && type === 'coupAdProd') root.TTAdDetail.coupang(wb, DB, P.touched); // 캠페인, 광고그룹, 상품 상세도 저장
+            }
           } catch (e) { ok = false; item.err = '읽는 중 오류: ' + (e && e.message); }
           item.ok = !!ok; item.notes = P.notes.slice(nb);
           if (!ok && !item.err) item.err = '양식이 달라 읽지 못했습니다';
@@ -1129,7 +1148,8 @@
     var hl = C.health(DATA, today()), td = today();
     function lastOf(rows) { var m = ''; rows.forEach(function (e) { if (e.d > m) m = e.d; }); return m; }
     function missing(rows, n) { var have = {}, cnt = 0, d, end = DATA.last; rows.forEach(function (e) { have[e.d] = 1; }); for (d = C.addDays(end, -(n - 1)); d <= end; d = C.addDays(d, 1)) if (!have[d]) cnt++; return cnt; }
-    var lines = [['네이버 판매 (sales_)', DATA.naver, true], ['유입 (visit_)', DATA.traffic, true], ['주문조회', DATA.orders, true], ['네이버 SA', DATA.ads.sa, true], ['메타', DATA.ads.meta, true], ['애드부스트', DATA.ads.boost, false], ['쿠팡애즈', DATA.ads.coupang, false], ['쿠팡 입고', DATA.coupang, false]];
+    function rawDays(ch) { return (RAW[ch] || []).map(function (e) { return { d: e.d }; }); }
+    var lines = [['네이버 판매 (sales_)', DATA.naver, true], ['유입 (visit_)', DATA.traffic, true], ['주문조회', DATA.orders, true], ['네이버 SA', DATA.ads.sa, true], ['└ 네이버 SA 상세', rawDays('naverAdDetail'), true], ['메타', DATA.ads.meta, true], ['애드부스트', DATA.ads.boost, false], ['쿠팡애즈', DATA.ads.coupang, false], ['└ 쿠팡애즈 상세', rawDays('coupAdDetail'), false], ['쿠팡 입고', DATA.coupang, false]];
     h += '<section class="card flush" aria-label="데이터 상태"><div class="card-h pad"><h2>데이터 상태</h2><span class="hint">빠진 날짜는 데이터 기준일 ' + dot(DATA.last) + '까지 최근 30일 기준</span></div><div class="scroll"><table class="tbl"><thead><tr><th scope="col">데이터</th><th scope="col">마지막 날짜</th><th scope="col" class="r">빠진 날짜 (최근 30일)</th></tr></thead><tbody>';
     lines.forEach(function (l) { var last = lastOf(l[1]), m = l[2] ? missing(l[1], 30) : null; h += '<tr><th scope="row">' + l[0] + '</th><td class="num">' + (last ? dot(last) + ' <small class="zero">(' + C.dayDiff(last, td) + '일 전)</small>' : '-') + '</td><td class="r num">' + (m === null ? '<span class="zero">집행한 날만 있음</span>' : m ? '<b class="warn">' + m + '일</b>' : '없음') + '</td></tr>'; });
     h += '</tbody></table></div>';
