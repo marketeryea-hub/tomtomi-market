@@ -264,3 +264,7 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; color
 .tbl.adtree tr.lv3 td, .tbl.adtree tr.lv3 th { background: var(--bg); }
 .tbl.adtree small { color: var(--sub); }
 .chip.mini { min-height: 28px; padding: 0 10px; font-size: 12px; }
+.cover { display: flex; flex-direction: column; gap: 4px; margin: 0 18px 12px; padding: 12px 14px; border-radius: var(--r-md); background: var(--warn-soft); color: var(--text); font-size: 13px; line-height: 1.5; }
+.cover b { color: var(--warn); }
+.cover.ok { background: var(--accent-soft); color: var(--accent-deep); }
+.linkbtn { border: 0; background: none; padding: 0; color: var(--accent-deep); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
