@@ -603,6 +603,11 @@
     h += '<div id="aisug" class="aisug" role="listbox"' + (S.aiq.trim() ? '' : ' hidden') + '>' + aiSuggest(list) + '</div></div></div>';
     h += key ? '<p class="aicur">지금 보는 품목: <b>' + esc(aiLabel(key)) + '</b>' + (list.some(function (o) { return o.key === key; }) ? '' : ' <span class="zero">(이 기간 광고 없음)</span>') + '</p>' : '<p class="note">품목을 검색해서 골라 주세요.</p>';
     h += '</section>';
+    // 상세(캠페인 ▸ 광고그룹 ▸ 상품)가 없는 날짜는 품목에 연결할 수 없어 0으로 보인다. 숫자가 0인 이유를 먼저 알려 준다
+    var warn = '';
+    (md === 'all' ? ['sa', 'coupang'] : [md]).forEach(function (m) { var c = adCoverHtml(m); if (c.indexOf('class="cover pad"') >= 0) warn += '<div class="covwrap"><b class="covname">' + (m === 'sa' ? '네이버 SA' : '쿠팡애즈') + '</b>' + c + '</div>'; });
+    if (md !== 'coupang') warn += saCreativeNote();
+    if (warn) h += '<section class="card flush" aria-label="상세 데이터 안내"><div class="card-h pad"><h2>⚠️ 이 기간에는 품목까지 연결되지 않는 광고가 있습니다</h2><span class="hint">아래 날짜의 광고비와 광고매출은 이 화면에 0으로 보입니다</span></div>' + warn + '</section>';
     if (!key) return h;
 
     var rows = aiCache('d|' + key + '|' + md + '|' + S.from + '|' + S.to, function () { return C.adItemDaily(DATA, key, S.from, S.to, md); });
@@ -676,7 +681,7 @@
     var T = adTreeModel(md), cp = md === 'coupang', sold = cp && S.acBasis === 'sold', h = '';
     h += '<section class="card flush" aria-label="캠페인 분석"><div class="card-h pad"><h2>캠페인 ▸ 광고그룹 ▸ 상품</h2><span class="hint">이름을 누르면 펼치고, [추이]를 누르면 아래 차트가 그 줄로 바뀝니다</span>';
     if (cp) [['ad', '광고한 상품 기준'], ['sold', '팔린 상품 기준']].forEach(function (b) { h += '<button type="button" class="chip" data-act="acbasis" data-key="' + b[0] + '" aria-pressed="' + (S.acBasis === b[0]) + '">' + b[1] + '</button>'; });
-    h += '<button type="button" class="chip" data-act="accsv">엑셀로 받기 (CSV)</button></div>' + adCoverHtml(md) + '<div class="scroll">';
+    h += '<button type="button" class="chip" data-act="accsv">엑셀로 받기 (CSV)</button></div>' + adCoverHtml(md) + (md === 'sa' ? saCreativeNote() : '') + '<div class="scroll">';
     h += '<table class="tbl wrap adtree"><thead><tr><th scope="col">캠페인 / 광고그룹 / 상품</th><th scope="col" class="r">광고비</th><th scope="col" class="r">광고매출</th><th scope="col" class="r">ROAS</th><th scope="col" class="r">클릭</th><th scope="col" class="r">CTR</th><th scope="col" class="r">' + (cp ? '주문' : '전환') + '</th>' + (cp ? '<th scope="col" class="r">판매 수량</th>' : '') + '<th scope="col"></th></tr></thead><tbody>';
     function cells(m, lvl) {
       var hideCost = sold && lvl === 3;
@@ -742,6 +747,12 @@
     return '<div class="cover pad"><b>이 기간 광고 집행 ' + days.length + '일 중 상세(캠페인 ▸ 광고그룹 ▸ 상품)가 있는 날짜는 ' + nFull + '일입니다.</b>' +
       '<span>상세가 빠진 날짜' + (co ? ' (' + co + '일은 캠페인까지만 있음)' : '') + ': ' + esc(ranges.slice(0, 6).join(', ') + (ranges.length > 6 ? ' 외 ' + (ranges.length - 6) + '구간' : '')) + '</span>' +
       '<span>이 날짜들의 ' + (md === 'coupang' ? '쿠팡 광고 보고서(custom_report)' : '네이버 SA 보고서(광고그룹 항목 포함)') + '를 다시 받아 <button type="button" class="linkbtn" data-act="view" data-key="data">데이터 관리</button>에 올리면 채워집니다. v5로 올리면 합계만 남습니다.</span></div>';
+  }
+  // 네이버 소재 목록(소재 ID → 상품번호)이 없으면 SA 광고를 품목에 연결할 수 없다
+  function saCreativeNote() {
+    var hasSa = DATA.adDet.sa.some(function (e) { return e.d >= S.from && e.d <= S.to && e.ad && !/^nad-a001-01-/.test(e.ad); });
+    if (!hasSa || Object.keys(DATA.adDet.creatives).length) return '';
+    return '<div class="cover pad"><b>네이버 소재 목록 파일이 아직 없어서, 네이버 SA 광고가 어느 상품 광고인지 알 수 없습니다.</b><span>네이버 광고 관리 화면의 [소재] 탭에서 [다운로드]로 받은 엑셀 파일(캠페인마다 1개)을 <button type="button" class="linkbtn" data-act="view" data-key="data">데이터 관리</button>에 올리면 연결됩니다. 한 번만 올리면 되고, 소재를 새로 만들었을 때만 다시 올립니다.</span></div>';
   }
   function downloadAdTreeCsv() {
     var md = S.ad, T = adTreeModel(md), lines = [['캠페인', '광고그룹', '상품 구분', '품목코드', '품목명/상품명', '광고비', '광고매출', 'ROAS(%)', '노출', '클릭', '전환/주문', '판매 수량']];
