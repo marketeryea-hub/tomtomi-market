@@ -171,5 +171,7 @@ eq('SA 캠페인별(구분 없는 행 포함)', C.adsBreakdown(D, 'sa', '2026-01
   eq('쿠팡 요약 = 캠페인 표 (광고비, 매출, 클릭, 노출, 전환)', [a.coupCost, a.coupRev, a.coupClicks, a.coupImp, a.coupConv], [t.cost, t.rev, t.clicks, t.imp, t.conv]);
   eq('쿠팡 전환 합', a.coupConv, 3);
 }
+// 쿠팡 광고 상품명 → 품목코드 (2026-11-17 예영 확인)
+eq('쿠팡 광고 상품명 연결', ['톰토미 루나 NEW 봉제인형,블루,블루,1개,1개,36cm,36cm', '톰토미 봉제 애착인형 25cm,화이트,화이트,1개,1개', '톰토미 유아용 뉴 봉제 인형,화이트', '스타원엔터테인먼트 뽀로로 유아동요 + 0~3세를 위한 유아동요 80곡집 음악CD 2종 세트,5CD,5CD', '톰토미 크리스마스 캐롤 한국어 영어캐롤 35곡 수록,2CD,2CD', '뽀로로 유아동요,3CD,3CD'].map(C.coupAdCode), ['SOMD-0012', 'SOMD-0002', 'SOMD-0014', C.AD_OTHER, 'SOCD-0320', C.AD_OTHER]);
 console.log(fail ? '실패 ' + fail + '건' : '모든 규칙 통과');
 process.exit(fail ? 1 : 0);
