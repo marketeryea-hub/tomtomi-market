@@ -24,9 +24,10 @@
         });
     }
     return page(0).then(function (rows) {
-      var raw = {}, meta = {};
+      var raw = {}, meta = {}, by = {};
       rows.forEach(function (r) {
         if (!r || SKIP[r.channel] || !Array.isArray(r.data)) return;
+        (by[r.channel] = by[r.channel] || {})[r.date] = r.data; // 클라우드의 줄(채널, 날짜) 그대로: 백업과 복원에 쓴다
         (raw[r.channel] = raw[r.channel] || []).push.apply(raw[r.channel], r.data);
         // 저장 구조 점검용: 한 줄(채널, 날짜)에 다른 날짜 데이터가 섞여 있으면 odd로 센다
         var m = meta[r.channel] || (meta[r.channel] = { rows: 0, odd: 0 });
@@ -34,6 +35,7 @@
         if (r.data.some(function (e) { return e && (e.d || e.date) !== r.date; })) m.odd++;
       });
       raw._meta = meta;
+      raw._rowsBy = by;
       raw._rows = rows.length;
       return raw;
     });
@@ -104,18 +106,30 @@
       .then(function (rows) { var m = {}; (rows || []).forEach(function (r) { var e = (r.data || [])[0]; if (e && e.img) m[r.date] = e.img; }); return m; });
   }
 
+  // 백업과 복원용: 클라우드의 모든 줄(웹훅, 상품 이미지 포함)을 (채널, 날짜, 데이터) 그대로 읽는다
+  function snapshot() {
+    var all = [];
+    function page(offset) {
+      return fetch(SUPABASE_URL + '/rest/v1/tomtomi_data?select=channel,date,data&order=channel,date&limit=' + PAGE + '&offset=' + offset, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } })
+        .then(function (res) { if (!res.ok) throw new Error('클라우드를 읽지 못했습니다 (HTTP ' + res.status + ')'); return res.json(); })
+        .then(function (rows) { all = all.concat(rows || []); return rows && rows.length === PAGE ? page(offset + PAGE) : all.filter(function (r) { return r && r.channel && Array.isArray(r.data); }); });
+    }
+    return page(0);
+  }
+
   // 파일 올리기 저장: (채널, 날짜) 한 줄씩 덮어쓰기(upsert). v5의 클라우드 동기화와 같은 방식
   function saveRows(rows) {
-    var i = 0, CH = 50;
+    var i = 0, CH = 50, MAXB = 800000; // 한 번에 50줄, 또는 약 0.8MB까지 (상품 이미지처럼 큰 줄은 나눠 보낸다)
     function next() {
       if (i >= rows.length) return Promise.resolve(rows.length);
-      var part = rows.slice(i, i + CH); i += CH;
+      var part = [], size = 0, start = i;
+      while (i < rows.length && part.length < CH) { var sz = JSON.stringify(rows[i]).length; if (part.length && size + sz > MAXB) break; part.push(rows[i]); size += sz; i++; }
       return fetch(SUPABASE_URL + '/rest/v1/tomtomi_data?on_conflict=channel,date', {
         method: 'POST',
         headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
         body: JSON.stringify(part)
       }).then(function (res) {
-        if (!res.ok) return res.text().then(function (t) { throw new Error('저장 실패 (HTTP ' + res.status + ', ' + (i - CH) + '번째 줄부터) ' + String(t).slice(0, 120)); });
+        if (!res.ok) return res.text().then(function (t) { throw new Error('저장 실패 (HTTP ' + res.status + ', ' + (start + 1) + '번째 줄부터) ' + String(t).slice(0, 120)); });
         return next();
       });
     }
@@ -174,5 +188,5 @@
     });
   }
 
-  root.TTData = { load: load, saveCost: saveCost, saveRows: saveRows, loadImages: loadImages, loadWebhook: loadWebhook, loadOnline: loadOnline, sendSlack: sendSlack };
+  root.TTData = { load: load, saveCost: saveCost, saveRows: saveRows, loadImages: loadImages, snapshot: snapshot, loadWebhook: loadWebhook, loadOnline: loadOnline, sendSlack: sendSlack };
 })(window);

@@ -1326,23 +1326,42 @@
     });
     return { files: list, rows: rows, st: st, blocked: blocked };
   }
-  function downloadBackup() {
-    var data = { ARCHIVE: {}, RAW: {}, v6: { at: new Date().toISOString() } };
-    Object.keys(RAW).forEach(function (k) { if (k.charAt(0) !== '_' && Array.isArray(RAW[k])) data.ARCHIVE[k] = RAW[k]; });
+  /* 백업: 그 순간의 클라우드 전체(웹훅, 상품 이미지 포함) + 기타몰(구글 시트)을 JSON 파일 하나로 받는다.
+   * ARCHIVE는 v5 백업과 같은 모양(채널별 항목 목록)이고, v6.rows에 줄(채널, 날짜, 항목 수) 색인을 함께 넣어 복원할 때 줄 경계를 그대로 되살린다.
+   * 클라우드를 못 읽으면 지금 화면에 불러온 데이터로 받는다(이미지 빠짐, 화면에 알림).
+   */
+  function backupFrom(rows, why) {
+    var data = { ARCHIVE: {}, RAW: {}, v6: { at: new Date().toISOString(), why: why || '', rows: [] } };
+    rows.forEach(function (r) { (data.ARCHIVE[r.channel] = data.ARCHIVE[r.channel] || []).push.apply(data.ARCHIVE[r.channel], r.data); data.v6.rows.push([r.channel, r.date, r.data.length]); });
+    if (Array.isArray(RAW.other)) data.ARCHIVE.other = RAW.other; // 기타몰은 구글 시트에 있어 복원 대상은 아니지만 기록으로 남긴다
+    return data;
+  }
+  function saveJson(data, tag) {
     var a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
-    a.download = 'archive_' + today().replace(/-/g, '') + '_' + new Date().toTimeString().slice(0, 5).replace(':', '') + '.json';
+    a.download = 'archive_' + today().replace(/-/g, '') + '_' + new Date().toTimeString().slice(0, 5).replace(':', '') + (tag ? '_' + tag : '') + '.json';
     document.body.appendChild(a); a.click();
-    setTimeout(function () { a.remove(); URL.revokeObjectURL(a.href); }, 1000);
-    try { localStorage.setItem(BK_KEY, today()); } catch (e) { /* 저장 못 하면 다음에도 백업을 받는다(안전한 쪽) */ }
+    setTimeout(function () { a.remove(); URL.revokeObjectURL(a.href); }, 1500);
   }
+  function downloadBackup(why, tag) {
+    return root.TTData.snapshot().then(function (rows) {
+      saveJson(backupFrom(rows, why), tag);
+      try { localStorage.setItem(BK_KEY, today()); } catch (e) { /* 저장 못 하면 다음에도 백업을 받는다(안전한 쪽) */ }
+      return { ok: true, rows: rows };
+    }, function (e) { // 클라우드를 못 읽으면 저장도 실패할 가능성이 크지만, 그래도 지금 화면의 데이터는 남긴다
+      var by = RAW._rowsBy || {}, rows = [];
+      Object.keys(by).forEach(function (ch) { Object.keys(by[ch]).forEach(function (d) { rows.push({ channel: ch, date: d, data: by[ch][d] }); }); });
+      saveJson(backupFrom(rows, (why || '') + ' (클라우드를 못 읽어 화면 데이터로 받음, 이미지 빠짐)'), (tag ? tag + '_' : '') + 'partial');
+      return { ok: false, err: e && e.message };
+    });
+  }
+  function backupAge() { var d = backupDay(); return d ? C.dayDiff(d, today()) : null; }
   function saveUpload() {
     var pl = UP.plan; if (!pl || !pl.rows.length || UP.saving) return;
     if (Object.keys(pl.blocked).length) { UP.msg = '저장 구조가 예상과 달라 저장을 멈췄습니다. 이 화면을 캡처해서 알려 주세요.'; render(); return; }
     var needBk = backupDay() !== today();
-    if (needBk) downloadBackup();
     UP.saving = true; render();
-    root.TTData.saveRows(pl.rows).then(function (n) {
+    (needBk ? downloadBackup('파일 올리기 전 자동 백업') : Promise.resolve()).then(function () { return root.TTData.saveRows(pl.rows); }).then(function (n) {
       UP.msg = '저장했습니다: ' + n + '줄 (새 날짜 ' + pl.st.add + ', 바뀐 날짜 ' + pl.st.change + ')' + (needBk ? '. 저장 전에 백업 파일을 받았습니다.' : '. 오늘 백업은 이미 받아서 건너뛰었습니다.');
       UP.plan = null;
       return reloadData();
@@ -1397,8 +1416,9 @@
 
     // 백업, 그 밖의 관리
     var bkd = backupDay();
-    h += '<div class="row"><section class="card grow1" aria-label="백업"><div class="card-h"><h2>백업</h2></div><p class="note">클라우드에 저장된 전체 데이터를 JSON 파일로 받습니다. 파일 올리기로 저장할 때는 그날 첫 저장 전에 자동으로 받습니다. 백업 파일은 공개 저장소(GitHub)에 올리지 마세요.</p><p class="note">이 브라우저에서 마지막 자동/수동 백업: <b>' + (bkd ? dot(bkd) : '기록 없음') + '</b></p><div><button type="button" class="chip" data-act="backup">지금 백업 받기</button></div></section>';
+    h += '<div class="row"><section class="card grow1" aria-label="백업"><div class="card-h"><h2>백업</h2></div><p class="note">그 순간의 클라우드 전체(프로모션, 가격, 원가표, 매핑표, 웹훅, 상품 이미지 포함)와 기타몰 데이터를 JSON 파일 하나로 받습니다. 파일 올리기나 매핑표를 저장하는 날은 그날 첫 저장 전에 자동으로 받습니다. 백업 파일은 공개 저장소(GitHub)에 올리지 말고 회사 드라이브 한 곳에 모아 두세요.</p><p class="note">이 브라우저에서 마지막 백업: <b>' + (bkd ? dot(bkd) + ' (' + (backupAge() === 0 ? '오늘' : backupAge() + '일 전') + ')' : '기록 없음') + '</b></p><div><button type="button" class="chip" data-act="backup"' + (RS.busy ? ' disabled' : '') + '>' + (RS.busy === '백업 받는 중…' ? '받는 중…' : '지금 백업 받기') + '</button></div></section>';
     h += '<section class="card grow1" aria-label="그 밖의 관리"><div class="card-h"><h2>그 밖의 관리</h2></div><div class="li"><span>원가, 정가, 판매가, 이미지</span><button type="button" class="chip" data-act="view" data-key="itemadmin">상품 관리로</button></div><div class="li"><span>슬랙 웹훅 주소</span><button type="button" class="chip" data-act="view" data-key="slack">슬랙 리포트로</button></div><div class="li"><span>쿠팡 상품번호 매핑</span><span class="zero">새 쿠팡 상품이 생기면 Claude에게 알려 주세요</span></div></section></div>';
+    h += restoreCardHtml();
     h += mapCardHtml();
     return h;
   }
@@ -1881,6 +1901,108 @@
     pop.src = el.src; pop.style.left = x + 'px'; pop.style.top = y + 'px'; pop.hidden = false;
   }
 
+  /* ───────── 백업에서 되돌리기 (데이터 관리 안) ─────────
+   * 원칙: 비교 먼저, 되돌리기 직전에 지금 클라우드를 자동 백업, 지우는 일은 없음(백업 뒤에 생긴 데이터는 그대로).
+   *  - 없는 것만 채우기: 클라우드에서 사라진 (채널, 날짜)만 백업에서 가져온다. 지금 있는 값은 바꾸지 않는다
+   *  - 백업 값으로 되돌리기: 고른 종류와 날짜 범위에서 값이 다른 줄을 백업 값으로 덮어쓴다. 확인 글자를 쳐야 실행
+   * 규칙은 calc.js backupRows, restoreDiff.
+   */
+  var RS = { name: '', bk: null, cloud: null, diff: null, err: '', msg: '', busy: '', mode: 'fill', ch: '', from: '', to: '', open: '', confirm: '' };
+  var RS_SKIP = { other: 1, roi: 1 }; // roi는 v5 백업에만 있던 화면 설정 // 기타몰은 구글 시트가 원본이라 클라우드로 되돌리지 않는다
+  var RS_NAME = { promo: '프로모션', itemInfo: '상품 가격', itemImg: '상품 이미지', skuMap: '옵션 매핑표', skuCost: '원가표', slackConfig: '슬랙 웹훅', naverAdCreative: '네이버 소재 목록', naverQuery: '검색어 (보관 데이터)', naverCustNew: '고객 (보관 데이터)', naverCustDemo: '고객 연령/성별 (보관 데이터)' };
+  function rsName(ch) { return RS_NAME[ch] || CH_LABEL[ch] || ch; }
+  function rsIsDate(k) { return /^\d{4}-\d{2}-\d{2}$/.test(k); }
+  function rsInRange(k) { if (!rsIsDate(k)) return true; return (!RS.from || k >= RS.from) && (!RS.to || k <= RS.to); } // 날짜가 아닌 줄(매핑표 등)은 범위와 상관없이 고른 종류면 대상
+  function rsTargets() {
+    if (!RS.diff) return [];
+    var out = [];
+    RS.diff.forEach(function (t) {
+      if (RS.mode === 'fill') t.missing.forEach(function (d) { out.push([t.ch, d, 'missing']); });
+      else if (t.ch === RS.ch) t.missing.concat(t.diff).forEach(function (d) { if (rsInRange(d)) out.push([t.ch, d, t.missing.indexOf(d) >= 0 ? 'missing' : 'diff']); });
+    });
+    return out;
+  }
+  function rsCloudBy(rows) { var by = {}; rows.forEach(function (r) { (by[r.channel] = by[r.channel] || {})[r.date] = r.data; }); return by; }
+  function rsLoad(file) {
+    if (!file) return;
+    RS.err = ''; RS.msg = ''; RS.bk = null; RS.diff = null; RS.open = ''; RS.confirm = ''; RS.name = file.name.normalize('NFC'); RS.busy = '백업 파일을 읽고 클라우드와 비교하는 중…'; render();
+    file.text().then(function (t) {
+      var j; try { j = JSON.parse(t); } catch (e) { throw new Error('JSON 파일이 아닙니다.'); }
+      var bk = C.backupRows(j); if (!bk) throw new Error('대시보드 백업 파일(archive_….json)이 아닙니다.');
+      RS.bk = bk;
+      return root.TTData.snapshot();
+    }).then(function (rows) {
+      RS.cloud = rsCloudBy(rows);
+      RS.diff = C.restoreDiff(RS.bk.rows, RS.cloud, RS_SKIP).filter(function (t) { return t.missing.length || t.diff.length || t.same || t.cloudOnly; });
+      var first = RS.diff.filter(function (t) { return t.diff.length; })[0] || RS.diff[0]; RS.ch = first ? first.ch : '';
+      RS.mode = 'fill'; RS.from = ''; RS.to = '';
+    }).catch(function (e) { RS.err = e && e.message; RS.bk = null; }).then(function () { RS.busy = ''; render(); });
+  }
+  function rsRun() {
+    if (RS.busy) return;
+    var tg = rsTargets();
+    if (!tg.length) return;
+    if (RS.mode === 'over' && RS.confirm.trim() !== '되돌리기') { RS.err = '확인 칸에 "되돌리기"를 정확히 적어 주세요.'; render(); return; }
+    RS.err = ''; RS.msg = ''; RS.busy = '되돌리기 전에 지금 상태를 백업하는 중…'; render();
+    downloadBackup('되돌리기 직전 자동 백업 (' + RS.name + ')', 'before_restore').then(function (r) {
+      if (!r.ok) throw new Error('되돌리기 전 백업을 받지 못해서 멈췄습니다 (클라우드 연결을 확인해 주세요). ' + (r.err || ''));
+      RS.busy = '되돌리는 중… (' + n0(tg.length) + '줄)'; render();
+      return root.TTData.saveRows(tg.map(function (x) { return { channel: x[0], date: x[1], data: RS.bk.rows[x[0]][x[1]] }; }));
+    }).then(function () {
+      var cnt = {}; tg.forEach(function (x) { cnt[x[0]] = (cnt[x[0]] || 0) + 1; });
+      RS.msg = '되돌렸습니다: ' + Object.keys(cnt).map(function (k) { return rsName(k) + ' ' + cnt[k] + '줄'; }).join(', ') + '. 되돌리기 직전 상태는 before_restore 백업 파일로 받아 두었습니다.';
+      RS.bk = null; RS.diff = null; RS.confirm = '';
+      return reloadData().then(function () { IA.imgState = 'idle'; IA.imgs = {}; PR.cache = {}; });
+    }).catch(function (e) { RS.err = (e && e.message) + ' (일부 줄만 들어갔을 수 있습니다. 같은 백업 파일로 다시 비교하면 남은 줄이 보입니다)'; })
+      .then(function () { RS.busy = ''; render(); });
+  }
+  function rsPreview(ch, d) {
+    var B = (RS.bk.rows[ch] || {})[d] || [], Cl = (RS.cloud[ch] || {})[d];
+    function short(arr) { return arr.slice(0, 3).map(function (e) { var t = C.canonJson(e); return esc(t.length > 220 ? t.slice(0, 220) + '…' : t); }).join('<br>') + (arr.length > 3 ? '<br>… 외 ' + (arr.length - 3) + '개' : ''); }
+    return '<tr class="iaform"><td colspan="4"><div class="rsprev"><div><b>백업</b> (' + B.length + '개)<code>' + short(B) + '</code></div><div><b>지금 클라우드</b> (' + (Cl ? Cl.length + '개' : '없음') + ')<code>' + (Cl ? short(Cl) : '-') + '</code></div></div></td></tr>';
+  }
+  function restoreCardHtml() {
+    var h = '<section class="card" aria-label="백업에서 되돌리기"><div class="card-h"><h2>백업에서 되돌리기</h2><span class="hint">백업 파일을 고르면 지금 클라우드와 먼저 비교합니다. 고르기만 해서는 아무것도 바뀌지 않습니다</span></div>';
+    h += '<div class="aipick"><label class="chip filebtn">백업 파일 고르기 (archive_….json)<input type="file" accept=".json,application/json" data-act="rsfile" hidden></label>' + (RS.name && RS.bk ? '<span class="zero">' + esc(RS.name) + (RS.bk.at ? ' (' + esc(RS.bk.at.slice(0, 16).replace('T', ' ')) + ' UTC에 받은 백업)' : '') + '</span>' : '') + '</div>';
+    if (RS.busy) h += '<p class="note"><b>' + esc(RS.busy) + '</b></p>';
+    if (RS.msg) h += '<p class="note"><b>' + esc(RS.msg) + '</b></p>';
+    if (RS.err) h += '<p class="note"><b class="warn">' + esc(RS.err) + '</b></p>';
+    if (!RS.diff) return h + '</section>';
+    if (!RS.bk.exact) h += '<p class="note">옛 형식 백업이라 항목의 날짜로 묶어 비교했습니다. 저장 구조가 다른 채널은 "값이 다름"이 실제보다 많게 보일 수 있습니다.' + (Object.keys(RS.bk.nokey).length ? ' 날짜가 없어 비교에서 뺀 항목: ' + Object.keys(RS.bk.nokey).map(function (k) { return rsName(k) + ' ' + RS.bk.nokey[k] + '개'; }).join(', ') : '') + '</p>';
+    var tm = 0, td = 0; RS.diff.forEach(function (t) { tm += t.missing.length; td += t.diff.length; });
+    h += '<div class="scroll"><table class="tbl"><thead><tr><th scope="col">종류</th><th scope="col" class="r">클라우드에 없음</th><th scope="col" class="r">값이 다름</th><th scope="col" class="r">같음</th><th scope="col" class="r">백업 뒤에 생김 (그대로 둠)</th></tr></thead><tbody>';
+    RS.diff.forEach(function (t) {
+      var op = RS.open === t.ch;
+      h += '<tr' + (op ? ' class="on"' : '') + '><th scope="row">' + (t.missing.length || t.diff.length ? '<button type="button" class="exp" data-act="rsopen" data-key="' + esc(t.ch) + '" aria-expanded="' + op + '">' + (op ? '▾ ' : '▸ ') + esc(rsName(t.ch)) + '</button>' : esc(rsName(t.ch))) + '</th><td class="r num' + (t.missing.length ? ' b' : '') + '">' + (t.missing.length ? '<span class="warn">' + n0(t.missing.length) + '</span>' : '0') + '</td><td class="r num">' + n0(t.diff.length) + '</td><td class="r num">' + n0(t.same) + '</td><td class="r num">' + n0(t.cloudOnly) + '</td></tr>';
+      if (op) {
+        var list = t.missing.map(function (d) { return [d, 'missing']; }).concat(t.diff.map(function (d) { return [d, 'diff']; })).sort(function (a, b) { return a[0] < b[0] ? -1 : 1; });
+        h += '<tr class="iaform"><td colspan="5"><table class="tbl"><thead><tr><th scope="col">날짜 (줄 이름)</th><th scope="col">상태</th><th scope="col" class="r">백업 항목 수</th><th scope="col" class="r">지금 항목 수</th></tr></thead><tbody>';
+        list.slice(0, 60).forEach(function (x) {
+          var key = t.ch + '|' + x[0], po = RS.prev === key, Cl = (RS.cloud[t.ch] || {})[x[0]];
+          h += '<tr><th scope="row"><button type="button" class="exp" data-act="rsprev" data-key="' + esc(key) + '">' + (po ? '▾ ' : '▸ ') + esc(rsIsDate(x[0]) ? dot(x[0]) : x[0]) + '</button></th><td>' + (x[1] === 'missing' ? '<span class="warn">클라우드에 없음</span>' : '값이 다름') + '</td><td class="r num">' + RS.bk.rows[t.ch][x[0]].length + '</td><td class="r num">' + (Cl ? Cl.length : '-') + '</td></tr>';
+          if (po) h += rsPreview(t.ch, x[0]);
+        });
+        if (list.length > 60) h += '<tr><td colspan="4" class="none">앞의 60줄만 보여 줍니다 (전체 ' + n0(list.length) + '줄)</td></tr>';
+        h += '</tbody></table></td></tr>';
+      }
+    });
+    h += '</tbody></table></div>';
+    if (!tm && !td) return h + '<p class="note"><b>클라우드에 이 백업의 데이터가 모두 그대로 있습니다. 되돌릴 것이 없습니다.</b></p></section>';
+    // 방식 고르기
+    h += '<div class="viewtoggle" role="group" aria-label="되돌리는 방식" style="margin-top:18px"><button type="button" class="chip" data-act="rsmode" data-key="fill" aria-pressed="' + (RS.mode === 'fill') + '">없는 것만 채우기 (안전)</button><button type="button" class="chip" data-act="rsmode" data-key="over" aria-pressed="' + (RS.mode === 'over') + '">백업 값으로 되돌리기</button></div>';
+    if (RS.mode === 'fill') h += '<p class="note">클라우드에서 사라진 줄 ' + n0(tm) + '개만 백업에서 가져옵니다. 지금 있는 값은 하나도 바꾸지 않습니다.</p>';
+    else {
+      var chs = RS.diff.filter(function (t) { return t.missing.length || t.diff.length; });
+      if (!chs.some(function (t) { return t.ch === RS.ch; })) RS.ch = chs[0].ch;
+      h += '<p class="note"><b class="warn">고른 종류와 날짜 범위에서, 값이 다른 줄을 백업 값으로 덮어씁니다.</b> 잘못된 파일을 올려서 숫자가 망가졌을 때 쓰세요. 백업 뒤에 생긴 날짜는 건드리지 않습니다.</p>';
+      h += '<div class="pform"><label><span>종류</span><select data-rs="ch">' + chs.map(function (t) { return '<option value="' + esc(t.ch) + '"' + (t.ch === RS.ch ? ' selected' : '') + '>' + esc(rsName(t.ch)) + ' (없음 ' + t.missing.length + ', 다름 ' + t.diff.length + ')</option>'; }).join('') + '</select></label>';
+      h += '<label><span>시작일 (비우면 처음부터)</span><input type="date" data-rs="from" value="' + esc(RS.from) + '"></label><label><span>종료일 (비우면 끝까지)</span><input type="date" data-rs="to" value="' + esc(RS.to) + '"><small>매핑표, 원가표처럼 날짜가 없는 줄은 범위와 상관없이 포함</small></label>';
+      h += '<label><span>확인: "되돌리기"라고 적기</span><input type="text" data-rs="confirm" value="' + esc(RS.confirm) + '" autocomplete="off" placeholder="되돌리기"></label></div>';
+    }
+    var tg = rsTargets(), cm = 0, cd = 0; tg.forEach(function (x) { if (x[2] === 'missing') cm++; else cd++; });
+    h += '<div class="plan-f"><span>' + (tg.length ? '대상: 채우기 ' + n0(cm) + '줄' + (cd ? ', 덮어쓰기 <b class="warn">' + n0(cd) + '줄</b>' : '') + '. 실행 직전에 지금 상태를 자동으로 백업합니다' : '고른 조건에 해당하는 줄이 없습니다') + '</span><button type="button" class="chip" data-act="rscancel">취소</button><button type="button" class="btn" data-act="rsrun"' + (RS.busy || !tg.length ? ' disabled' : '') + '>' + (RS.mode === 'fill' ? '없는 것만 채우기' : '백업 값으로 되돌리기') + '</button></div>';
+    return h + '</section>';
+  }
   /* ───────── 옵션 → SKU 매핑표 (데이터 관리 안, v5에서 옮김) ─────────
    * [매핑표 받기] → 엑셀에서 "확정 SKU코드" 칸만 채우기 → [매핑표 올리기] → 바뀌는 줄 확인 → 저장.
    * v5는 올린 파일로 통째 교체했지만 v6는 합친다(파일에 없는 줄은 그대로). 저장 위치는 v5와 같은 skuMap 채널의 'map' 줄.
@@ -1930,9 +2052,9 @@
   }
   function mapSave() {
     var pl = MP.plan; if (!pl || MP.saving) return;
-    var needBk = backupDay() !== today(); if (needBk) downloadBackup();
+    var needBk = backupDay() !== today();
     MP.saving = true; MP.err = ''; render();
-    root.TTData.saveRows([{ channel: 'skuMap', date: 'map', data: pl.merged.rows }]).then(function () {
+    (needBk ? downloadBackup('매핑표 저장 전 자동 백업') : Promise.resolve()).then(function () { return root.TTData.saveRows([{ channel: 'skuMap', date: 'map', data: pl.merged.rows }]); }).then(function () {
       MP.msg = '매핑표를 저장했습니다 (전체 ' + pl.merged.rows.length + '줄, 추가 ' + pl.merged.stat.added + ', 변경 ' + pl.merged.stat.changed + ')' + (needBk ? '. 저장 전에 백업 파일을 받았습니다.' : '.'); MP.plan = null;
       return reloadData();
     }).catch(function (e) { MP.err = '저장하지 못했습니다. ' + (e && e.message); }).then(function () { MP.saving = false; render(); });
@@ -2075,7 +2197,7 @@
     VIEWS.filter(function (v) { return v.group === 'manage'; }).forEach(function (v) { h += navBtn(v); });
     h += '<a href="index.html">v5 화면<small>예전 화면</small></a>';
     h += '</div><div class="nav"><span class="nav-h">바로가기</span><a href="' + SNS_URL + '" target="_blank" rel="noopener">SNS 라이브러리<small>새 탭 ↗</small></a>';
-    h += '</div><div class="side-status"><b class="' + (ok ? 'ok' : 'chk') + '">' + (ok ? '데이터 정상' : '확인 필요') + '</b><span>네이버 판매 ' + mdot(hl.lastNaver) + '까지</span><span>주문 ' + mdot(hl.lastOrders) + '까지</span></div></nav>';
+    h += '</div><div class="side-status"><b class="' + (ok ? 'ok' : 'chk') + '">' + (ok ? '데이터 정상' : '확인 필요') + '</b><span>네이버 판매 ' + mdot(hl.lastNaver) + '까지</span><span>주문 ' + mdot(hl.lastOrders) + '까지</span>' + (function () { var a = backupAge(); return a === null ? '<button type="button" class="bkwarn" data-act="view" data-key="data">이 브라우저 백업 기록 없음</button>' : a > 7 ? '<button type="button" class="bkwarn" data-act="view" data-key="data">백업한 지 ' + a + '일 지남</button>' : ''; })() + '</div></nav>';
     var canX = !!EXPORTABLE[cur.id];
     h += '<main class="main"><header class="head"><div class="head-t"><h1>' + cur.label + '</h1><span>데이터 기준일 ' + dot(DATA.last) + '</span></div>' + (canX ? '<div class="head-x"><button type="button" class="chip" data-act="xall"' + (XMSG === '만드는 중…' ? ' disabled' : '') + '>지금 화면 전체를 엑셀로 받기</button>' + (XMSG ? '<small>' + esc(XMSG) + '</small>' : '') + '</div>' : '') + '</header>';
     if (cur.id !== 'data' && cur.id !== 'promo' && cur.id !== 'itemadmin') h += periodBar(); // 데이터 관리, 프로모션은 위의 조회 기간과 상관없음
@@ -2098,6 +2220,11 @@
     if (act === 'acsel') { S.acSel = key ? JSON.parse(key) : null; render(); return; }
     if (act === 'acbasis') { S.acBasis = key; S.acSel = null; render(); return; }
     if (act === 'accsv') { downloadAdTreeCsv(); return; }
+    if (act === 'rsopen') { RS.open = RS.open === key ? '' : key; RS.prev = ''; render(); return; }
+    if (act === 'rsprev') { RS.prev = RS.prev === key ? '' : key; render(); return; }
+    if (act === 'rsmode') { RS.mode = key === 'over' ? 'over' : 'fill'; RS.confirm = ''; RS.err = ''; render(); return; }
+    if (act === 'rscancel') { RS.bk = null; RS.diff = null; RS.name = ''; RS.err = ''; RS.confirm = ''; render(); return; }
+    if (act === 'rsrun') { rsRun(); return; }
     if (act === 'mptpl') { mapTemplate(); return; }
     if (act === 'mpno') { MP.plan = null; render(); return; }
     if (act === 'mpsave') { mapSave(); return; }
@@ -2136,7 +2263,7 @@
     if (act === 'slsend') { sendSlack(); return; }
     if (act === 'upsave') { saveUpload(); return; }
     if (act === 'upcancel') { UP.plan = null; UP.msg = ''; render(); return; }
-    if (act === 'backup') { downloadBackup(); UP.msg = '백업 파일을 받았습니다.'; render(); return; }
+    if (act === 'backup') { if (RS.busy) return; RS.busy = '백업 받는 중…'; render(); downloadBackup('직접 받음').then(function (r) { UP.msg = r.ok ? '백업 파일을 받았습니다 (클라우드 ' + n0(r.rows.length) + '줄, 상품 이미지 포함).' : '클라우드를 읽지 못해 지금 화면의 데이터로 받았습니다 (이미지 빠짐): ' + r.err; }).then(function () { RS.busy = ''; render(); }); return; }
     if (act === 'topen') { S.topen = S.topen === key ? '' : key; render(); return; }
     if (act === 'tcsv') { downloadTrafficCsv(); return; }
     if (act === 'open') { S.open = S.open === key ? '' : key; refreshProdBody(); return; }
@@ -2163,6 +2290,8 @@
   function onChange(ev) {
     var el = ev.target; if (!el.matches) return;
     if (el.matches('input[type="file"][data-act="iaimg"]')) { iaImage(el.getAttribute('data-key'), el.files && el.files[0]); return; }
+    if (el.matches('input[type="file"][data-act="rsfile"]')) { rsLoad(el.files && el.files[0]); el.value = ''; return; }
+    if (el.matches('[data-rs]')) { var rk = el.getAttribute('data-rs'); RS[rk] = el.value; if (rk !== 'confirm') render(); return; }
     if (el.matches('input[type="file"][data-act="mpxls"]')) { mapUpload(el.files && el.files[0]); el.value = ''; return; }
     if (el.matches('input[type="file"][data-act="iaxls"]')) { iaUpload(el.files && el.files[0]); el.value = ''; return; }
     if (el.matches('[data-ia]')) { if (IA.form) IA.form[el.getAttribute('data-ia')] = el.value; return; }
@@ -2203,6 +2332,7 @@
     var el = ev.target; if (!el.matches) return;
     if (el.matches('textarea[data-act="sltext"]')) { SL.text = el.value; SL.edited = true; return; }
     if (el.matches('[data-pf]')) { if (PR.form) { PR.form[el.getAttribute('data-pf')] = el.value; PR.msg = ''; var pm = document.getElementById('pmsg'); if (pm) pm.hidden = true; } return; }
+    if (el.matches('[data-rs="confirm"]')) { RS.confirm = el.value; return; }
     if (el.matches('[data-ia]')) { if (IA.form) { IA.form[el.getAttribute('data-ia')] = el.value; var im = document.getElementById('iamsg'); if (im) im.hidden = true; IA.err = ''; } return; }
     if (el.matches('input[data-act="iaq"]')) { IA.q = el.value; S.ipage = 0; IA.edit = ''; IA.form = null; IA.hist = ''; var it = document.getElementById('iatbl'); if (it) it.innerHTML = iaTableHtml(); return; }
     if (el.matches('[data-pl]')) { if (el.tagName === 'INPUT' && el.type === 'text') { PL[el.getAttribute('data-pl')] = el.value; var po = document.getElementById('plout'); if (po) po.innerHTML = planOutHtml(); } return; }

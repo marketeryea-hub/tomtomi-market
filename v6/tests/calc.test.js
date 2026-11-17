@@ -209,5 +209,16 @@ eq('쿠팡 광고 상품명 연결', ['톰토미 루나 NEW 봉제인형,블루,
   const M = C.skuMapMerge(prev, P.rows);
   eq('매핑표 합치기: 바뀜 1, 새로 1, 파일에 없는 줄은 그대로', [M.stat, M.rows.map(r => r.k), M.rows[0].codes[0].c], [{ added: 1, changed: 1, same: 0, kept: 1 }, ['1234567|공룡', '999999|(없음)', '1234567|세트'], 'A']);
 }
+// 백업에서 되돌리기: 줄 단위로 다시 묶고 클라우드와 비교
+{
+  const neu = C.backupRows({ ARCHIVE: { naver: [{ d: '2026-01-01', r: 1 }, { d: '2026-01-01', r: 2 }, { d: '2026-01-02', r: 3 }], skuMap: [{ k: 'a' }, { k: 'b' }] }, v6: { at: 'T', rows: [['naver', '2026-01-01', 2], ['naver', '2026-01-02', 1], ['skuMap', 'map', 2]] } });
+  eq('백업 읽기(새 형식): 줄 경계 그대로', [neu.exact, Object.keys(neu.rows.naver), neu.rows.naver['2026-01-01'].length, neu.rows.skuMap.map.length], [true, ['2026-01-01', '2026-01-02'], 2, 2]);
+  const old = C.backupRows({ ARCHIVE: { naver: [{ d: '2026-01-01', r: 1 }, { date: '2026-01-02', r: 3 }, { r: 9 }], skuMap: [{ k: 'a' }], slackConfig: [{ url: 'u' }], skuCost: [{ ver: 'v1', rows: [] }], other: [{ d: '2026-01-01' }] } });
+  eq('백업 읽기(옛 형식): 날짜로 묶고 특수 채널은 정해진 이름', [old.exact, Object.keys(old.rows.naver), Object.keys(old.rows.skuMap), Object.keys(old.rows.slackConfig), Object.keys(old.rows.skuCost), old.nokey], [false, ['2026-01-01', '2026-01-02'], ['map'], ['webhook'], ['v1'], { naver: 1 }]);
+  eq('백업 읽기: 백업 파일이 아니면 null', C.backupRows({ foo: 1 }), null);
+  const d = C.restoreDiff({ naver: { '2026-01-01': [{ a: 1, b: 2 }, { a: 3 }], '2026-01-02': [{ a: 5 }], '2026-01-03': [{ a: 7 }] }, other: { x: [] } },
+    { naver: { '2026-01-01': [{ a: 3 }, { b: 2, a: 1 }], '2026-01-02': [{ a: 6 }], '2026-02-01': [{ a: 9 }] } }, { other: 1 });
+  eq('비교: 키와 항목 순서가 달라도 같은 값은 같음, 없는 날짜, 다른 날짜, 백업 뒤에 생긴 날짜', d, [{ ch: 'naver', missing: ['2026-01-03'], diff: ['2026-01-02'], same: 1, cloudOnly: 1 }]);
+}
 console.log(fail ? '실패 ' + fail + '건' : '모든 규칙 통과');
 process.exit(fail ? 1 : 0);
