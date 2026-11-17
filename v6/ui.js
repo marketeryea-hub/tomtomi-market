@@ -250,9 +250,9 @@
     var h = '<div class="pager"><label class="psize"><select data-act="psize" aria-label="한 번에 볼 줄 수">' + PSIZES.map(function (n) { return '<option value="' + n + '"' + (+S.psize === n ? ' selected' : '') + '>' + n + '줄씩 보기</option>'; }).join('') + '</select></label>';
     if (!list) h += '<span class="psort" role="group" aria-label="날짜 순서"><button type="button" class="chip" data-act="dsort" data-key="new" aria-pressed="' + !old + '">최신순</button><button type="button" class="chip" data-act="dsort" data-key="old" aria-pressed="' + old + '">과거순</button></span>';
     h += '<span class="pnav">';
-    if (pg.pages > 1) h += '<button type="button" class="chip" data-act="page" data-key="newer"' + at + (cur === 0 ? ' disabled' : '') + '>‹ ' + (list ? '이전' : old ? '더 과거' : '더 최근') + '</button>';
+    if (pg.pages > 1) h += '<button type="button" class="chip" data-act="page" data-key="newer"' + at + (cur === 0 ? ' disabled' : '') + '>‹ ' + '이전' + '</button>';
     h += '<span class="num">' + (cur + 1) + ' / ' + pg.pages + ' <small>(전체 ' + pg.total + (list ? '개' : '줄') + ')</small></span>';
-    if (pg.pages > 1) h += '<button type="button" class="chip" data-act="page" data-key="older"' + at + (cur >= pg.pages - 1 ? ' disabled' : '') + '>' + (list ? '다음' : old ? '더 최근' : '더 과거') + ' ›</button>';
+    if (pg.pages > 1) h += '<button type="button" class="chip" data-act="page" data-key="older"' + at + (cur >= pg.pages - 1 ? ' disabled' : '') + '>' + '다음' + ' ›</button>';
     return h + '</span></div>';
   }
 
