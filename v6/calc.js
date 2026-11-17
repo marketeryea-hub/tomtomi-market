@@ -789,6 +789,53 @@
     return out;
   }
 
+  /* ───────── 광고 계획 (작년 실적을 근거로 예산 ↔ 판매 계산) ─────────
+   * 가정: 1개 파는 데 드는 광고비(광고비 ÷ 광고 판매)가 기준 기간과 같다. 예산을 크게 늘리면 실제 효율은 떨어지므로 예측이 아니라 계산이다.
+   * 전체 판매는 매체에 맞는 채널만 본다: 쿠팡애즈 = 쿠팡 입고, 네이버 SA = 네이버, 전체 = 세 채널 합.
+   * 범위: 기준 기간을 7일씩 끊어 1개당 광고비가 가장 좋았던 주 ~ 나빴던 주.
+   */
+  function adPlanRef(data, key, md, from, to) {
+    var rows = adItemDaily(data, key, from, to, md), r = { from: from, to: to, days: dayDiff(from, to) + 1, cost: 0, adQty: 0, rev: 0, adDays: 0, total: 0, weeks: [] };
+    var w = null;
+    rows.forEach(function (o, i) {
+      r.cost += o.cost; r.adQty += o.qty; r.rev += o.rev; if (o.cost > 0) r.adDays++;
+      if (i % 7 === 0) { w = { from: o.d, to: o.d, cost: 0, qty: 0 }; r.weeks.push(w); }
+      w.to = o.d; w.cost += o.cost; w.qty += o.qty;
+    });
+    var X = items(data, from, to).rows[key], chs = md === 'coupang' ? ['coupang'] : md === 'sa' ? ['naver'] : ['naver', 'coupang', 'other'];
+    if (X) chs.forEach(function (c) { r.total += X.ch[c].qty; });
+    r.cpa = r.adQty > 0 && r.cost > 0 ? r.cost / r.adQty : null;
+    r.roas = r.cost > 0 ? r.rev / r.cost : null;
+    r.perRev = r.adQty > 0 ? r.rev / r.adQty : null;
+    r.share = r.total > 0 && r.adQty > 0 ? Math.min(1, r.adQty / r.total) : null;
+    r.daily = r.days > 0 ? r.cost / r.days : 0;
+    var cp = r.weeks.filter(function (x) { return x.cost > 0 && x.qty > 0; }).map(function (x) { return x.cost / x.qty; });
+    r.cpaLo = cp.length >= 2 ? Math.min.apply(null, cp) : null; r.cpaHi = cp.length >= 2 ? Math.max.apply(null, cp) : null;
+    return r;
+  }
+  // q: { mode: 'goal'|'budget', basis: 'growth'|'ad'|'total', val, budget(하루), days(계획 일수) }
+  function adPlanCalc(ref, q) {
+    var days = Math.max(1, Math.round(num(q.days))), o = { ok: false, days: days };
+    if (!ref || ref.cpa === null) { o.why = '기준 기간에 이 품목의 광고 판매가 없어 계산할 수 없습니다.'; return o; }
+    if (q.mode === 'budget') {
+      var d = num(q.budget); if (!(d > 0)) { o.why = '하루 예산을 넣어 주세요.'; return o; }
+      o.daily = d; o.budget = d * days; o.adQty = o.budget / ref.cpa;
+      if (ref.cpaLo !== null) { o.adQtyLo = o.budget / ref.cpaHi; o.adQtyHi = o.budget / ref.cpaLo; }
+    } else {
+      var v = num(q.val), t;
+      if (q.basis === 'ad') t = v;
+      else if (q.basis === 'total') { if (ref.share === null) { o.why = '기준 기간의 전체 판매 수량이 없어 전체 판매 기준으로는 계산할 수 없습니다.'; return o; } t = v * ref.share; }
+      else t = ref.adQty * (1 + v / 100) * (days / ref.days); // 작년 대비 성장률, 기간 길이가 다르면 날짜 수에 비례
+      if (!(t > 0)) { o.why = '목표를 넣어 주세요.'; return o; }
+      o.adQty = t; o.budget = t * ref.cpa; o.daily = o.budget / days;
+      if (ref.cpaLo !== null) { o.budgetLo = t * ref.cpaLo; o.budgetHi = t * ref.cpaHi; }
+    }
+    o.total = ref.share !== null ? o.adQty / ref.share : null;
+    o.rev = ref.perRev !== null ? o.adQty * ref.perRev : null;
+    o.vsDaily = ref.daily > 0 ? o.daily / ref.daily : null; // 작년 하루 평균의 몇 배인지
+    o.ok = true; return o;
+  }
+
   /* ───────── 유입 (네이버) ───────── */
   function spanOf(rows) { var f = '', l = ''; rows.forEach(function (e) { if (!f || e.d < f) f = e.d; if (e.d > l) l = e.d; }); return { first: f, last: l }; }
   var TR_FIELDS = ['visits', 'orders', 'rev'];
@@ -987,6 +1034,7 @@
     adsDaily: adsDaily, adsBucket: adsBucket, adsTotal: adsTotal, adsBreakdown: adsBreakdown, ratio: ratio,
     skuAggregate: skuAggregate, skuUnmapped: skuUnmapped, skuParseOpt: skuParseOpt, orderCheck: orderCheck,
     costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products, productSeries: productSeries, items: items, itemOrder: itemOrder, adTree: adTree, adPathSeries: adPathSeries, adItemDaily: adItemDaily, adItemList: adItemList, coupAdCode: coupAdCode, AD_OTHER: AD_OTHER, trafficDaily: trafficDaily, trafficBucket: trafficBucket, trafficTotal: trafficTotal, trafficPaths: trafficPaths, trafficItems: trafficItems, trafficOrder: trafficOrder, pageCodes: pageCodes, queryTop: queryTop, custDemo: custDemo, itemSeries: itemSeries, itemMaster: itemMaster, NONE: NONE, COUP_MAP: COUP_MAP,
+    adPlanRef: adPlanRef, adPlanCalc: adPlanCalc,
     promoList: promoList, promoCalc: promoCalc, promoDaily: promoDaily, promoBase: promoBase, promoRange: promoRange,
     signals: signals, health: health
   };

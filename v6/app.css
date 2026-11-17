@@ -312,3 +312,9 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; color
 .head-t { display: flex; flex-direction: column; }
 .head-x { display: flex; align-items: center; gap: 10px; }
 .head-x small { font-size: 12px; color: var(--sub); }
+.plh { margin: 20px 0 10px; font-size: 14px; }
+.plh small { color: var(--sub); font-weight: 400; margin-left: 6px; }
+#plout .strip { margin: 0; }
+.pact { white-space: nowrap; }
+.pact .chip { min-height: 32px; padding: 0 10px; margin-left: 6px; font-size: 12px; }
+.chip.danger { border-color: var(--bad, #c0392b); color: var(--bad, #c0392b); font-weight: 700; }
