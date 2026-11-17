@@ -1042,6 +1042,49 @@
     return st;
   }
 
+  /* ───────── 백업에서 되돌리기 ─────────
+   * 백업 파일을 클라우드의 줄(채널, 날짜) 단위로 다시 묶어 지금 클라우드와 비교한다.
+   *  - 새 백업(v6.rows 색인 있음): 줄 경계를 그대로 되살린다
+   *  - 옛 백업(색인 없음): 각 항목의 날짜(d)로 묶는다. 매핑표는 'map', 웹훅은 'webhook', 원가표는 판 번호가 줄 이름
+   * 비교 결과: missing = 백업에만 있음(클라우드에서 사라짐), diff = 둘 다 있는데 값이 다름, same = 같음, cloudOnly = 백업 뒤에 생김(건드리지 않음)
+   */
+  function backupRows(file) {
+    var A = file && file.ARCHIVE; if (!A || typeof A !== 'object') return null;
+    var out = {}, idx = file.v6 && file.v6.rows, nokey = {};
+    if (Array.isArray(idx)) {
+      var pos = {};
+      idx.forEach(function (x) { var ch = x[0], arr = A[ch], p = pos[ch] || 0; if (!Array.isArray(arr)) return; (out[ch] = out[ch] || {})[x[1]] = arr.slice(p, p + x[2]); pos[ch] = p + x[2]; });
+      return { rows: out, exact: true, nokey: nokey, at: (file.v6 && file.v6.at) || '' };
+    }
+    Object.keys(A).forEach(function (ch) {
+      if (!Array.isArray(A[ch])) return;
+      A[ch].forEach(function (e) {
+        if (!e) return;
+        var k = ch === 'skuMap' ? 'map' : ch === 'slackConfig' ? 'webhook' : ch === 'skuCost' ? e.ver : (e.d || e.date);
+        if (!k) { nokey[ch] = (nokey[ch] || 0) + 1; return; }
+        k = String(k); var m = out[ch] = out[ch] || {}; (m[k] = m[k] || []).push(e);
+      });
+    });
+    return { rows: out, exact: false, nokey: nokey, at: (file.v6 && file.v6.at) || '' };
+  }
+  function canonJson(v) { // 키 순서와 상관없이 같은 값이면 같은 글자가 되게
+    if (Array.isArray(v)) return '[' + v.map(canonJson).join(',') + ']';
+    if (v && typeof v === 'object') return '{' + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ':' + canonJson(v[k]); }).join(',') + '}';
+    return JSON.stringify(v === undefined ? null : v);
+  }
+  function rowCanon(arr) { return (arr || []).map(canonJson).sort().join('\n'); } // 줄 안의 항목 순서도 상관없이
+  function restoreDiff(bk, cloud, skip) {
+    var out = [];
+    Object.keys(bk).sort().forEach(function (ch) {
+      if (skip && skip[ch]) return;
+      var B = bk[ch], Cl = (cloud && cloud[ch]) || {}, t = { ch: ch, missing: [], diff: [], same: 0, cloudOnly: 0 };
+      Object.keys(B).sort().forEach(function (d) { if (!Cl[d]) t.missing.push(d); else if (rowCanon(B[d]) !== rowCanon(Cl[d])) t.diff.push(d); else t.same++; });
+      Object.keys(Cl).forEach(function (d) { if (!B[d]) t.cloudOnly++; });
+      out.push(t);
+    });
+    return out;
+  }
+
   /* ───────── 판매 파일과 주문 파일 대조 (v5.36과 같은 규칙) ───────── */
   function orderCheck(data) {
     var ord = {}, sal = {}, salDates = {}, ordDates = {};
@@ -1134,6 +1177,7 @@
     summary: summary, delta: delta, daily: daily, bucket: bucket, autoUnit: autoUnit,
     dailyFull: dailyFull, bucketFull: bucketFull, totalFull: totalFull, coupangTop: coupangTop, otherByMarket: otherByMarket, otherRows: otherRows,
     adsDaily: adsDaily, adsBucket: adsBucket, adsTotal: adsTotal, adsBreakdown: adsBreakdown, ratio: ratio,
+    backupRows: backupRows, restoreDiff: restoreDiff, canonJson: canonJson,
     skuMapParse: skuMapParse, skuMapMerge: skuMapMerge, skuUnmappedList: skuUnmappedList, skuMapStats: skuMapStats, skuCodeText: skuCodeText,
     skuAggregate: skuAggregate, skuUnmapped: skuUnmapped, skuParseOpt: skuParseOpt, orderCheck: orderCheck,
     costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products, productSeries: productSeries, items: items, itemOrder: itemOrder, adTree: adTree, adPathSeries: adPathSeries, adItemDaily: adItemDaily, adItemList: adItemList, coupAdCode: coupAdCode, AD_OTHER: AD_OTHER, trafficDaily: trafficDaily, trafficBucket: trafficBucket, trafficTotal: trafficTotal, trafficPaths: trafficPaths, trafficItems: trafficItems, trafficOrder: trafficOrder, pageCodes: pageCodes, queryTop: queryTop, custDemo: custDemo, itemSeries: itemSeries, itemMaster: itemMaster, NONE: NONE, COUP_MAP: COUP_MAP,

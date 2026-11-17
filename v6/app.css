@@ -341,3 +341,9 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; color
 .iatbl .ithumb.none { width: 44px; height: 44px; }
 .tbl.iatbl tbody th { min-width: 0; white-space: nowrap; }
 .tbl.iatbl > tbody > tr > td:nth-child(3) { white-space: normal; min-width: 180px; }
+
+/* 백업에서 되돌리기 */
+.rsprev { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.rsprev > div { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+.rsprev code { display: block; margin-top: 6px; font-size: 11px; line-height: 1.5; color: var(--sub); white-space: normal; word-break: break-all; }
+.bkwarn { margin-top: 6px; padding: 4px 8px; border: 1px solid var(--warn, #b45309); border-radius: 6px; background: none; color: var(--warn, #b45309); font: inherit; font-size: 12px; font-weight: 700; text-align: left; cursor: pointer; }
