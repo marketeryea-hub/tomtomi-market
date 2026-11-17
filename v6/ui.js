@@ -1404,7 +1404,7 @@
    * 프로모션(기획전 등)을 등록해 두면 기간 매출, 평소 대비 증분, 비용, ROI를 계산한다. 계산 규칙은 calc.js promoCalc.
    * 저장: channel=promo, date=프로모션 id 한 줄. 지우기는 del 표시만 한다(줄을 없애지 않음).
    */
-  var PR = { form: null, open: '', msg: '', saving: false, q: '', delAsk: false, cache: {} };
+  var PR = { form: null, open: '', msg: '', saving: false, q: '', delAsk: false, delRow: '', cache: {} };
   var PKINDS = ['기획전', '기간 할인', '쿠폰', '사은품/증정', '라이브', '체험단', '기타'];
   var PCH = [['naver', '네이버'], ['coupang', '쿠팡'], ['other', '기타몰'], ['all', '전체 채널']];
   var PBASE = [['prev', '바로 앞 같은 길이'], ['lastYear', '작년 같은 기간'], ['custom', '직접 지정'], ['none', '비교하지 않음']];
@@ -1450,7 +1450,7 @@
     h += (f.ch === 'coupang' || f.ch === 'other' ? '' : txt('네이버 수수료율 (%)', 'fee', '예: 5.5', '', '이 프로모션 때의 수수료율. 저장해 두면 나중에 바뀌어도 이 값으로 계산')) + txt('메모', 'memo', '', 'w2') + '</div>';
     h += '<p class="note" id="pmsg"' + (PR.msg ? '' : ' hidden') + '><b class="warn">' + esc(PR.msg) + '</b></p>';
     h += '<div class="plan-f"><span></span>';
-    if (f.id) h += PR.delAsk ? '<button type="button" class="chip" data-act="pdel"' + (PR.saving ? ' disabled' : '') + '>정말 지우기</button>' : '<button type="button" class="chip" data-act="pdelask">지우기</button>';
+    if (f.id) h += PR.delAsk ? '<button type="button" class="chip" data-act="pdel"' + (PR.saving ? ' disabled' : '') + '>정말 삭제</button>' : '<button type="button" class="chip" data-act="pdelask">삭제</button>';
     h += '<button type="button" class="chip" data-act="pcancel">취소</button><button type="button" class="btn" data-act="psave"' + (PR.saving ? ' disabled' : '') + '>' + (PR.saving ? '저장 중…' : '저장') + '</button></div></section>';
     return h;
   }
@@ -1478,10 +1478,11 @@
     var naverSide = f.ch !== 'coupang' && f.ch !== 'other';
     promoWrite({ d: f.id || 'p' + Date.now().toString(36), id: f.id || 'p' + Date.now().toString(36), name: name, kind: f.kind, from: f.from, to: f.to, ch: f.ch, items: f.items.slice(), fee: naverSide ? fee : 0, base: f.base, baseFrom: f.base === 'custom' ? f.baseFrom : '', ad: f.ad, costs: costs, memo: f.memo.trim(), updated: new Date().toISOString() }, '저장했습니다.');
   }
-  function promoDelete() {
-    var p = PR.form && PR.form.id ? promoGet(PR.form.id) : null; if (!p || PR.saving) return;
+  function promoDelete(id) {
+    var p = promoGet(id || (PR.form && PR.form.id) || ''); if (!p || PR.saving) return;
+    PR.delRow = '';
     var rec = {}; Object.keys(p).forEach(function (k) { rec[k] = p[k]; }); rec.del = 1; rec.updated = new Date().toISOString();
-    promoWrite(rec, '지웠습니다.');
+    promoWrite(rec, '삭제했습니다.');
   }
   /* ───────── 광고 계획 세우기 (프로모션 메뉴 안) ─────────
    * 작년(기준 기간) 실적을 근거로 "목표 → 필요한 예산" 또는 "하루 예산 → 예상 판매"를 계산한다. 규칙은 calc.js adPlanRef, adPlanCalc.
@@ -1639,12 +1640,15 @@
     h += '<p class="note">증분 매출 = 프로모션 기간 매출 - 평소 매출(비교 기간). ROAS = 매출 ÷ 비용. ROI = (증분 매출 - 증분 원가 - 네이버 수수료 - 비용) ÷ 비용. 원가를 모르는 품목이 섞이면 ROI는 비워 둡니다.</p></section>';
     if (PR.form) h += promoFormHtml();
     if (PL.open) h += planHtml();
-    h += '<section class="card flush" aria-label="프로모션 목록"><div class="card-h pad"><h2>등록한 프로모션</h2><span class="hint">이름을 누르면 아래에 자세히 나옵니다</span></div><div class="scroll"><table class="tbl wrap"><thead><tr><th scope="col">이름</th><th scope="col">종류</th><th scope="col">기간</th><th scope="col">채널</th><th scope="col" class="r">매출</th><th scope="col" class="r">증분 매출</th><th scope="col" class="r">비용</th><th scope="col" class="r">ROAS</th><th scope="col" class="r">ROI</th></tr></thead><tbody>';
-    if (!list.length) h += '<tr><td colspan="9" class="none">아직 등록한 프로모션이 없습니다. 위의 [+ 프로모션 등록]으로 시작해 주세요.</td></tr>';
+    h += '<section class="card flush" aria-label="프로모션 목록"><div class="card-h pad"><h2>등록한 프로모션</h2><span class="hint">이름을 누르면 아래에 자세히 나옵니다. 오른쪽 [수정], [삭제]로 고치거나 지울 수 있습니다</span></div><div class="scroll"><table class="tbl wrap"><thead><tr><th scope="col">이름</th><th scope="col">종류</th><th scope="col">기간</th><th scope="col">채널</th><th scope="col" class="r">매출</th><th scope="col" class="r">증분 매출</th><th scope="col" class="r">비용</th><th scope="col" class="r">ROAS</th><th scope="col" class="r">ROI</th><th scope="col" class="r">관리</th></tr></thead><tbody>';
+    if (!list.length) h += '<tr><td colspan="10" class="none">아직 등록한 프로모션이 없습니다. 위의 [+ 프로모션 등록]으로 시작해 주세요.</td></tr>';
     list.forEach(function (p) {
       var R = promoRes(p), open = PR.open === p.id, plan = R.state === 'plan', why = roiWhy(R);
       h += '<tr' + (open ? ' class="on"' : '') + '><th scope="row"><button type="button" class="exp" data-act="popen" data-key="' + esc(p.id) + '" aria-expanded="' + open + '">' + (open ? '▾ ' : '▸ ') + esc(p.name) + '</button> ' + promoState(R) + '</th><td>' + esc(p.kind || '') + '</td><td class="num">' + promoPeriod(p) + '</td><td>' + pName(PCH, p.ch) + '</td>';
-      h += '<td class="r num b">' + (plan ? '-' : n0(R.cur.rev)) + '</td><td class="r num">' + (plan || R.incRev === null ? '-' : signed(R.incRev)) + '</td><td class="r num">' + n0(R.cost) + '</td><td class="r num">' + (plan ? '-' : roasText(R.roas)) + '</td><td class="r num b">' + (R.roi === null || R.roi === undefined ? '<small class="zero">' + why + '</small>' : roiText(R.roi)) + '</td></tr>';
+      h += '<td class="r num b">' + (plan ? '-' : n0(R.cur.rev)) + '</td><td class="r num">' + (plan || R.incRev === null ? '-' : signed(R.incRev)) + '</td><td class="r num">' + n0(R.cost) + '</td><td class="r num">' + (plan ? '-' : roasText(R.roas)) + '</td><td class="r num b">' + (R.roi === null || R.roi === undefined ? '<small class="zero">' + why + '</small>' : roiText(R.roi)) + '</td>';
+      h += '<td class="r pact">' + (PR.delRow === p.id
+        ? '<button type="button" class="chip danger" data-act="prowdel" data-key="' + esc(p.id) + '"' + (PR.saving ? ' disabled' : '') + '>정말 삭제</button><button type="button" class="chip" data-act="prowdelno">취소</button>'
+        : '<button type="button" class="chip" data-act="pedit" data-key="' + esc(p.id) + '">수정</button><button type="button" class="chip" data-act="prowdelask" data-key="' + esc(p.id) + '">삭제</button>') + '</td></tr>';
     });
     h += '</tbody></table></div></section>';
     var op = PR.open ? promoGet(PR.open) : null;
@@ -1800,6 +1804,9 @@
     if (act === 'psave') { promoSave(); return; }
     if (act === 'pdelask') { PR.delAsk = true; render(); return; }
     if (act === 'pdel') { promoDelete(); return; }
+    if (act === 'prowdelask') { PR.delRow = key; render(); return; }
+    if (act === 'prowdelno') { PR.delRow = ''; render(); return; }
+    if (act === 'prowdel') { promoDelete(key); return; }
     if (act === 'popen') { PR.open = PR.open === key ? '' : key; S.ppage = 0; if (!PR.form) PR.msg = ''; render(); return; }
     if (act === 'ppick') { if (PR.form && PR.form.items.indexOf(key) < 0) PR.form.items.push(key); PR.q = ''; render(); var pq = document.getElementById('pq'); if (pq) pq.focus(); return; }
     if (act === 'pitemdel') { if (PR.form) PR.form.items = PR.form.items.filter(function (c) { return c !== key; }); render(); return; }
