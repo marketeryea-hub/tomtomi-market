@@ -912,10 +912,27 @@
     }
     return h;
   }
+  // 품목 검색: 치는 동안 아래에 품목이 뜨고, 누르면 그 품목을 본다. [+ 함께]를 누르면 지금 보던 품목에 더한다 (최대 5개)
+  function psugHtml() {
+    var q = S.q.trim().toLowerCase(); if (!q || (S.pch === 'naver' && S.pmode === 'page')) return '';
+    var X = itemModel(S.from, S.to), words = q.split(/\s+/), hits = itemOrder().filter(function (c) { var t = (c + ' ' + itemName(X, c)).toLowerCase(); return words.every(function (w) { return t.indexOf(w) >= 0; }); }).slice(0, 8);
+    if (!hits.length) return '<div class="aisug-none">검색 결과가 없습니다</div>';
+    return hits.map(function (c, i) {
+      var on = S.sel.indexOf(c) >= 0, o = iv(X, c);
+      return '<div class="aisug-row"><button type="button" role="option" class="aisug-i' + (i === 0 ? ' first' : '') + '" data-act="pfocus" data-key="' + esc(c) + '"><span>' + esc((c.indexOf('CP:') === 0 ? '' : c + ' ') + itemName(X, c)) + '</span><small>' + n0(o.qty) + '개</small></button>' +
+        (S.sel.length && !on ? '<button type="button" class="chip addbtn" data-act="padd" data-key="' + esc(c) + '" title="지금 보는 품목에 더해서 함께 보기">+ 함께</button>' : on ? '<span class="zero addbtn">보는 중</span>' : '') + '</div>';
+    }).join('');
+  }
   function searchBar() {
-    var page = S.pch === 'naver' && S.pmode === 'page', ph = page ? '상품명, 상품번호, 품목코드로 검색' : '품목코드나 품목명으로 검색 (예: 다다, SOMD-0011). Enter를 누르면 첫 번째 품목을 엽니다';
-    return '<div class="search psearch"><input type="search" id="pq0" data-act="q" value="' + esc(S.q) + '" placeholder="' + ph + '" aria-label="품목 검색" autocomplete="off">' +
-      '<span class="hint">결과 <b id="pcount" class="num">' + PCOUNT + '</b>개' + (page ? '' : '. 품목을 누르면 그 품목의 판매 흐름, 체크하면 최대 ' + SEL_MAX + '개까지 함께 봅니다') + '</span></div>';
+    var page = S.pch === 'naver' && S.pmode === 'page', X = itemModel(S.from, S.to);
+    var ph = page ? '상품명, 상품번호, 품목코드로 검색' : (S.sel.length ? '다른 품목 검색 (누르면 바꿔 보기, + 함께는 더해서 보기)' : '품목코드나 품목명으로 검색 (예: 다다, SOMD-0011)');
+    var h = '<div class="psearch"><div class="aibox"><input type="search" id="pq0" data-act="q" value="' + esc(S.q) + '" placeholder="' + ph + '" aria-label="품목 검색" autocomplete="off" aria-controls="psug0"><div id="psug0" class="aisug" role="listbox"' + (S.q.trim() && !page ? '' : ' hidden') + '>' + psugHtml() + '</div></div>';
+    if (!page && S.sel.length) {
+      h += '<div class="pchips">'; S.sel.forEach(function (c, i) { h += '<span class="pchip"><span class="dotc" style="background:' + CMP_COLORS[i] + '"></span>' + esc((c.indexOf('CP:') === 0 ? '' : c + ' ') + itemName(X, c)) + '<button type="button" data-act="punsel" data-key="' + esc(c) + '" aria-label="빼기">×</button></span>'; });
+      h += '<button type="button" class="chip" data-act="selclear">모두 닫고 목록으로</button></div>';
+      if (S.selMsg) h += '<p class="note"><b class="warn">' + esc(S.selMsg) + '</b></p>';
+    } else h += '<span class="hint">' + (page ? '결과 <b id="pcount" class="num">' + PCOUNT + '</b>개' : '검색해서 품목을 누르면 그 품목이 어디서, 언제, 얼마나 팔렸는지 보여줍니다. 아래 목록에서 바로 눌러도 됩니다') + '</span>';
+    return h + '</div>';
   }
   /* ───────── 상품 보기: 고른 품목의 판매 흐름 (어디서, 언제, 얼마나) ───────── */
   var PV = { cache: {} };
@@ -935,11 +952,7 @@
     var tot = { qty: 0, rev: 0, est: false }, byCh = {}; chs.forEach(function (ch) { byCh[ch] = { qty: 0, rev: 0 }; });
     codes.forEach(function (c) { chs.forEach(function (ch) { var a = sumOf(c, ch); tot.qty += a.qty; tot.rev += a.rev; if (a.est) tot.est = true; byCh[ch].qty += a.qty; byCh[ch].rev += a.rev; }); });
     // 머리: 고른 품목
-    h += '<section class="card" aria-label="고른 품목의 판매 흐름"><div class="card-h"><h2>' + (codes.length === 1 ? codeLabel(codes[0]) + ' ' + esc(itemName(X, codes[0])) : '고른 품목 ' + codes.length + '개 함께 보기') + '</h2><span class="hint">' + dot(S.from) + ' ~ ' + dot(S.to) + ', ' + (S.pch === 'all' ? '전체 채널' : CH_NAME[S.pch]) + '</span><button type="button" class="chip" data-act="selclear">닫기</button></div>';
-    if (codes.length > 1 || S.selMsg) {
-      h += '<div class="pchips">'; codes.forEach(function (c, i) { h += '<span class="pchip"><span class="dotc" style="background:' + CMP_COLORS[i] + '"></span>' + esc((c.indexOf('CP:') === 0 ? '' : c + ' ') + itemName(X, c)) + '<button type="button" data-act="punsel" data-key="' + esc(c) + '" aria-label="빼기">×</button></span>'; }); h += '</div>';
-      if (S.selMsg) h += '<p class="note"><b class="warn">' + esc(S.selMsg) + '</b></p>';
-    }
+    h += '<section class="card" aria-label="고른 품목의 판매 흐름"><div class="card-h"><h2>' + (codes.length === 1 ? codeLabel(codes[0]) + ' ' + esc(itemName(X, codes[0])) : '고른 품목 ' + codes.length + '개 함께 보기') + '</h2><span class="hint">' + dot(S.from) + ' ~ ' + dot(S.to) + ', ' + (S.pch === 'all' ? '전체 채널' : CH_NAME[S.pch]) + '</span></div>';
     // ① 요약
     var best = null; T.buckets.forEach(function (b, i) { var q = 0; codes.forEach(function (c) { chs.forEach(function (ch) { q += T.rows[c][ch][i][met]; }); }); if (q > 0 && (!best || q > best.v)) best = { v: q, key: b.key }; });
     var days = pvDays(codes).map(function (o) { var q = 0; chs.forEach(function (ch) { q += o.ch[ch]; }); return { d: o.d, qty: q, ch: o.ch, bulk: o.bulk.filter(function (x) { return chs.indexOf(x.ch) >= 0; }) }; }).filter(function (o) { return o.qty > 0; });
@@ -1001,7 +1014,7 @@
     h += '<div class="tabs" role="tablist" aria-label="채널">';
     [['all', '전체'], ['naver', '네이버'], ['coupang', '쿠팡'], ['other', '기타몰']].forEach(function (c) { h += '<button type="button" role="tab" class="tab" data-act="pch" data-key="' + c[0] + '" aria-selected="' + (c[0] === pch) + '">' + c[1] + '</button>'; });
     h += '</div>';
-    h += '<section class="card" aria-label="품목 검색">' + searchBar() + '</section>';
+    h += '<section class="card psticky" aria-label="품목 검색" id="psearchcard">' + searchBar() + '</section>';
     if (S.sel.length && !page) h += prodDetailHtml();
     else {
       var t = { n: 0, qty: 0, rev: 0 };
@@ -1013,7 +1026,9 @@
       h += cell(revName().replace(' (배분)', '') + ' (전체 품목)', n0(t.rev), pch === 'all' ? '매출 메뉴의 실매출과 같은 기준' : '');
       h += '</section>';
     }
-    h += '<section class="card flush" aria-label="품목 목록"><div class="card-h pad"><h2>' + (page ? '판매 페이지 목록' : '품목 목록') + '</h2><span class="hint">순서는 기간과 상관없이 고정 (전체 기간 누적 매출순)</span>';
+    var fold = S.sel.length && !page && !S.listOpen; // 품목을 보는 중에는 목록을 접어 둔다 (다른 품목은 위 검색으로)
+    if (fold) return h + '<div class="pfold"><button type="button" class="chip" data-act="plist">▸ 전체 품목 목록 펼치기</button><span class="zero">다른 품목은 위 검색칸에서 바로 찾을 수 있습니다</span></div>';
+    h += '<section class="card flush" aria-label="품목 목록"><div class="card-h pad"><h2>' + (page ? '판매 페이지 목록' : '품목 목록') + '</h2>' + (S.sel.length && !page ? '<button type="button" class="chip" data-act="plist">▾ 목록 접기</button>' : '') + '<span class="hint">순서는 기간과 상관없이 고정 (전체 기간 누적 매출순)</span>';
     if (pch === 'naver') [['item', '품목 기준'], ['page', '판매 페이지 기준']].forEach(function (m) { h += '<button type="button" class="chip" data-act="pmode" data-key="' + m[0] + '" aria-pressed="' + ((S.pmode === 'page' ? 'page' : 'item') === m[0]) + '">' + m[1] + '</button>'; });
     h += '<button type="button" class="chip" data-act="pcsv">엑셀로 받기 (CSV)</button></div><div class="scroll" id="pbody">' + body + '</div></section>';
     h += '<span class="note tight">매출 기준: 네이버 = 순매출, 쿠팡 = 입고 금액, 기타몰 = 매출액. 원가와 마진은 관리 > 상품 관리에서 봅니다.</span>';
@@ -2281,8 +2296,15 @@
     if (act === 'topen') { S.topen = S.topen === key ? '' : key; render(); return; }
     if (act === 'tcsv') { downloadTrafficCsv(); return; }
     if (act === 'open') { S.open = S.open === key ? '' : key; refreshProdBody(); return; }
-    if (act === 'selclear') { S.sel = []; S.selMsg = ''; render(); return; }
-    if (act === 'pfocus') { S.sel = [key]; S.selMsg = ''; S.mpage = 0; render(); var dt = document.querySelector('section[aria-label="고른 품목의 판매 흐름"]'); if (dt) dt.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
+    if (act === 'selclear') { S.sel = []; S.selMsg = ''; S.listOpen = false; render(); return; }
+    if (act === 'pfocus' || act === 'padd') {
+      if (act === 'padd' && S.sel.indexOf(key) < 0) { if (S.sel.length >= SEL_MAX) { S.selMsg = '함께 보기는 최대 ' + SEL_MAX + '개까지입니다. 하나를 빼고 다시 더해 주세요.'; render(); return; } S.sel.push(key); }
+      else if (act === 'pfocus') S.sel = [key];
+      S.selMsg = ''; S.mpage = 0; S.q = ''; S.listOpen = false; render();
+      var sc = document.getElementById('psearchcard'); if (sc) window.scrollTo({ top: Math.max(0, sc.getBoundingClientRect().top + window.scrollY - 12), behavior: 'smooth' });
+      return;
+    }
+    if (act === 'plist') { S.listOpen = !S.listOpen; render(); return; }
     if (act === 'punsel') { S.sel = S.sel.filter(function (c) { return c !== key; }); S.selMsg = ''; render(); return; }
     if (act === 'ptmet') { S.ptmet = key === 'rev' ? 'rev' : 'qty'; save(); render(); return; }
     if (act === 'ptunit') { S.ptunit = key; S.mpage = 0; save(); render(); return; }
@@ -2326,7 +2348,7 @@
     var act = el.getAttribute('data-act'), v = el.value;
     if (act === 'aiq' || act === 'pq' || act === 'plq' || act === 'iaq') return;
     if (act === 'psize') { S.psize = PSIZES.indexOf(+v) >= 0 ? +v : 10; PFIELDS.forEach(function (f) { S[f] = 0; }); save(); render(); return; } // 검색칸에서 포커스가 빠질 때 목록을 다시 그리면 누르던 결과가 사라져 클릭이 무시된다
-    if (act === 'q') { onSearch(ev); return; }
+    if (act === 'q') return; // 검색어는 input 이벤트로만 받는다 (다시 그릴 때 옛 검색칸의 change가 지운 검색어를 되살리지 않게)
     if (act === 'upfiles') { onUpload(el.files); el.value = ''; return; }
     if (act === 'sel') {
       var id = el.getAttribute('data-key'), at = S.sel.indexOf(id); S.selMsg = '';
@@ -2360,6 +2382,7 @@
     if (!el.matches('input[data-act="q"]')) return;
     if (S.q === el.value) return;
     S.q = el.value; S.page = 0; S.open = ''; refreshProdBody();
+    var sg0 = document.getElementById('psug0'); if (sg0) { sg0.innerHTML = psugHtml(); sg0.hidden = !S.q.trim() || (S.pch === 'naver' && S.pmode === 'page'); }
   }
 
   // 차트 툴팁: 화면에 하나만 두고 마우스를 따라다닌다
@@ -2387,7 +2410,12 @@
     document.addEventListener('change', onChange);
     document.addEventListener('input', onSearch);
     document.addEventListener('keydown', function (ev) {
-      var el = ev.target; if (el.matches && el.matches('input[data-act="q"]') && ev.key === 'Enter' && !ev.isComposing && !(S.pch === 'naver' && S.pmode === 'page')) { var fb = document.querySelector('#pbody [data-act="pfocus"]'); if (fb) { ev.preventDefault(); fb.click(); } return; }
+      var el = ev.target; if (el.matches && el.matches('input[data-act="q"]') && !ev.isComposing && !(S.pch === 'naver' && S.pmode === 'page')) {
+        if (ev.key === 'Enter') { var fb = document.querySelector('#psug0 [data-act="pfocus"]') || document.querySelector('#pbody [data-act="pfocus"]'); if (fb) { ev.preventDefault(); fb.click(); } }
+        else if (ev.key === 'Escape') { S.q = ''; el.value = ''; var s0 = document.getElementById('psug0'); if (s0) s0.hidden = true; refreshProdBody(); }
+        else if (ev.key === 'ArrowDown') { var f0 = document.querySelector('#psug0 .aisug-i'); if (f0) { ev.preventDefault(); f0.focus(); } }
+        return;
+      }
       if (!el.matches || !el.matches('input[data-act="aiq"], input[data-act="pq"], input[data-act="plq"]')) return;
       if (ev.isComposing) return; // 한글 조합 중의 Enter는 글자 확정용
       var ba = el.getAttribute('data-act'), box = ba === 'pq' ? '#psug' : ba === 'plq' ? '#plsug' : '#aisug';
