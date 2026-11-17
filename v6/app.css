@@ -347,3 +347,14 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; color
 .rsprev > div { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-width: 0; }
 .rsprev code { display: block; margin-top: 6px; font-size: 11px; line-height: 1.5; color: var(--sub); white-space: normal; word-break: break-all; }
 .bkwarn { margin-top: 6px; padding: 4px 8px; border: 1px solid var(--warn, #b45309); border-radius: 6px; background: none; color: var(--warn, #b45309); font: inherit; font-size: 12px; font-weight: 700; text-align: left; cursor: pointer; }
+
+/* 상품 보기 */
+.psearch { padding: 0; }
+.psearch input { font-size: 16px; min-height: 48px; }
+.legendrow { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 0 4px; }
+.legendrow .dotc, .pchip .dotc { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.chtag.bulk { background: var(--warn-soft); color: var(--warn); }
+.tbl tr.subhead th { background: var(--bg); font-size: 13px; }
+.tbl.items .linkbtn { text-align: left; }
+.tbl.items td.nm .linkbtn { color: var(--text); font-weight: 400; text-decoration: none; }
+.tbl.items td.nm .linkbtn:hover, .tbl.items td.nm .linkbtn:focus-visible { text-decoration: underline; color: var(--accent-deep); }

@@ -593,6 +593,55 @@
     return { labels: labels, series: series, unit: unit };
   }
 
+  /* ───────── 상품 보기: 고른 품목이 어디서, 언제, 얼마나 팔렸나 ─────────
+   * itemTrend: 날짜 묶음(일/주/월)마다 items()를 불러 품목 × 채널의 수량, 매출 (네이버 배분 규칙이 다른 화면과 같도록)
+   * itemOther: 기타몰을 몰별로
+   * itemDays: 하루 단위 수량 (주문 줄 기준). 한 주문(한 줄)에 BULK_QTY개 이상이면 대량 주문으로 표시. 쿠팡 입고는 원래 묶음 납품이라 대량 표시를 하지 않는다
+   */
+  var BULK_QTY = 30;
+  function trendBuckets(from, to, unit) {
+    var out = [], d = from;
+    while (d <= to) {
+      var e;
+      if (unit === 'month') e = addDays(addDays(d.slice(0, 7) + '-01', 32).slice(0, 7) + '-01', -1);
+      else if (unit === 'week') { var w = new Date(d + 'T00:00:00Z').getUTCDay(); e = addDays(d, (7 - w) % 7); } // 일요일에 끊는다 (월~일)
+      else e = d;
+      if (e > to) e = to;
+      out.push({ from: d, to: e, key: unit === 'month' ? d.slice(0, 7) : d });
+      d = addDays(e, 1);
+    }
+    return out;
+  }
+  function itemTrend(data, codes, from, to, unit) {
+    var B = trendBuckets(from, to, unit), rows = {};
+    codes.forEach(function (c) { rows[c] = { naver: [], coupang: [], other: [] }; });
+    B.forEach(function (b, i) {
+      var r = items(data, b.from, b.to).rows;
+      codes.forEach(function (c) { ['naver', 'coupang', 'other'].forEach(function (ch) { var x = r[c] && r[c].ch[ch]; rows[c][ch][i] = { qty: x ? x.qty : 0, rev: x ? x.rev : 0, est: !!(x && x.est && x.rev) }; }); });
+    });
+    return { buckets: B, rows: rows, unit: unit };
+  }
+  function itemOther(data, codes, from, to) {
+    var want = {}, out = {}; codes.forEach(function (c) { want[c] = 1; out[c] = {}; });
+    data.other.forEach(function (e) {
+      if (!inRange(e.d, from, to)) return; var c = itemCode(e.code); if (!want[c]) return;
+      var m = out[c][e.market || '(몰 이름 없음)'] || (out[c][e.market || '(몰 이름 없음)'] = { qty: 0, rev: 0 }); m.qty += e.qty; m.rev += e.amount;
+    });
+    return out;
+  }
+  function itemDays(data, codes, from, to) {
+    var want = {}, D = {}, ix = skuIndex(data.skuMap).idx; codes.forEach(function (c) { want[c] = 1; });
+    function day(d) { return D[d] || (D[d] = { d: d, qty: 0, ch: { naver: 0, coupang: 0, other: 0 }, bulk: [] }); }
+    function add(d, ch, c, q, bulkOk) { if (!q) return; var o = day(d); o.qty += q; o.ch[ch] += q; if (bulkOk && q >= BULK_QTY) o.bulk.push({ ch: ch, code: c, qty: q }); }
+    data.orders.forEach(function (e) {
+      if (e.st === '미결제취소' || e.st === '취소' || e.st === '반품' || !inRange(e.d, from, to)) return;
+      skuKeys(e).forEach(function (k) { var r = ix[k]; if (!r || !r.codes) return; r.codes.forEach(function (x) { if (want[x.c]) add(e.d, 'naver', x.c, (x.q || 1) * e.qty, true); }); });
+    });
+    data.coupang.forEach(function (e) { if (!inRange(e.d, from, to)) return; var c = COUP_MAP[e.skuNo]; if (want[c]) add(e.d, 'coupang', c, e.qty, false); });
+    data.other.forEach(function (e) { if (!inRange(e.d, from, to)) return; var c = itemCode(e.code); if (want[c]) add(e.d, 'other', c, e.qty, true); });
+    return Object.keys(D).map(function (k) { return D[k]; });
+  }
+
   /* ───────── 광고 캠페인 분석: 캠페인 ▸ 광고그룹 ▸ 상품(품목코드) ─────────
    * 네이버: 소재ID → (소재 목록 파일) 몰상품 ID = 스마트스토어 상품번호 → 판매 페이지 품목(pageCodes)
    * 쿠팡: 광고 상품명(이름+옵션 글자) → 아래 규칙으로 품목코드. 2026-11-16 초안, 예영 확인 전
@@ -1182,6 +1231,7 @@
     skuAggregate: skuAggregate, skuUnmapped: skuUnmapped, skuParseOpt: skuParseOpt, orderCheck: orderCheck,
     costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products, productSeries: productSeries, items: items, itemOrder: itemOrder, adTree: adTree, adPathSeries: adPathSeries, adItemDaily: adItemDaily, adItemList: adItemList, coupAdCode: coupAdCode, AD_OTHER: AD_OTHER, trafficDaily: trafficDaily, trafficBucket: trafficBucket, trafficTotal: trafficTotal, trafficPaths: trafficPaths, trafficItems: trafficItems, trafficOrder: trafficOrder, pageCodes: pageCodes, queryTop: queryTop, custDemo: custDemo, itemSeries: itemSeries, itemMaster: itemMaster, NONE: NONE, COUP_MAP: COUP_MAP,
     itemInfo: itemInfo, priceAt: priceAt, priceMerge: priceMerge, ITEM_PARTS: ITEM_PARTS,
+    itemTrend: itemTrend, itemOther: itemOther, itemDays: itemDays, trendBuckets: trendBuckets, BULK_QTY: BULK_QTY,
     adPlanRef: adPlanRef, adPlanCalc: adPlanCalc,
     promoList: promoList, promoCalc: promoCalc, promoDaily: promoDaily, promoBase: promoBase, promoRange: promoRange,
     signals: signals, health: health
