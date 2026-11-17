@@ -8,8 +8,8 @@
   var C = root.TTCalc;
   var DATA = null, RAW = null;      // 정리된 데이터
   var META = {};        // 불러오기 결과(기타마켓 연결 여부 등)
-  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '', tpage: 0, topen: '', acOpen: {}, acSel: null, acBasis: 'ad', adView: 'camp', aitem: '', amd: 'all', apage: 0, aopen: {}, aiq: '', ppage: 0, psize: 10, dsort: 'new' };
-  var READY = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, promo: 1, data: 1, slack: 1 }; // 옮겨온 메뉴
+  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '', tpage: 0, topen: '', acOpen: {}, acSel: null, acBasis: 'ad', adView: 'camp', aitem: '', amd: 'all', apage: 0, aopen: {}, aiq: '', ppage: 0, psize: 10, dsort: 'new', ipage: 0 };
+  var READY = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, promo: 1, data: 1, slack: 1, itemadmin: 1 }; // 옮겨온 메뉴
   var STORE_KEY = 'tt6_state';
 
   var VIEWS = [
@@ -20,7 +20,8 @@
     { id: 'customers', label: '고객/유입', group: 'view' },
     { id: 'promo', label: '프로모션', group: 'view' },
     { id: 'slack', label: '슬랙 리포트', group: 'manage' },
-    { id: 'data', label: '데이터 관리', group: 'manage' }
+    { id: 'data', label: '데이터 관리', group: 'manage' },
+    { id: 'itemadmin', label: '상품 관리', group: 'manage' },
   ];
   var SNS_URL = 'https://script.google.com/macros/s/AKfycbwPP2q4xCM9g5XQwGLELKyS8lxRY9Nz1K9xMSb6wB3lSJtb4y1hmDIKb7gruPMcvMz-bA/exec';
 
@@ -232,7 +233,7 @@
 
   /* ───────── 표 넘겨보기: 최근 날짜부터 10줄씩 ───────── */
   var PAGE_SIZE_DEF = 10;
-  var PSIZES = [10, 20, 30, 40, 50], PFIELDS = ['page', 'apage', 'tpage', 'ppage'];
+  var PSIZES = [10, 20, 30, 40, 50], PFIELDS = ['page', 'apage', 'tpage', 'ppage', 'ipage'];
   var EXPORT_ALL = false; // 엑셀로 내보낼 때: 모든 줄을 한 번에, 펼칠 수 있는 줄은 다 펼쳐서 그린다
   function pageOf(list, size, field) {
     var f = field || 'page', PAGE_SIZE = PSIZES.indexOf(+S.psize) >= 0 ? +S.psize : 10, pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
@@ -1656,6 +1657,228 @@
     return h;
   }
 
+  /* ───────── 상품 관리 (관리 메뉴) ─────────
+   * 품목마다 이미지, 품목코드, 품목명, 원가, 정가, 채널별 판매가를 한 표로 본다. 가격 규칙은 calc.js itemInfo, priceAt, priceMerge.
+   * 저장: 가격 = channel itemInfo (품목 1개 = 1줄, 이력을 쌓음), 몰 목록 = itemInfo의 '_malls' 줄, 이미지 = channel itemImg (줄인 사진),
+   *       원가 = 기존 원가표(skuCost)에 새 판으로 추가 (상품 메뉴의 원가표 올리기와 같은 방식).
+   */
+  var IA = { q: '', edit: '', hist: '', form: null, msg: '', err: '', saving: false, imgs: {}, imgState: 'idle', plan: null, mallAsk: '', avg: null };
+  var IA_BASE = [['naver', '네이버'], ['coupang', '쿠팡(로켓)']];
+  function iaCols() { return IA_BASE.concat(DATA.itemInfo.malls.map(function (m) { return [m, m]; })); }
+  function iaHist(code) { return DATA.itemInfo.by[code] || []; }
+  function iaCur(code) { return C.priceAt(DATA.itemInfo, code, today()); }
+  function iaCost(code) { return C.costAt(C.costIndex(DATA.costVer), code, today()); }
+  function iaNum(t) { t = String(t === undefined || t === null ? '' : t).trim(); if (!t) return null; var n = parseFloat(t.replace(/[,원\s]/g, '')); return isNaN(n) ? NaN : n; }
+  function iaIsSet(code, name) { return !!C.ITEM_PARTS[code] || code.indexOf('CP:') === 0 || /세트|\+/.test(name); }
+  function iaLoadImages() {
+    if (IA.imgState !== 'idle') return;
+    IA.imgState = 'loading';
+    root.TTData.loadImages().then(function (m) { IA.imgs = m; IA.imgState = 'ready'; }).catch(function (e) { IA.imgState = 'fail'; IA.err = e && e.message; }).then(function () { if (S.view === 'itemadmin') iaRefresh(); });
+  }
+  // 최근 90일 실제 평균 판매가 (매출 ÷ 수량): 설정한 판매가와 실제가 얼마나 다른지 보는 참고 값
+  function iaAvg() {
+    var key = DATA.last + '|' + DATA.itemInfo.malls.join(',');
+    if (IA.avg && IA.avg.key === key) return IA.avg.m;
+    var from = C.addDays(DATA.last, -89), X = C.items(DATA, from, DATA.last).rows, m = {};
+    Object.keys(X).forEach(function (c) { var r = X[c]; m[c] = {}; ['naver', 'coupang'].forEach(function (ch) { if (r.ch[ch].qty > 0 && r.ch[ch].rev > 0) m[c][ch] = r.ch[ch].rev / r.ch[ch].qty; }); });
+    var T = {}; DATA.other.forEach(function (e) { if (e.d < from || e.d > DATA.last || !e.code || !(e.qty > 0)) return; var k = e.code + '|' + e.market, o = T[k] || (T[k] = { q: 0, a: 0, c: e.code, m: e.market }); o.q += e.qty; o.a += e.amount; });
+    Object.keys(T).forEach(function (k) { var o = T[k]; (m[o.c] = m[o.c] || {})[o.m] = o.a / o.q; });
+    IA.avg = { key: key, m: m }; return m;
+  }
+  function iaList() {
+    var X = itemModel(S.from, S.to), q = IA.q.trim().toLowerCase(), words = q ? q.split(/\s+/) : [];
+    return itemOrder().filter(function (c) { if (c === C.NONE) return false; if (!words.length) return true; var t = (c + ' ' + itemName(X, c)).toLowerCase(); return words.every(function (w) { return t.indexOf(w) >= 0; }); });
+  }
+  function iaFormOf(code) {
+    var cur = iaCur(code), cost = iaCost(code), f = { code: code, from: today(), cost: cost ? String(Math.round(cost)) : '', list: cur && cur.list ? String(cur.list) : '' };
+    iaCols().forEach(function (c) { f['p:' + c[0]] = cur && cur.prices[c[0]] ? String(cur.prices[c[0]]) : ''; });
+    return f;
+  }
+  function iaTableHtml() {
+    var X = itemModel(S.from, S.to), cols = iaCols(), list = iaList(), pg = pageOf(list, 10, 'ipage'), avg = iaAvg(), nc = 7 + cols.length, h = '';
+    h += '<div class="scroll"><table class="tbl wrap iatbl"><thead><tr><th scope="col">이미지</th><th scope="col">품목코드</th><th scope="col">품목명</th><th scope="col" class="r">원가</th><th scope="col" class="r">정가</th>';
+    cols.forEach(function (c) { h += '<th scope="col" class="r">' + esc(c[1]) + '</th>'; });
+    h += '<th scope="col">적용 시작일</th><th scope="col" class="r">관리</th></tr></thead><tbody>';
+    if (!list.length) h += '<tr><td colspan="' + nc + '" class="none">검색 결과가 없습니다.</td></tr>';
+    pg.rows.forEach(function (code) {
+      var name = itemName(X, code), cur = iaCur(code), cost = iaCost(code), img = IA.imgs[code], a = avg[code] || {};
+      h += '<tr' + (IA.edit === code ? ' class="on"' : '') + '><td class="iaimg">' + (EXPORT_ALL ? (img ? '있음' : '') : img ? '<img class="ithumb" src="' + img + '" alt="' + esc(name) + '" data-big="1" tabindex="0">' : '<span class="ithumb none" aria-label="이미지 없음"></span>') + '</td>';
+      h += '<th scope="row">' + codeLabel(code) + '</th><td>' + esc(name) + (iaIsSet(code, name) ? ' <span class="chtag wait">세트</span>' : '') + '</td>';
+      h += '<td class="r num">' + (cost ? n0(cost) : miss('미입력')) + '</td><td class="r num b">' + (cur && cur.list ? n0(cur.list) : '<span class="zero">-</span>') + '</td>';
+      cols.forEach(function (c) {
+        var v = cur && cur.prices[c[0]], sub = [];
+        if (v && cost) sub.push('마진 ' + pctOf(v - cost, v));
+        if (a[c[0]]) sub.push('실제 ' + n0(a[c[0]]));
+        h += '<td class="r num">' + (v ? n0(v) : '<span class="zero">-</span>') + (sub.length && !EXPORT_ALL ? '<small class="iasub">' + sub.join(', ') + '</small>' : '') + '</td>';
+      });
+      var nx = iaHist(code).filter(function (e) { return e.from > today(); })[0]; // 아직 시작 전인 가격
+      h += '<td class="num">' + (cur ? dot(cur.from) : '<span class="zero">-</span>') + (nx ? '<small class="iasub">' + dot(nx.from) + '부터 바뀔 예정</small>' : '') + '</td>';
+      h += '<td class="r pact"><button type="button" class="chip" data-act="iaedit" data-key="' + esc(code) + '">수정</button><button type="button" class="chip" data-act="iahist" data-key="' + esc(code) + '" aria-expanded="' + (IA.hist === code) + '">이력</button></td></tr>';
+      if (EXPORT_ALL) return;
+      if (IA.edit === code && IA.form) {
+        var f = IA.form;
+        var inp = function (label, field, hint) { return '<label><span>' + label + '</span><input type="text" inputmode="numeric" data-ia="' + esc(field) + '" value="' + esc(f[field]) + '" placeholder="비워 두면 없음" autocomplete="off">' + (hint ? '<small>' + hint + '</small>' : '') + '</label>'; };
+        h += '<tr class="iaform"><td colspan="' + nc + '"><div class="pform"><label><span>적용 시작일</span><input type="date" data-ia="from" value="' + esc(f.from) + '"><small>이 날짜부터 아래 가격을 씁니다. 이전 가격은 이력에 남습니다</small></label>';
+        h += inp('원가 (부가세 포함)', 'cost', '비워 두면 원가는 그대로') + inp('정가 (소비자가)', 'list');
+        cols.forEach(function (c) { h += inp(esc(c[1]) + ' 판매가', 'p:' + c[0]); });
+        h += '<label><span>이미지</span><input type="file" accept="image/*" data-act="iaimg" data-key="' + esc(code) + '"><small>사진을 고르면 작게 줄여서 바로 저장합니다</small></label></div>';
+        h += '<p class="note" id="iamsg"' + (IA.err ? '' : ' hidden') + '><b class="warn">' + esc(IA.err) + '</b></p>';
+        h += '<div class="plan-f"><span></span><button type="button" class="chip" data-act="iacancel">취소</button><button type="button" class="btn" data-act="iasave"' + (IA.saving ? ' disabled' : '') + '>' + (IA.saving ? '저장 중…' : '저장') + '</button></div></td></tr>';
+      }
+      if (IA.hist === code) {
+        var hs = iaHist(code).slice().reverse(), cr = ((DATA.costVer && DATA.costVer.rows) || []).filter(function (r) { return r.c === code && C.num(r.cost) > 0; });
+        h += '<tr class="iaform"><td colspan="' + nc + '"><b class="plh">가격 이력</b>';
+        if (!hs.length) h += '<p class="note">아직 등록한 가격이 없습니다.</p>';
+        else { h += '<table class="tbl"><thead><tr><th scope="col">적용 시작일</th><th scope="col" class="r">정가</th>' + cols.map(function (c) { return '<th scope="col" class="r">' + esc(c[1]) + '</th>'; }).join('') + '</tr></thead><tbody>'; hs.forEach(function (e, i) { h += '<tr><th scope="row">' + dot(e.from) + (i === 0 ? ' <span class="chtag on">최신</span>' : '') + '</th><td class="r num">' + (e.list ? n0(e.list) : '-') + '</td>' + cols.map(function (c) { return '<td class="r num">' + (e.prices[c[0]] ? n0(e.prices[c[0]]) : '-') + '</td>'; }).join('') + '</tr>'; }); h += '</tbody></table>'; }
+        h += '<p class="note">원가 이력: ' + (cr.length ? cr.map(function (r) { return (r.from ? dot(r.from) + '부터 ' : '처음부터 ') + n0(r.cost) + '원'; }).join(' / ') : '원가 미입력') + '</p></td></tr>';
+      }
+    });
+    return h + '</tbody></table>' + pagerHtml(pg, true) + '</div>';
+  }
+  function iaRefresh() { var t = document.getElementById('iatbl'); if (t) t.innerHTML = iaTableHtml(); else render(); }
+  function viewItemAdmin() {
+    iaLoadImages();
+    var h = '', malls = DATA.itemInfo.malls, n = itemOrder().filter(function (c) { return c !== C.NONE; }), priced = n.filter(function (c) { return iaCur(c); }).length, costed = n.filter(function (c) { return iaCost(c); }).length, imgd = n.filter(function (c) { return IA.imgs[c]; }).length;
+    h += '<section class="card" aria-label="상품 관리"><div class="card-h"><h2>상품 관리</h2><span class="hint">품목 ' + n.length + '개 중 가격 등록 ' + priced + '개, 원가 입력 ' + costed + '개, 이미지 ' + (IA.imgState === 'loading' ? '불러오는 중' : imgd + '개') + '</span></div>';
+    h += '<div class="aipick"><label for="iaq">검색</label><div class="aibox"><input id="iaq" type="search" data-act="iaq" value="' + esc(IA.q) + '" placeholder="품목코드나 품목명 (예: 캐롤, SOMD-0018)" autocomplete="off"></div>';
+    h += '<button type="button" class="chip" data-act="iatpl">엑셀 양식 받기</button><label class="chip filebtn">엑셀로 한 번에 올리기<input type="file" accept=".xlsx,.xls" data-act="iaxls" hidden></label></div>';
+    h += '<div class="pitems"><b>판매 몰</b><div class="pchips"><span class="pchip">네이버</span><span class="pchip">쿠팡(로켓)</span>';
+    malls.forEach(function (m) { h += '<span class="pchip">' + esc(m) + (IA.mallAsk === m ? ' <button type="button" class="chip danger" data-act="iamalldel" data-key="' + esc(m) + '">정말 빼기</button><button type="button" class="chip" data-act="iamallno">취소</button>' : '<button type="button" data-act="iamallask" data-key="' + esc(m) + '" aria-label="' + esc(m) + ' 빼기">×</button>') + '</span>'; });
+    h += '<span class="mallnew"><input type="text" id="iamall" placeholder="몰 이름 (예: 11번가)" autocomplete="off" maxlength="20"><button type="button" class="chip" data-act="iamalladd">몰 추가</button></span></div></div>';
+    if (IA.msg) h += '<p class="note"><b>' + esc(IA.msg) + '</b></p>';
+    if (IA.err && !IA.edit) h += '<p class="note"><b class="warn">' + esc(IA.err) + '</b></p>';
+    h += '<p class="note">판매가 아래의 작은 글씨: 마진 = (판매가 - 원가) ÷ 판매가, 실제 = 최근 90일 실제 평균 판매가(매출 ÷ 수량). 이미지에 마우스를 올리면 크게 보입니다. 몰을 빼도 그 몰의 가격 기록은 지워지지 않습니다.</p></section>';
+    if (IA.plan) {
+      var P = IA.plan;
+      h += '<section class="card" aria-label="엑셀 올리기 확인"><div class="card-h"><h2>엑셀 올리기 확인</h2><span class="hint">' + esc(P.name) + '</span></div><div class="plan"><p><b>가격이 바뀌는 품목 ' + P.price.length + '개</b>, 원가가 바뀌는 품목 ' + P.cost.length + '개, 그대로 ' + P.same + '개' + (P.unknown.length ? ', 모르는 품목코드 ' + P.unknown.length + '개 (건너뜀): ' + esc(P.unknown.slice(0, 6).join(', ')) : '') + '</p>';
+      if (P.bad.length) h += '<p><b class="warn">숫자가 아니라서 건너뛴 칸: ' + esc(P.bad.slice(0, 6).join(', ')) + (P.bad.length > 6 ? ' 외 ' + (P.bad.length - 6) + '개' : '') + '</b></p>';
+      if (P.newMalls.length) h += '<p>양식에 새 몰 칸이 있습니다: ' + esc(P.newMalls.join(', ')) + ' → 판매 몰에 추가합니다.</p>';
+      h += '<p class="zero">빈칸은 "그대로 둔다"는 뜻입니다. 이전 가격은 이력에 남습니다.</p></div><div class="plan-f"><span></span><button type="button" class="chip" data-act="iaplanno">취소</button><button type="button" class="btn" data-act="iaplansave"' + (IA.saving || !(P.price.length + P.cost.length + P.newMalls.length) ? ' disabled' : '') + '>' + (IA.saving ? '저장 중…' : '저장') + '</button></div></section>';
+    }
+    h += '<section class="card flush" aria-label="품목 목록"><div id="iatbl">' + iaTableHtml() + '</div></section>';
+    return h;
+  }
+  function iaInfoRow(code, hist) { return { channel: 'itemInfo', date: code, data: [{ d: code, code: code, hist: hist, updated: new Date().toISOString() }] }; }
+  function iaApplyRows(rows) { // 저장에 성공한 줄을 화면 데이터에 반영
+    rows.forEach(function (r) { var rec = r.data[0]; RAW.itemInfo = (RAW.itemInfo || []).filter(function (e) { return e && e.d !== rec.d; }); RAW.itemInfo.push(rec); });
+    DATA.itemInfo = C.itemInfo(RAW.itemInfo); IA.avg = null;
+  }
+  function iaSaveCost(costRows) { // 원가는 기존 원가표에 새 판으로 추가 (이전 판은 남는다)
+    if (!costRows.length) return Promise.resolve();
+    var vs = stamp(); if (DATA.costVer && vs <= String(DATA.costVer.ver)) vs = String(DATA.costVer.ver) + '~'; // 같은 초에 두 번 저장해도 판 번호가 겹치지 않게
+    var ver = { ver: vs, basis: (DATA.costVer && DATA.costVer.basis) || 'incl', rows: C.costMerge(DATA.costVer, costRows).rows };
+    return root.TTData.saveCost(ver).then(function () { DATA.costVer = ver; (RAW.skuCost = RAW.skuCost || []).push(ver); PR.cache = {}; });
+  }
+  function iaCostRow(code, cost, from) { return { c: code, name: itemName(itemModel(S.from, S.to), code), cost: cost, from: iaCost(code) || ((DATA.costVer && DATA.costVer.rows) || []).some(function (r) { return r.c === code && C.num(r.cost) > 0; }) ? from : '', note: '' }; } // 첫 원가는 처음부터 적용, 바꾸는 원가는 적용 시작일부터
+  function iaSave() {
+    var f = IA.form; if (!f || IA.saving) return;
+    function bad(m) { IA.err = m; iaRefresh(); }
+    if (!f.from) return bad('적용 시작일을 골라 주세요.');
+    var cur = iaCur(f.code), entry = { from: f.from, prices: {} }, v, wrong = false;
+    v = iaNum(f.list); if (v !== null && !(v >= 0)) wrong = true; entry.list = v === null ? (cur && cur.list ? 0 : null) : v;
+    iaCols().forEach(function (c) { var x = iaNum(f['p:' + c[0]]); if (x !== null && !(x >= 0)) wrong = true; entry.prices[c[0]] = x === null ? (cur && cur.prices[c[0]] ? 0 : null) : x; });
+    var cost = iaNum(f.cost); if (cost !== null && !(cost > 0)) wrong = true;
+    if (wrong) return bad('가격과 원가는 0 이상의 숫자로 적어 주세요.');
+    var mg = C.priceMerge(iaHist(f.code), entry), rows = mg.changed ? [iaInfoRow(f.code, mg.hist)] : [], oc = iaCost(f.code);
+    var costRows = cost !== null && Math.round(cost) !== Math.round(oc || 0) ? [iaCostRow(f.code, cost, f.from)] : [];
+    if (!rows.length && !costRows.length) { IA.edit = ''; IA.form = null; IA.err = ''; IA.msg = '바뀐 값이 없습니다.'; render(); return; }
+    IA.saving = true; IA.err = ''; iaRefresh();
+    (rows.length ? root.TTData.saveRows(rows) : Promise.resolve()).then(function () { iaApplyRows(rows); return iaSaveCost(costRows); })
+      .then(function () { IA.edit = ''; IA.form = null; IA.msg = f.code + ' 저장했습니다.'; })
+      .catch(function (e) { IA.err = '저장하지 못했습니다. ' + (e && e.message); })
+      .then(function () { IA.saving = false; render(); });
+  }
+  function iaSaveMalls(list, msg) {
+    var row = { channel: 'itemInfo', date: '_malls', data: [{ d: '_malls', malls: list, updated: new Date().toISOString() }] };
+    IA.err = ''; IA.mallAsk = '';
+    root.TTData.saveRows([row]).then(function () { iaApplyRows([row]); IA.msg = msg; IA.edit = ''; IA.form = null; }).catch(function (e) { IA.err = '저장하지 못했습니다. ' + (e && e.message); }).then(render);
+  }
+  // 사진을 긴 쪽 480px로 줄여 JPEG로 저장 (품목 1개에 수십 KB)
+  function iaImage(code, file) {
+    if (!file) return;
+    var rd = new FileReader();
+    rd.onload = function () {
+      var im = new Image();
+      im.onload = function () {
+        var k = Math.min(1, 480 / Math.max(im.width, im.height)), cv = document.createElement('canvas'); cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k);
+        var cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(im, 0, 0, cv.width, cv.height);
+        var url = cv.toDataURL('image/jpeg', 0.82);
+        root.TTData.saveRows([{ channel: 'itemImg', date: code, data: [{ d: code, code: code, img: url, updated: new Date().toISOString() }] }])
+          .then(function () { IA.imgs[code] = url; IA.err = ''; IA.msg = code + ' 이미지를 저장했습니다.'; })
+          .catch(function (e) { IA.err = '이미지를 저장하지 못했습니다. ' + (e && e.message); }).then(iaRefresh);
+      };
+      im.onerror = function () { IA.err = '이미지 파일을 읽지 못했습니다.'; iaRefresh(); };
+      im.src = rd.result;
+    };
+    rd.readAsDataURL(file);
+  }
+  var IA_HEAD = ['품목코드', '품목명', '원가(부가세 포함)', '정가'];
+  function iaTemplate() {
+    loadXlsx().then(function () {
+      var X = root.XLSX, M = itemModel(S.from, S.to), cols = iaCols(), rows = [IA_HEAD.concat(cols.map(function (c) { return c[1]; })).concat(['적용 시작일'])];
+      itemOrder().forEach(function (code) { if (code === C.NONE) return; var cur = iaCur(code), cost = iaCost(code); rows.push([code, itemName(M, code), cost ? Math.round(cost) : '', cur && cur.list ? cur.list : ''].concat(cols.map(function (c) { return cur && cur.prices[c[0]] ? cur.prices[c[0]] : ''; })).concat([''])); });
+      var ws = X.utils.aoa_to_sheet(rows); ws['!cols'] = [{ wch: 14 }, { wch: 44 }, { wch: 16 }, { wch: 10 }].concat(cols.map(function () { return { wch: 12 }; })).concat([{ wch: 14 }]);
+      var guide = X.utils.aoa_to_sheet([['쓰는 법'], ['1. 바꿀 칸만 고치세요. 빈칸은 "그대로 둔다"는 뜻입니다.'], ['2. 적용 시작일은 2026-11-17 형식으로 적습니다. 비워 두면 올리는 날짜가 됩니다.'], ['3. 이전 가격은 지워지지 않고 이력에 남습니다.'], ['4. 맨 오른쪽 "적용 시작일" 칸 앞에 새 칸을 만들고 첫 줄에 몰 이름을 적으면 그 몰이 추가됩니다.'], ['5. 품목코드와 품목명은 고쳐도 반영되지 않습니다.']]); guide['!cols'] = [{ wch: 90 }];
+      var wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, '상품'); X.utils.book_append_sheet(wb, guide, '쓰는 법');
+      X.writeFile(wb, '톰토미_상품관리_' + today().replace(/-/g, '') + '.xlsx');
+    }).catch(function (e) { IA.err = e && e.message; render(); });
+  }
+  function iaXlsDate(v) { if (v instanceof Date && !isNaN(v)) return v.getFullYear() + '-' + ('0' + (v.getMonth() + 1)).slice(-2) + '-' + ('0' + v.getDate()).slice(-2); var m = String(v || '').trim().match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/); return m ? m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) : ''; }
+  function iaUpload(file) {
+    if (!file) return;
+    IA.err = ''; IA.msg = ''; IA.plan = null;
+    loadXlsx().then(function () { return readFile(file); }).then(function (buf) {
+      var X = root.XLSX, wb = X.read(buf, { type: 'array', cellDates: true }), rows = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+      var hd = (rows[0] || []).map(function (v) { return String(v || '').trim(); }), ci = hd.indexOf('품목코드');
+      if (ci < 0) throw new Error('첫 줄에 "품목코드" 칸이 없습니다. [엑셀 양식 받기]로 받은 파일을 써 주세요.');
+      var known = {}; itemOrder().forEach(function (c) { known[c] = 1; });
+      var map = {}, newMalls = [], skip = { '품목코드': 1, '품목명': 1 };
+      hd.forEach(function (name, i) {
+        if (!name || skip[name]) return;
+        if (name.indexOf('원가') === 0) map[i] = 'cost'; else if (name.indexOf('정가') === 0) map[i] = 'list'; else if (name.indexOf('적용') === 0) map[i] = 'from';
+        else if (name === '네이버') map[i] = 'p:naver'; else if (name.indexOf('쿠팡') === 0) map[i] = 'p:coupang';
+        else { map[i] = 'p:' + name; if (DATA.itemInfo.malls.indexOf(name) < 0 && newMalls.indexOf(name) < 0) newMalls.push(name); }
+      });
+      var P = { name: file.name.normalize('NFC'), price: [], cost: [], same: 0, unknown: [], bad: [], newMalls: newMalls };
+      rows.slice(1).forEach(function (r) {
+        var code = String(r[ci] || '').trim(); if (!code) return;
+        if (!known[code]) { P.unknown.push(code); return; }
+        var entry = { from: today(), prices: {} }, cost = null;
+        Object.keys(map).forEach(function (i) {
+          var k = map[i], raw = r[i];
+          if (k === 'from') { var d = iaXlsDate(raw); if (d) entry.from = d; else if (String(raw).trim()) P.bad.push(code + ' 적용 시작일'); return; }
+          var v = iaNum(raw); if (v === null) return;
+          if (!(v >= 0)) { P.bad.push(code + ' ' + hd[i]); return; }
+          if (k === 'cost') cost = v; else if (k === 'list') entry.list = v; else entry.prices[k.slice(2)] = v;
+        });
+        var mg = C.priceMerge(iaHist(code), entry), oc = iaCost(code), cc = cost !== null && cost > 0 && Math.round(cost) !== Math.round(oc || 0);
+        if (mg.changed) P.price.push(iaInfoRow(code, mg.hist));
+        if (cc) P.cost.push(iaCostRow(code, cost, entry.from));
+        if (!mg.changed && !cc) P.same++;
+      });
+      IA.plan = P;
+    }).catch(function (e) { IA.err = '엑셀을 읽지 못했습니다: ' + (e && e.message); }).then(render);
+  }
+  function iaPlanSave() {
+    var P = IA.plan; if (!P || IA.saving) return;
+    var rows = P.price.slice();
+    if (P.newMalls.length) rows.push({ channel: 'itemInfo', date: '_malls', data: [{ d: '_malls', malls: DATA.itemInfo.malls.concat(P.newMalls), updated: new Date().toISOString() }] });
+    IA.saving = true; IA.err = ''; render();
+    (rows.length ? root.TTData.saveRows(rows) : Promise.resolve()).then(function () { iaApplyRows(rows); return iaSaveCost(P.cost); })
+      .then(function () { IA.msg = '저장했습니다 (가격 ' + P.price.length + '개, 원가 ' + P.cost.length + '개).'; IA.plan = null; })
+      .catch(function (e) { IA.err = '저장하지 못했습니다. ' + (e && e.message); })
+      .then(function () { IA.saving = false; render(); });
+  }
+  // 이미지에 마우스를 올리면(또는 누르면) 크게 보여 준다
+  function onBig(ev) {
+    var el = ev.target && ev.target.closest ? ev.target.closest('img[data-big]') : null, pop = document.getElementById('ipop');
+    if (!el) { if (pop) pop.hidden = true; return; }
+    if (!pop) { pop = document.createElement('img'); pop.id = 'ipop'; pop.alt = ''; document.body.appendChild(pop); }
+    var r = el.getBoundingClientRect(), size = 320, x = r.right + 12, y = Math.max(8, Math.min(window.innerHeight - size - 8, r.top - 40));
+    if (x + size > window.innerWidth - 8) x = Math.max(8, r.left - size - 12);
+    pop.src = el.src; pop.style.left = x + 'px'; pop.style.top = y + 'px'; pop.hidden = false;
+  }
+
   /* ───────── 슬랙 리포트 ─────────
    * 데일리는 위의 조회 기간과 비교 기간을 쓰고, 위클리와 먼슬리는 데이터 기준일까지 끝난 한 주, 한 달을 쓴다.
    * 문구는 보내기 전에 고칠 수 있고, 맨 아래에 대시보드 주소가 붙는다.
@@ -1709,13 +1932,13 @@
 
   /* ───────── 그리기 ───────── */
   function viewHtml(cur) {
-    return cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : cur.id === 'ads' ? viewAds() : cur.id === 'products' ? viewProducts() : cur.id === 'customers' ? viewCustomers() : cur.id === 'promo' ? viewPromo() : cur.id === 'data' ? viewData() : cur.id === 'slack' ? viewSlack() : viewSoon(cur.label);
+    return cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : cur.id === 'ads' ? viewAds() : cur.id === 'products' ? viewProducts() : cur.id === 'customers' ? viewCustomers() : cur.id === 'promo' ? viewPromo() : cur.id === 'data' ? viewData() : cur.id === 'itemadmin' ? viewItemAdmin() : cur.id === 'slack' ? viewSlack() : viewSoon(cur.label);
   }
   /* ───────── 지금 화면 전체를 엑셀로 ─────────
    * 지금 보는 메뉴를 "모든 줄, 다 펼친 상태"로 한 번 더 그린 뒤, 그 안의 요약 칸과 표를 시트로 옮긴다.
    * 화면과 같은 계산을 그대로 쓰므로 화면 숫자와 엑셀 숫자가 달라질 수 없다. 표 하나 = 시트 하나.
    */
-  var EXPORTABLE = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, promo: 1 }, XMSG = '';
+  var EXPORTABLE = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, promo: 1, itemadmin: 1 }, XMSG = '';
   function xText(el) { return el.textContent.replace(/[▸▾]/g, '').replace(/\s+/g, ' ').trim(); }
   function xVal(t) { // 쉼표 숫자는 숫자로, 나머지(날짜, %, 코드)는 글자 그대로
     if (/^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$/.test(t) || /^[+-]?\d+(\.\d+)?$/.test(t) && !/^0\d/.test(t) && t.length < 12) return parseFloat(t.replace(/[,+]/g, ''));
@@ -1733,7 +1956,7 @@
       function add(name, rows, widths) { var ws = X.utils.aoa_to_sheet(rows); ws['!cols'] = (widths || rows[0] || []).map(function (c, i) { var w = 8; rows.forEach(function (r) { var l = String(r[i] === undefined || r[i] === null ? '' : r[i]).length; if (l > w) w = l; }); return { wch: Math.min(60, w * 1.6 + 2) }; }); X.utils.book_append_sheet(wb, ws, sheetName(name)); }
       // 1) 요약 시트: 어떤 화면, 어떤 기간인지 + 요약 칸
       var cr = cmpRange(), info = [['메뉴', cur.label], ['데이터 기준일', DATA.last], ['받은 시각', new Date().toLocaleString('ko-KR')]];
-      if (cur.id !== 'promo') { info.push(['조회 기간', S.from + ' ~ ' + S.to, (C.dayDiff(S.from, S.to) + 1) + '일']); info.push(['비교 기간', cr ? cr.from + ' ~ ' + cr.to : '없음', cr ? (C.dayDiff(cr.from, cr.to) + 1) + '일' : '']); }
+      if (cur.id !== 'promo' && cur.id !== 'itemadmin') { info.push(['조회 기간', S.from + ' ~ ' + S.to, (C.dayDiff(S.from, S.to) + 1) + '일']); info.push(['비교 기간', cr ? cr.from + ' ~ ' + cr.to : '없음', cr ? (C.dayDiff(cr.from, cr.to) + 1) + '일' : '']); }
       var on = [].map.call(box.querySelectorAll('[role="tab"][aria-selected="true"], .viewtoggle [aria-pressed="true"]'), xText).filter(Boolean);
       if (on.length) info.push(['보는 방식', on.join(' / ')]);
       var cur2 = box.querySelector('.aicur b'); if (cur2) info.push(['품목', xText(cur2)]);
@@ -1752,7 +1975,7 @@
         }).filter(function (r) { return r.some(function (v) { return v !== ''; }); });
         if (rows.length > 1) add(name, rows);
       });
-      X.writeFile(wb, '톰토미_' + cur.label.replace(/[\/]/g, '_') + (cur.id === 'promo' ? '' : '_' + S.from + '_' + S.to) + '.xlsx');
+      X.writeFile(wb, '톰토미_' + cur.label.replace(/[\/]/g, '_') + (cur.id === 'promo' || cur.id === 'itemadmin' ? '_' + today() : '_' + S.from + '_' + S.to) + '.xlsx');
       XMSG = '받았습니다 (시트 ' + wb.SheetNames.length + '개)';
     }).catch(function (e) { XMSG = '만들지 못했습니다: ' + (e && e.message); }).then(function () { render(); setTimeout(function () { if (XMSG !== '만드는 중…') { XMSG = ''; render(); } }, 6000); });
   }
@@ -1773,7 +1996,7 @@
     h += '</div><div class="side-status"><b class="' + (ok ? 'ok' : 'chk') + '">' + (ok ? '데이터 정상' : '확인 필요') + '</b><span>네이버 판매 ' + mdot(hl.lastNaver) + '까지</span><span>주문 ' + mdot(hl.lastOrders) + '까지</span></div></nav>';
     var canX = !!EXPORTABLE[cur.id];
     h += '<main class="main"><header class="head"><div class="head-t"><h1>' + cur.label + '</h1><span>데이터 기준일 ' + dot(DATA.last) + '</span></div>' + (canX ? '<div class="head-x"><button type="button" class="chip" data-act="xall"' + (XMSG === '만드는 중…' ? ' disabled' : '') + '>지금 화면 전체를 엑셀로 받기</button>' + (XMSG ? '<small>' + esc(XMSG) + '</small>' : '') + '</div>' : '') + '</header>';
-    if (cur.id !== 'data' && cur.id !== 'promo') h += periodBar(); // 데이터 관리, 프로모션은 위의 조회 기간과 상관없음
+    if (cur.id !== 'data' && cur.id !== 'promo' && cur.id !== 'itemadmin') h += periodBar(); // 데이터 관리, 프로모션은 위의 조회 기간과 상관없음
     h += viewHtml(cur);
     h += '</main></div>';
     app.innerHTML = h;
@@ -1793,6 +2016,17 @@
     if (act === 'acsel') { S.acSel = key ? JSON.parse(key) : null; render(); return; }
     if (act === 'acbasis') { S.acBasis = key; S.acSel = null; render(); return; }
     if (act === 'accsv') { downloadAdTreeCsv(); return; }
+    if (act === 'iaedit') { if (IA.edit === key) { IA.edit = ''; IA.form = null; } else { IA.edit = key; IA.form = iaFormOf(key); IA.hist = ''; } IA.err = ''; IA.msg = ''; iaRefresh(); return; }
+    if (act === 'iahist') { IA.hist = IA.hist === key ? '' : key; if (IA.hist) { IA.edit = ''; IA.form = null; } iaRefresh(); return; }
+    if (act === 'iacancel') { IA.edit = ''; IA.form = null; IA.err = ''; iaRefresh(); return; }
+    if (act === 'iasave') { iaSave(); return; }
+    if (act === 'iatpl') { iaTemplate(); return; }
+    if (act === 'iaplanno') { IA.plan = null; render(); return; }
+    if (act === 'iaplansave') { iaPlanSave(); return; }
+    if (act === 'iamallask') { IA.mallAsk = key; render(); return; }
+    if (act === 'iamallno') { IA.mallAsk = ''; render(); return; }
+    if (act === 'iamalldel') { iaSaveMalls(DATA.itemInfo.malls.filter(function (m) { return m !== key; }), key + ' 몰을 뺐습니다. 가격 기록은 남아 있습니다.'); return; }
+    if (act === 'iamalladd') { var mi = document.getElementById('iamall'), mn = mi ? mi.value.trim() : ''; if (!mn) { IA.err = '몰 이름을 적어 주세요.'; render(); return; } if (mn === '네이버' || mn.indexOf('쿠팡') === 0 || DATA.itemInfo.malls.indexOf(mn) >= 0) { IA.err = '이미 있는 몰입니다.'; render(); return; } iaSaveMalls(DATA.itemInfo.malls.concat([mn]), mn + ' 몰을 추가했습니다.'); return; }
     if (act === 'plopen') { PL.open = !PL.open; PL.q = ''; render(); return; }
     if (act === 'plmode') { PL.mode = key === 'budget' ? 'budget' : 'goal'; render(); return; }
     if (act === 'plpick') { PL.item = key; PL.q = ''; render(); return; }
@@ -1842,6 +2076,9 @@
   }
   function onChange(ev) {
     var el = ev.target; if (!el.matches) return;
+    if (el.matches('input[type="file"][data-act="iaimg"]')) { iaImage(el.getAttribute('data-key'), el.files && el.files[0]); return; }
+    if (el.matches('input[type="file"][data-act="iaxls"]')) { iaUpload(el.files && el.files[0]); el.value = ''; return; }
+    if (el.matches('[data-ia]')) { if (IA.form) IA.form[el.getAttribute('data-ia')] = el.value; return; }
     if (el.matches('[data-pl]')) { // 계획 세우기: 날짜와 선택 칸은 다시 그리고, 글자 칸은 결과만 바꾼다
       var pk = el.getAttribute('data-pl'); PL[pk] = el.value;
       if (pk === 'rfrom' || pk === 'rto') PL.refAuto = false;
@@ -1853,7 +2090,7 @@
     if (el.matches('[data-pf]')) { if (PR.form) { PR.form[el.getAttribute('data-pf')] = el.value; if (el.tagName === 'SELECT') render(); } return; } // 글자 칸은 다시 그리지 않는다 (누르던 버튼이 사라지지 않게)
     if (!el.matches('input[data-act], select[data-act]')) return;
     var act = el.getAttribute('data-act'), v = el.value;
-    if (act === 'aiq' || act === 'pq' || act === 'plq') return;
+    if (act === 'aiq' || act === 'pq' || act === 'plq' || act === 'iaq') return;
     if (act === 'psize') { S.psize = PSIZES.indexOf(+v) >= 0 ? +v : 10; PFIELDS.forEach(function (f) { S[f] = 0; }); save(); render(); return; } // 검색칸에서 포커스가 빠질 때 목록을 다시 그리면 누르던 결과가 사라져 클릭이 무시된다
     if (act === 'q') { onSearch(ev); return; }
     if (act === 'upfiles') { onUpload(el.files); el.value = ''; return; }
@@ -1879,6 +2116,8 @@
     var el = ev.target; if (!el.matches) return;
     if (el.matches('textarea[data-act="sltext"]')) { SL.text = el.value; SL.edited = true; return; }
     if (el.matches('[data-pf]')) { if (PR.form) { PR.form[el.getAttribute('data-pf')] = el.value; PR.msg = ''; var pm = document.getElementById('pmsg'); if (pm) pm.hidden = true; } return; }
+    if (el.matches('[data-ia]')) { if (IA.form) { IA.form[el.getAttribute('data-ia')] = el.value; var im = document.getElementById('iamsg'); if (im) im.hidden = true; IA.err = ''; } return; }
+    if (el.matches('input[data-act="iaq"]')) { IA.q = el.value; S.ipage = 0; IA.edit = ''; IA.form = null; IA.hist = ''; var it = document.getElementById('iatbl'); if (it) it.innerHTML = iaTableHtml(); return; }
     if (el.matches('[data-pl]')) { if (el.tagName === 'INPUT' && el.type === 'text') { PL[el.getAttribute('data-pl')] = el.value; var po = document.getElementById('plout'); if (po) po.innerHTML = planOutHtml(); } return; }
     if (el.matches('input[data-act="plq"]')) { PL.q = el.value; var pls = document.getElementById('plsug'); if (pls) { pls.innerHTML = planSuggest(); pls.hidden = !PL.q.trim(); } return; }
     if (el.matches('input[data-act="pq"]')) { PR.q = el.value; var ps = document.getElementById('psug'); if (ps) { ps.innerHTML = promoSuggest(); ps.hidden = !PR.q.trim(); } return; }
@@ -1925,6 +2164,7 @@
     document.addEventListener('dragleave', function (ev) { var z = ev.target.closest && ev.target.closest('[data-drop]'); if (z) z.classList.remove('over'); });
     document.addEventListener('drop', function (ev) { var z = ev.target.closest && ev.target.closest('[data-drop]'); if (!z) return; ev.preventDefault(); z.classList.remove('over'); onUpload(ev.dataTransfer.files); });
     document.addEventListener('mousemove', onTip);
+    document.addEventListener('mouseover', onBig); document.addEventListener('focusin', onBig); document.addEventListener('click', onBig);
     document.addEventListener('click', onTip); // 터치 화면에서는 눌러서 본다
     render();
   }

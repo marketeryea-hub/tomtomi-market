@@ -318,3 +318,26 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; color
 .pact { white-space: nowrap; }
 .pact .chip { min-height: 32px; padding: 0 10px; margin-left: 6px; font-size: 12px; }
 .chip.danger { border-color: var(--bad, #c0392b); color: var(--bad, #c0392b); font-weight: 700; }
+
+/* 상품 관리 */
+.iatbl td, .iatbl th { vertical-align: middle; }
+.iaimg { width: 60px; }
+.ithumb { display: block; width: 44px; height: 44px; border-radius: 8px; object-fit: cover; border: 1px solid var(--line); background: var(--bg); cursor: zoom-in; }
+.ithumb.none { cursor: default; background: repeating-linear-gradient(45deg, var(--bg), var(--bg) 6px, var(--card) 6px, var(--card) 12px); }
+#ipop { position: fixed; z-index: 50; width: 320px; height: 320px; object-fit: contain; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(0, 0, 0, .18); pointer-events: none; }
+#ipop[hidden] { display: none; }
+.iasub { display: block; font-size: 11px; font-weight: 400; color: var(--sub); white-space: nowrap; }
+.iaform > td { background: var(--bg); padding: 18px; }
+.iaform .pform { margin-top: 0; }
+.iaform .tbl { background: var(--card); border-radius: 8px; margin-top: 8px; }
+.filebtn { cursor: pointer; display: inline-flex; align-items: center; }
+.mallnew { display: inline-flex; gap: 6px; align-items: center; }
+.mallnew input { min-height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; font-size: 13px; width: 170px; }
+.pchip .chip { min-height: 26px; padding: 0 8px; font-size: 12px; width: auto; border-radius: 8px; }
+.aipick .chip { white-space: nowrap; }
+.pchip .chip { height: auto; border: 1px solid var(--line); background: var(--card); }
+.iaform > td, .iaform > td * { white-space: normal; }
+.iaform .iasub, .iatbl .iasub { white-space: nowrap; }
+.iatbl .ithumb.none { width: 44px; height: 44px; }
+.tbl.iatbl tbody th { min-width: 0; white-space: nowrap; }
+.tbl.iatbl > tbody > tr > td:nth-child(3) { white-space: normal; min-width: 180px; }

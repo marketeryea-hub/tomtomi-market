@@ -186,5 +186,17 @@ eq('쿠팡 광고 상품명 연결', ['톰토미 루나 NEW 봉제인형,블루,
   eq('계획: 하루 예산에서 예상 판매', [b.budget, b.adQty, b.vsDaily], [28000, 21, 2]);
   eq('계획: 기준 기간에 광고 판매가 없으면 계산하지 않는다', C.adPlanCalc(C.adPlanRef(D, 'SOCD-0320', 'coupang', '2025-11-01', '2025-11-07'), { mode: 'goal', basis: 'growth', val: 10, days: 7 }).ok, false);
 }
+// 상품 관리: 가격 이력
+{
+  const I = C.itemInfo([{ d: '_malls', malls: ['11번가', ' '] }, { d: 'A', code: 'A', hist: [{ from: '2026-06-01', list: 12000, prices: { naver: 9900 } }, { from: '2026-01-01', list: 10000, prices: { naver: 9000, coupang: 7000 } }] }]);
+  eq('가격: 몰 목록, 이력은 날짜순', [I.malls, I.by.A.map(h => h.from)], [['11번가'], ['2026-01-01', '2026-06-01']]);
+  eq('가격: 그 날짜에 적용되는 값', [C.priceAt(I, 'A', '2025-12-31'), C.priceAt(I, 'A', '2026-03-01').prices.naver, C.priceAt(I, 'A', '2026-06-01').list], [null, 9000, 12000]);
+  const m = C.priceMerge(I.by.A, { from: '2026-09-01', prices: { naver: 8900, '11번가': 9500 } });
+  eq('가격: 새 날짜는 줄을 하나 더 쌓고 안 바꾼 값은 이어받는다', [m.changed, m.hist.length, m.hist[2].list, m.hist[2].prices], [true, 3, 12000, { naver: 8900, '11번가': 9500 }]);
+  eq('가격: 이전 이력은 그대로', m.hist[0], { from: '2026-01-01', list: 10000, prices: { naver: 9000, coupang: 7000 } });
+  eq('가격: 같은 값이면 바뀌지 않는다', C.priceMerge(I.by.A, { from: '2026-09-01', list: 12000, prices: { naver: 9900 } }).changed, false);
+  const e = C.priceMerge(I.by.A, { from: '2026-06-01', list: 13000, prices: { naver: 0 } });
+  eq('가격: 같은 적용일이면 그 줄을 고치고, 0은 비움', [e.hist.length, e.hist[1].list, e.hist[1].prices], [2, 13000, {}]);
+}
 console.log(fail ? '실패 ' + fail + '건' : '모든 규칙 통과');
 process.exit(fail ? 1 : 0);
