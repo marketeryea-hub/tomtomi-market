@@ -358,3 +358,19 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; color
 .tbl.items .linkbtn { text-align: left; }
 .tbl.items td.nm .linkbtn { color: var(--text); font-weight: 400; text-decoration: none; }
 .tbl.items td.nm .linkbtn:hover, .tbl.items td.nm .linkbtn:focus-visible { text-decoration: underline; color: var(--accent-deep); }
+
+/* 상품: 검색칸을 위에 붙여 두고, 보는 중에는 목록을 접는다 */
+.psticky { position: sticky; top: 8px; z-index: 20; box-shadow: 0 6px 20px rgba(20, 20, 40, .06); }
+.psearch .aibox { width: 100%; }
+.psearch .aisug { max-height: 360px; overflow: auto; }
+.aisug-row { display: flex; align-items: center; gap: 6px; }
+.aisug-row .aisug-i { flex: 1; min-width: 0; }
+.aisug-row .addbtn { flex: none; margin-right: 8px; font-size: 12px; }
+.psearch .pchips { margin-top: 12px; }
+.psearch .hint { display: block; margin-top: 10px; }
+.pfold { display: flex; align-items: center; gap: 12px; margin: 4px 0 16px; }
+.card.psticky { padding: 12px 16px; }
+.psearch { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.psearch .aibox { flex: 1 1 340px; width: auto; }
+.psearch .pchips { margin-top: 0; }
+.psearch .hint, .psearch .note { flex-basis: 100%; margin: 0; }
