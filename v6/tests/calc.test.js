@@ -173,5 +173,18 @@ eq('SA 캠페인별(구분 없는 행 포함)', C.adsBreakdown(D, 'sa', '2026-01
 }
 // 쿠팡 광고 상품명 → 품목코드 (2026-11-17 예영 확인)
 eq('쿠팡 광고 상품명 연결', ['톰토미 루나 NEW 봉제인형,블루,블루,1개,1개,36cm,36cm', '톰토미 봉제 애착인형 25cm,화이트,화이트,1개,1개', '톰토미 유아용 뉴 봉제 인형,화이트', '스타원엔터테인먼트 뽀로로 유아동요 + 0~3세를 위한 유아동요 80곡집 음악CD 2종 세트,5CD,5CD', '톰토미 크리스마스 캐롤 한국어 영어캐롤 35곡 수록,2CD,2CD', '뽀로로 유아동요,3CD,3CD'].map(C.coupAdCode), ['SOMD-0012', 'SOMD-0002', 'SOMD-0014', C.AD_OTHER, 'SOCD-0320', C.AD_OTHER]);
+// 광고 계획: 작년 1개당 광고비로 예산 ↔ 판매 계산
+{
+  const det = []; for (let i = 0; i < 14; i++) { const d = C.addDays('2025-12-01', i); det.push({ d, camp: '가', group: '나', prod: '톰토미 크리스마스 캐롤', convProd: '톰토미 크리스마스 캐롤', cost: i < 7 ? 1000 : 3000, rev: i < 7 ? 20000 : 10000, qty: i < 7 ? 2 : 1, clicks: 5, imp: 100, orders: 1 }); }
+  const D = C.normalize({ naver: [{ d: '2025-12-20', r: 1, src: 'newSales' }], coupAdDetail: det, coupStock: [] });
+  const R = C.adPlanRef(D, 'SOCD-0320', 'coupang', '2025-12-01', '2025-12-14');
+  eq('계획: 기준 실적 (광고비, 광고 판매, 1개당 광고비, 하루 평균)', [R.cost, R.adQty, R.cpa, R.daily, R.days], [28000, 21, 28000 / 21, 2000, 14]);
+  eq('계획: 범위는 좋았던 주 ~ 나빴던 주', [R.cpaLo, R.cpaHi], [500, 3000]);
+  const g = C.adPlanCalc(R, { mode: 'goal', basis: 'growth', val: 10, days: 14 });
+  eq('계획: 작년 대비 10% 성장 목표', [Math.round(g.adQty * 10) / 10, Math.round(g.budget), Math.round(g.daily), g.budgetLo, g.budgetHi].map(Math.round), [23, 30800, 2200, 11550, 69300]);
+  const b = C.adPlanCalc(R, { mode: 'budget', budget: 4000, days: 7 });
+  eq('계획: 하루 예산에서 예상 판매', [b.budget, b.adQty, b.vsDaily], [28000, 21, 2]);
+  eq('계획: 기준 기간에 광고 판매가 없으면 계산하지 않는다', C.adPlanCalc(C.adPlanRef(D, 'SOCD-0320', 'coupang', '2025-11-01', '2025-11-07'), { mode: 'goal', basis: 'growth', val: 10, days: 7 }).ok, false);
+}
 console.log(fail ? '실패 ' + fail + '건' : '모든 규칙 통과');
 process.exit(fail ? 1 : 0);

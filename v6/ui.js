@@ -1483,6 +1483,76 @@
     var rec = {}; Object.keys(p).forEach(function (k) { rec[k] = p[k]; }); rec.del = 1; rec.updated = new Date().toISOString();
     promoWrite(rec, '지웠습니다.');
   }
+  /* ───────── 광고 계획 세우기 (프로모션 메뉴 안) ─────────
+   * 작년(기준 기간) 실적을 근거로 "목표 → 필요한 예산" 또는 "하루 예산 → 예상 판매"를 계산한다. 규칙은 calc.js adPlanRef, adPlanCalc.
+   * 저장하지 않는 계산기이고, [이 계획으로 프로모션 등록]을 누르면 프로모션 등록 칸에 옮겨 적는다.
+   */
+  var PL = { open: false, item: '', md: 'coupang', from: '', to: '', rfrom: '', rto: '', refAuto: true, mode: 'goal', basis: 'growth', val: '10', budget: '', q: '', cache: {} };
+  var PLMD = [['coupang', '쿠팡애즈'], ['sa', '네이버 SA'], ['all', '네이버 SA + 쿠팡애즈']];
+  var PLBASIS = [['growth', '작년 대비 성장률 (%)'], ['ad', '광고 판매 수량'], ['total', '전체 판매 수량']];
+  function planRefAuto() { if (!PL.from || !PL.to || PL.from > PL.to) return; var r = C.lastYear(PL.from, PL.to); PL.rfrom = r.from; PL.rto = r.to; }
+  function planInit() { if (PL.from) return; PL.from = today(); PL.to = C.addDays(PL.from, 27); planRefAuto(); }
+  function planOk() { return PL.item && PL.from && PL.to && PL.from <= PL.to && PL.rfrom && PL.rto && PL.rfrom <= PL.rto; }
+  function planRef() { var k = [PL.item, PL.md, PL.rfrom, PL.rto, DATA.last].join('|'); return PL.cache[k] || (PL.cache[k] = C.adPlanRef(DATA, PL.item, PL.md, PL.rfrom, PL.rto)); }
+  function planSuggest() {
+    var q = PL.q.trim().toLowerCase(); if (!q) return '';
+    var words = q.split(/\s+/), hits = itemOrder().filter(function (c) { var t = pItemLabel(c).toLowerCase(); return words.every(function (w) { return t.indexOf(w) >= 0; }); }).slice(0, 8);
+    if (!hits.length) return '<div class="aisug-none">검색 결과가 없습니다</div>';
+    return hits.map(function (c, i) { return '<button type="button" role="option" class="aisug-i' + (i === 0 ? ' first' : '') + '" data-act="plpick" data-key="' + esc(c) + '"><span>' + esc(pItemLabel(c)) + '</span><small>선택</small></button>'; }).join('');
+  }
+  function planOutHtml() {
+    if (!PL.item) return '<p class="note">품목을 검색해서 골라 주세요.</p>';
+    if (!planOk()) return '<p class="note"><b class="warn">계획 기간과 기준 기간의 시작일, 종료일을 확인해 주세요.</b></p>';
+    var R = planRef(), u = PL.md === 'sa' ? '건' : '개', chName = PL.md === 'coupang' ? '쿠팡 입고' : PL.md === 'sa' ? '네이버 판매' : '전체 판매', h = '';
+    var days = C.dayDiff(PL.from, PL.to) + 1;
+    h += '<p class="plh"><b>근거: ' + dot(R.from) + ' ~ ' + dot(R.to) + ' (' + R.days + '일) 실적</b></p><section class="strip" aria-label="기준 기간 실적">';
+    h += cell('광고비', n0(R.cost), '하루 평균 ' + n0(R.daily) + '원, 광고한 날 ' + R.adDays + '일');
+    h += cell('광고 판매', n0(R.adQty) + u, R.cpa === null ? '광고 판매 없음' : '1' + u + '당 광고비 ' + n0(R.cpa) + '원');
+    h += cell('광고매출', n0(R.rev), 'ROAS ' + roasText(R.roas));
+    h += cell(chName + ' 수량', n0(R.total) + '개', R.share === null ? '광고 비중 계산 불가' : '광고 비중 ' + pctOf(R.adQty, Math.max(R.total, R.adQty)));
+    h += '</section>';
+    if (R.to > DATA.last || R.from < DATA.first) h += '<p class="note"><b class="warn">기준 기간이 데이터가 있는 범위(' + dot(DATA.first) + ' ~ ' + dot(DATA.last) + ')를 벗어납니다.</b></p>';
+    var P = C.adPlanCalc(R, { mode: PL.mode, basis: PL.basis, val: PL.val, budget: PL.budget, days: days });
+    if (!P.ok) return h + '<p class="note"><b class="warn">' + esc(P.why) + '</b>' + (R.cpa === null ? ' 광고 메뉴의 상품 기준 보기에서 이 품목에 광고 기록이 있는 기간을 찾아 기준 기간으로 넣어 주세요.' : '') + '</p>';
+    function rng(lo, hi, unit) { return lo === undefined || lo === null ? '범위 계산 불가 (기준 기간이 짧음)' : n0(lo) + ' ~ ' + n0(hi) + unit; }
+    var goal = PL.mode !== 'budget';
+    h += '<p class="plh"><b>' + (goal ? '계산 결과: 목표를 채우려면' : '계산 결과: 이 예산이면') + '</b> <small>' + dot(PL.from) + ' ~ ' + dot(PL.to) + ' (' + days + '일)</small></p><section class="strip" aria-label="계획 계산 결과">';
+    h += cell(goal ? '필요한 총 예산' : '총 예산', n0(P.budget), goal ? '범위 ' + rng(P.budgetLo, P.budgetHi, '원') : '하루 ' + n0(P.daily) + '원 × ' + days + '일');
+    h += cell(goal ? '필요한 하루 예산' : '하루 예산', n0(P.daily), P.vsDaily === null ? '' : '작년 하루 평균의 ' + (Math.round(P.vsDaily * 10) / 10) + '배');
+    h += cell(goal ? '목표 광고 판매' : '예상 광고 판매', '약 ' + n0(P.adQty) + u, goal ? '작년 ' + n0(R.adQty) + u : '범위 ' + rng(P.adQtyLo, P.adQtyHi, u));
+    h += cell((goal ? '목표 ' : '예상 ') + chName, P.total === null ? '-' : '약 ' + n0(P.total) + '개', P.total === null ? '기준 기간 전체 판매 없음' : '광고 비중이 작년과 같다고 가정');
+    h += cell('예상 광고매출', P.rev === null ? '-' : n0(P.rev), 'ROAS ' + roasText(R.roas) + ' 유지 가정');
+    h += '</section>';
+    var notes = ['1' + u + '당 광고비가 기준 기간과 같다는 가정으로 계산한 값입니다. 범위는 기준 기간에서 효율이 가장 좋았던 주와 나빴던 주 기준입니다.'];
+    if (P.vsDaily !== null && P.vsDaily > 1.5) notes.unshift('⚠️ 하루 예산이 작년의 ' + (Math.round(P.vsDaily * 10) / 10) + '배입니다. 예산을 크게 늘리면 보통 효율이 떨어져서 실제 판매는 계산보다 적게 나옵니다.');
+    if (PL.md !== 'sa') notes.push('쿠팡 전체 판매는 입고(발주) 기준이라 소비자 판매와 날짜가 다를 수 있습니다.');
+    if (PL.md !== 'coupang') notes.push('네이버 SA는 판매 수량이 아니라 전환 건수로 셉니다.');
+    h += '<span class="note tight">' + notes.join(' ') + '</span>';
+    h += '<div class="plan-f"><span></span><button type="button" class="btn" data-act="plpromo">이 계획으로 프로모션 등록</button></div>';
+    return h;
+  }
+  function planHtml() {
+    planInit();
+    var h = '<section class="card" aria-label="광고 계획 세우기"><div class="card-h"><h2>광고 계획 세우기</h2><span class="hint">작년 실적을 근거로 예산과 판매를 계산합니다. 저장되지 않는 계산기입니다</span><button type="button" class="chip" data-act="plopen">닫기</button></div>';
+    function date(label, field, hint) { return '<label><span>' + label + '</span><input type="date" data-pl="' + field + '" value="' + esc(PL[field]) + '">' + (hint ? '<small>' + hint + '</small>' : '') + '</label>'; }
+    function sel(label, field, opts) { return '<label><span>' + label + '</span><select data-pl="' + field + '">' + opts.map(function (o) { return '<option value="' + o[0] + '"' + (PL[field] === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label>'; }
+    h += '<div class="pitems"><b>품목</b>' + (PL.item ? '<div class="pchips"><span class="pchip">' + esc(pItemLabel(PL.item)) + '</span></div>' : '') + '<div class="aibox"><input id="plq" type="search" data-act="plq" value="' + esc(PL.q) + '" placeholder="품목코드나 품목명으로 검색 (예: 캐롤, SOCD-0320)" autocomplete="off" aria-controls="plsug"><div id="plsug" class="aisug" role="listbox"' + (PL.q.trim() ? '' : ' hidden') + '>' + planSuggest() + '</div></div></div>';
+    h += '<div class="pform">' + sel('광고 매체', 'md', PLMD) + date('계획 시작일', 'from') + date('계획 종료일', 'to') + date('기준 기간 시작일', 'rfrom', PL.refAuto ? '작년 같은 날짜로 자동 설정됨' : '직접 지정함') + date('기준 기간 종료일', 'rto', PL.refAuto ? '' : '<button type="button" class="linkbtn" data-act="plrefauto">작년 같은 날짜로 되돌리기</button>') + '</div>';
+    h += '<div class="viewtoggle" role="group" aria-label="계산 방향" style="margin-top:18px"><button type="button" class="chip" data-act="plmode" data-key="goal" aria-pressed="' + (PL.mode !== 'budget') + '">목표 → 필요한 예산</button><button type="button" class="chip" data-act="plmode" data-key="budget" aria-pressed="' + (PL.mode === 'budget') + '">하루 예산 → 예상 판매</button></div>';
+    h += '<div class="pform">';
+    if (PL.mode === 'budget') h += '<label><span>하루 예산 (원)</span><input type="text" inputmode="numeric" data-pl="budget" value="' + esc(PL.budget) + '" placeholder="예: 10000" autocomplete="off"></label>';
+    else h += sel('목표 기준', 'basis', PLBASIS) + '<label><span>' + (PL.basis === 'growth' ? '성장률 (%)' : '목표 수량') + '</span><input type="text" inputmode="numeric" data-pl="val" value="' + esc(PL.val) + '" placeholder="' + (PL.basis === 'growth' ? '예: 10' : '예: 100') + '" autocomplete="off"><small>' + (PL.basis === 'growth' ? '0이면 작년과 같은 수준, 10이면 작년보다 10% 더' : PL.basis === 'total' ? '광고 없이 팔리는 몫까지 포함한 수량' : '광고를 보고 팔리는 수량') + '</small></label>';
+    h += '</div><div id="plout">' + planOutHtml() + '</div></section>';
+    return h;
+  }
+  function planToPromo() {
+    if (!planOk()) return;
+    var R = planRef(), days = C.dayDiff(PL.from, PL.to) + 1, P = C.adPlanCalc(R, { mode: PL.mode, basis: PL.basis, val: PL.val, budget: PL.budget, days: days }); if (!P.ok) return;
+    var f = promoBlank(), u = PL.md === 'sa' ? '건' : '개';
+    f.name = itemName(itemModel(S.from, S.to), PL.item) + ' 광고 계획'; f.kind = '기타'; f.from = PL.from; f.to = PL.to; f.ch = PL.md === 'sa' ? 'naver' : PL.md === 'coupang' ? 'coupang' : 'all'; f.items = [PL.item]; f.base = 'lastYear';
+    f.memo = '계획: 하루 예산 ' + n0(P.daily) + '원 × ' + days + '일 = ' + n0(P.budget) + '원, 광고 판매 약 ' + n0(P.adQty) + u + (P.total !== null ? ', 전체 약 ' + n0(P.total) + '개' : '') + ' (근거 ' + R.from + ' ~ ' + R.to + ', 1' + u + '당 광고비 ' + n0(R.cpa) + '원)';
+    PR.form = f; PR.q = ''; PR.msg = ''; PR.delAsk = false; PL.open = false; render(); window.scrollTo(0, 0);
+  }
   function promoPeriod(p) { return dot(p.from) + ' ~ ' + dot(p.to) + ' <small class="zero">(' + (C.dayDiff(p.from, p.to) + 1) + '일)</small>'; }
   function promoState(R) { return R.state === 'plan' ? '<span class="chtag wait">예정</span>' : R.state === 'run' ? '<span class="chtag on">진행 중</span>' : ''; }
   function roiWhy(R) {
@@ -1564,10 +1634,11 @@
   }
   function viewPromo() {
     var h = '', list = DATA.promos;
-    h += '<section class="card" aria-label="프로모션"><div class="card-h"><h2>프로모션 성과</h2><span class="hint">기획전, 할인, 쿠폰, 사은품 행사를 등록하면 평소 대비 얼마나 더 팔렸고 얼마가 남았는지 계산합니다</span>' + (PR.form ? '' : '<button type="button" class="btn" data-act="pnew">+ 프로모션 등록</button>') + '</div>';
+    h += '<section class="card" aria-label="프로모션"><div class="card-h"><h2>프로모션 성과</h2><span class="hint">기획전, 할인, 쿠폰, 사은품 행사를 등록하면 평소 대비 얼마나 더 팔렸고 얼마가 남았는지 계산합니다</span>' + (PL.open ? '' : '<button type="button" class="chip" data-act="plopen">광고 계획 세우기</button>') + (PR.form ? '' : '<button type="button" class="btn" data-act="pnew">+ 프로모션 등록</button>') + '</div>';
     if (PR.msg && !PR.form) h += '<p class="note"><b>' + esc(PR.msg) + '</b></p>';
     h += '<p class="note">증분 매출 = 프로모션 기간 매출 - 평소 매출(비교 기간). ROAS = 매출 ÷ 비용. ROI = (증분 매출 - 증분 원가 - 네이버 수수료 - 비용) ÷ 비용. 원가를 모르는 품목이 섞이면 ROI는 비워 둡니다.</p></section>';
     if (PR.form) h += promoFormHtml();
+    if (PL.open) h += planHtml();
     h += '<section class="card flush" aria-label="프로모션 목록"><div class="card-h pad"><h2>등록한 프로모션</h2><span class="hint">이름을 누르면 아래에 자세히 나옵니다</span></div><div class="scroll"><table class="tbl wrap"><thead><tr><th scope="col">이름</th><th scope="col">종류</th><th scope="col">기간</th><th scope="col">채널</th><th scope="col" class="r">매출</th><th scope="col" class="r">증분 매출</th><th scope="col" class="r">비용</th><th scope="col" class="r">ROAS</th><th scope="col" class="r">ROI</th></tr></thead><tbody>';
     if (!list.length) h += '<tr><td colspan="9" class="none">아직 등록한 프로모션이 없습니다. 위의 [+ 프로모션 등록]으로 시작해 주세요.</td></tr>';
     list.forEach(function (p) {
@@ -1718,6 +1789,11 @@
     if (act === 'acsel') { S.acSel = key ? JSON.parse(key) : null; render(); return; }
     if (act === 'acbasis') { S.acBasis = key; S.acSel = null; render(); return; }
     if (act === 'accsv') { downloadAdTreeCsv(); return; }
+    if (act === 'plopen') { PL.open = !PL.open; PL.q = ''; render(); return; }
+    if (act === 'plmode') { PL.mode = key === 'budget' ? 'budget' : 'goal'; render(); return; }
+    if (act === 'plpick') { PL.item = key; PL.q = ''; render(); return; }
+    if (act === 'plrefauto') { PL.refAuto = true; planRefAuto(); render(); return; }
+    if (act === 'plpromo') { planToPromo(); return; }
     if (act === 'pnew') { PR.form = promoBlank(); PR.q = ''; PR.msg = ''; PR.delAsk = false; render(); return; }
     if (act === 'pedit') { var pe = promoGet(key); if (pe) { PR.form = promoToForm(pe); PR.q = ''; PR.msg = ''; PR.delAsk = false; render(); window.scrollTo(0, 0); } return; }
     if (act === 'pcancel') { PR.form = null; PR.q = ''; PR.msg = ''; PR.delAsk = false; render(); return; }
@@ -1759,10 +1835,18 @@
   }
   function onChange(ev) {
     var el = ev.target; if (!el.matches) return;
+    if (el.matches('[data-pl]')) { // 계획 세우기: 날짜와 선택 칸은 다시 그리고, 글자 칸은 결과만 바꾼다
+      var pk = el.getAttribute('data-pl'); PL[pk] = el.value;
+      if (pk === 'rfrom' || pk === 'rto') PL.refAuto = false;
+      if ((pk === 'from' || pk === 'to') && PL.refAuto) planRefAuto();
+      if (pk === 'basis') PL.val = el.value === 'growth' ? '10' : '';
+      if (el.tagName === 'SELECT' || el.type === 'date') render();
+      return;
+    }
     if (el.matches('[data-pf]')) { if (PR.form) { PR.form[el.getAttribute('data-pf')] = el.value; if (el.tagName === 'SELECT') render(); } return; } // 글자 칸은 다시 그리지 않는다 (누르던 버튼이 사라지지 않게)
     if (!el.matches('input[data-act], select[data-act]')) return;
     var act = el.getAttribute('data-act'), v = el.value;
-    if (act === 'aiq' || act === 'pq') return;
+    if (act === 'aiq' || act === 'pq' || act === 'plq') return;
     if (act === 'psize') { S.psize = PSIZES.indexOf(+v) >= 0 ? +v : 10; PFIELDS.forEach(function (f) { S[f] = 0; }); save(); render(); return; } // 검색칸에서 포커스가 빠질 때 목록을 다시 그리면 누르던 결과가 사라져 클릭이 무시된다
     if (act === 'q') { onSearch(ev); return; }
     if (act === 'upfiles') { onUpload(el.files); el.value = ''; return; }
@@ -1788,6 +1872,8 @@
     var el = ev.target; if (!el.matches) return;
     if (el.matches('textarea[data-act="sltext"]')) { SL.text = el.value; SL.edited = true; return; }
     if (el.matches('[data-pf]')) { if (PR.form) { PR.form[el.getAttribute('data-pf')] = el.value; PR.msg = ''; var pm = document.getElementById('pmsg'); if (pm) pm.hidden = true; } return; }
+    if (el.matches('[data-pl]')) { if (el.tagName === 'INPUT' && el.type === 'text') { PL[el.getAttribute('data-pl')] = el.value; var po = document.getElementById('plout'); if (po) po.innerHTML = planOutHtml(); } return; }
+    if (el.matches('input[data-act="plq"]')) { PL.q = el.value; var pls = document.getElementById('plsug'); if (pls) { pls.innerHTML = planSuggest(); pls.hidden = !PL.q.trim(); } return; }
     if (el.matches('input[data-act="pq"]')) { PR.q = el.value; var ps = document.getElementById('psug'); if (ps) { ps.innerHTML = promoSuggest(); ps.hidden = !PR.q.trim(); } return; }
     if (el.matches('input[data-act="aiq"]')) { S.aiq = el.value; var sg = document.getElementById('aisug'); if (sg) { sg.innerHTML = aiSuggest(AILIST); sg.hidden = !S.aiq.trim(); } return; }
     if (!el.matches('input[data-act="q"]')) return;
@@ -1820,11 +1906,11 @@
     document.addEventListener('change', onChange);
     document.addEventListener('input', onSearch);
     document.addEventListener('keydown', function (ev) {
-      var el = ev.target; if (!el.matches || !el.matches('input[data-act="aiq"], input[data-act="pq"]')) return;
+      var el = ev.target; if (!el.matches || !el.matches('input[data-act="aiq"], input[data-act="pq"], input[data-act="plq"]')) return;
       if (ev.isComposing) return; // 한글 조합 중의 Enter는 글자 확정용
-      var box = el.getAttribute('data-act') === 'pq' ? '#psug' : '#aisug';
+      var ba = el.getAttribute('data-act'), box = ba === 'pq' ? '#psug' : ba === 'plq' ? '#plsug' : '#aisug';
       if (ev.key === 'Enter') { ev.preventDefault(); var f = document.querySelector(box + ' .aisug-i'); if (f) f.click(); }
-      else if (ev.key === 'Escape') { if (box === '#psug') PR.q = ''; else S.aiq = ''; el.value = ''; var sg = document.querySelector(box); if (sg) sg.hidden = true; }
+      else if (ev.key === 'Escape') { if (box === '#psug') PR.q = ''; else if (box === '#plsug') PL.q = ''; else S.aiq = ''; el.value = ''; var sg = document.querySelector(box); if (sg) sg.hidden = true; }
       else if (ev.key === 'ArrowDown') { var b = document.querySelector(box + ' .aisug-i'); if (b) { ev.preventDefault(); b.focus(); } }
     });
     // 파일 끌어다 놓기 (데이터 관리)
