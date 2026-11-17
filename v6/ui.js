@@ -205,7 +205,7 @@
     h += '</span><br><span class="note">메타 CTR ' + (sc.metaCtr === null ? '-' : (sc.metaCtr * 100).toFixed(2) + '%') + ' (메타는 전환이 네이버에서 일어나 ROAS 대신 CTR로 봅니다)</span></div>';
     h += '<div class="ref"><b>참고 숫자 (실매출 아님)</b><span>쿠팡애즈 ROAS ' + (sc.coupAdRoas === null ? '-' : Math.round(sc.coupAdRoas * 100).toLocaleString('ko-KR') + '%') + ', 광고비 ' + won(sc.coupAdCost) + '원, 전환매출 ' + won(sc.coupAdRev) + '원</span></div></section>';
 
-    h += '<section class="card grow1" aria-label="많이 팔린 SKU"><div class="card-h"><h2>많이 팔린 SKU</h2><span class="hint">네이버, 순 수량</span></div>';
+    h += '<section class="card grow1" aria-label="판매 SKU 순위"><div class="card-h"><h2>판매 SKU 순위</h2><span class="hint">네이버, 순 수량</span></div>';
     if (!DATA.skuMap.length || !DATA.orders.length) h += '<span class="note">주문조회 파일과 매핑표가 올라오면 표시됩니다.</span>';
     else {
       var sk = C.skuAggregate(DATA, S.from, S.to).filter(function (o) { return o.net > 0; }).slice(0, 5), top = sk.length ? sk[0].net : 1;
@@ -374,7 +374,7 @@
     h += '<section class="card grow2 flush" aria-label="상세 목록">';
     if (ch === 'coupang') {
       var tp = C.coupangTop(DATA, S.from, S.to);
-      h += '<div class="card-h pad"><h2>많이 입고된 품목</h2><span class="hint">입고 금액 순</span></div>';
+      h += '<div class="card-h pad"><h2>입고 품목 순위</h2><span class="hint">입고 금액 순</span></div>';
       if (!tp.length) h += '<p class="note pad">이 기간에 입고가 없습니다.</p>';
       tp.slice(0, 8).forEach(function (o) { h += '<div class="li"><span title="' + esc(o.name) + '">' + esc(o.name) + '</span><span class="num sub2">' + n0(o.qty) + '개</span><b class="num">' + n0(o.amount) + '</b></div>'; });
     } else if (ch === 'other') {
@@ -389,7 +389,7 @@
         h += '<div class="li"><span>' + c[0] + '</span><span class="num sub2">' + (share * 100).toFixed(1) + '%</span><b class="num">' + n0(c[1]) + '</b></div><div class="bar-track mx"><div class="bar-fill" style="width:' + Math.max(0, Math.min(100, share * 100)).toFixed(1) + '%"></div></div>';
       });
     } else {
-      h += '<div class="card-h pad"><h2>많이 팔린 SKU</h2><span class="hint">순 수량' + (has ? ', 비교 기간 대비' : '') + '</span></div>';
+      h += '<div class="card-h pad"><h2>판매 SKU 순위</h2><span class="hint">순 수량' + (has ? ', 비교 기간 대비' : '') + '</span></div>';
       if (!DATA.skuMap.length || !DATA.orders.length) h += '<p class="note pad">주문조회 파일과 매핑표가 올라오면 표시됩니다.</p>';
       else {
         var sk = C.skuAggregate(DATA, S.from, S.to).filter(function (o) { return o.net > 0; }).slice(0, 8), pm = {};
@@ -962,8 +962,8 @@
     h += '<section class="strip" aria-label="요약">';
     h += cell(S.pch === 'coupang' ? '입고 수량' : '판매 수량', n0(tot.qty) + '개', bulkN ? '대량 주문 ' + bulkN + '건 (' + n0(bulkQ) + '개) 포함, 빼면 ' + n0(tot.qty - bulkQ) + '개' : '');
     h += cell(revName().replace(' (배분)', ''), (tot.est ? '약 ' : '') + n0(tot.rev), tot.qty > 0 ? '개당 평균 ' + n0(tot.rev / tot.qty) + '원' : '');
-    if (chs.length > 1) h += cell('가장 많이 팔린 곳', topCh ? CH_NAME[topCh] : '-', topCh ? '수량의 ' + rate(byCh[topCh].qty, tot.qty) : '');
-    h += cell('가장 잘 팔린 ' + (unit === 'month' ? '달' : unit === 'week' ? '주' : '날'), best ? pvLabel(unit, best.key) : '-', best ? (met === 'qty' ? n0(best.v) + '개' : n0(best.v) + '원') : '');
+    if (chs.length > 1) h += cell('판매처 1위', topCh ? CH_NAME[topCh] : '-', topCh ? '수량의 ' + rate(byCh[topCh].qty, tot.qty) : '');
+    h += cell('판매 1위 ' + (unit === 'month' ? '달' : unit === 'week' ? '주' : '날'), best ? pvLabel(unit, best.key) : '-', best ? (met === 'qty' ? n0(best.v) + '개' : n0(best.v) + '원') : '');
     h += '</section>';
     // ② 추이 그래프
     var single = codes.length === 1 && chs.length > 1, series = {}, lines = [];
@@ -991,9 +991,9 @@
       });
     });
     h += '</tbody></table></div></section>';
-    // ④ 언제: 많이 팔린 날 Top 5
+    // ④ 언제: 판매일 순위 Top 5
     days.sort(function (a, b) { return b.qty - a.qty || (a.d < b.d ? 1 : -1); });
-    h += '<section class="card flush grow1" aria-label="많이 팔린 날"><div class="card-h pad"><h2>많이 팔린 날 Top 5</h2><span class="hint">주문 줄 기준 수량</span></div><div class="scroll"><table class="tbl"><thead><tr><th scope="col">날짜</th><th scope="col" class="r">수량</th><th scope="col">어디서</th></tr></thead><tbody>';
+    h += '<section class="card flush grow1" aria-label="판매일 순위"><div class="card-h pad"><h2>판매일 순위 Top 5</h2><span class="hint">주문 줄 기준 수량</span></div><div class="scroll"><table class="tbl"><thead><tr><th scope="col">날짜</th><th scope="col" class="r">수량</th><th scope="col">어디서</th></tr></thead><tbody>';
     if (!days.length) h += '<tr><td colspan="3" class="none">이 기간에 판매가 없습니다.</td></tr>';
     days.slice(0, 5).forEach(function (o) {
       var where = chs.filter(function (ch) { return o.ch[ch] > 0; }).map(function (ch) { return CH_NAME[ch] + ' ' + n0(o.ch[ch]); }).join(', ');
@@ -2264,6 +2264,27 @@
     if (/^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$/.test(t) || /^[+-]?\d+(\.\d+)?$/.test(t) && !/^0\d/.test(t) && t.length < 12) return parseFloat(t.replace(/[,+]/g, ''));
     return t;
   }
+  // 엑셀 받기용 "일자 × 채널 × 품목" 표. 네이버 매출 배분이 화면과 같도록 하루씩 items()로 계산한다
+  function xCube(view) {
+    var chs, codes = null, M = itemModel(S.from, S.to);
+    if (view === 'sales') chs = S.ch === 'all' ? CHS : [S.ch];
+    else if (view === 'home') chs = CHS;
+    else if (view === 'products') { chs = chList(); if (S.sel.length) codes = S.sel.slice(); }
+    else return null;
+    var rows = [['날짜', '채널', '품목코드', '품목명', '수량', '매출', '비고']], d, n = 0;
+    for (d = S.from; d <= S.to; d = C.addDays(d, 1)) {
+      var R = C.items(DATA, d, d).rows;
+      Object.keys(R).sort().forEach(function (c) {
+        if (codes && codes.indexOf(c) < 0) return;
+        chs.forEach(function (ch) {
+          var x = R[c].ch[ch]; if (!x || (!x.qty && !Math.round(x.rev))) return;
+          rows.push([d, CH_NAME[ch], c === C.NONE ? '' : c.indexOf('CP:') === 0 ? '(코드 없음)' : c, c === C.NONE ? '품목 미지정' : itemName(M, c), x.qty, Math.round(x.rev), x.est ? '배분 추정' : '']); n++;
+        });
+      });
+    }
+    if (n === 0) rows.push(['이 기간에 판매가 없습니다']);
+    return { name: '일자별 품목', rows: rows };
+  }
   function exportView() {
     var cur = VIEWS.filter(function (v) { return v.id === S.view; })[0] || VIEWS[0];
     if (!EXPORTABLE[cur.id] || XMSG === '만드는 중…') return;
@@ -2295,6 +2316,9 @@
         }).filter(function (r) { return r.some(function (v) { return v !== ''; }); });
         if (rows.length > 1) add(name, rows);
       });
+      // 3) 일자 × 채널 × 품목 (매출, 홈, 상품 화면): 날짜마다 품목별 수량과 매출을 한 줄씩
+      var cube = xCube(cur.id);
+      if (cube) add(cube.name, cube.rows);
       X.writeFile(wb, '톰토미_' + cur.label.replace(/[\/]/g, '_') + (cur.id === 'promo' || cur.id === 'itemadmin' ? '_' + today() : '_' + S.from + '_' + S.to) + '.xlsx');
       XMSG = '받았습니다 (시트 ' + wb.SheetNames.length + '개)';
     }).catch(function (e) { XMSG = '만들지 못했습니다: ' + (e && e.message); }).then(function () { render(); setTimeout(function () { if (XMSG !== '만드는 중…') { XMSG = ''; render(); } }, 6000); });
