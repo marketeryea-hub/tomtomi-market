@@ -14,7 +14,7 @@
   function loadSupabase() {
     var all = [];
     function page(offset) {
-      var url = SUPABASE_URL + '/rest/v1/tomtomi_data?select=channel,date,data&channel=neq.itemImg&order=channel,date&limit=' + PAGE + '&offset=' + offset; // 상품 이미지는 무거워서 상품 관리 화면에서만 따로 불러온다
+      var url = SUPABASE_URL + '/rest/v1/tomtomi_data?select=channel,date,data&channel=not.in.(itemImg,feedback)&order=channel,date&limit=' + PAGE + '&offset=' + offset; // 상품 이미지와 제보(캡처 포함)는 무거워서 그 화면에서만 따로 불러온다
       return fetch(url, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } })
         .then(function (res) { if (!res.ok) throw new Error('데이터 서버 응답 오류 (HTTP ' + res.status + ')'); return res.json(); })
         .then(function (rows) {
@@ -106,6 +106,13 @@
       .then(function (rows) { var m = {}; (rows || []).forEach(function (r) { var e = (r.data || [])[0]; if (e && e.img) m[r.date] = e.img; }); return m; });
   }
 
+  // 제보 목록 (channel=feedback, date=제보 id): 관리 > 제보 목록에서만 불러온다
+  function loadFeedback() {
+    return fetch(SUPABASE_URL + '/rest/v1/tomtomi_data?select=date,data&channel=eq.feedback&order=date.desc', { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } })
+      .then(function (res) { if (!res.ok) throw new Error('제보를 불러오지 못했습니다 (HTTP ' + res.status + ')'); return res.json(); })
+      .then(function (rows) { return (rows || []).map(function (r) { return (r.data || [])[0]; }).filter(function (e) { return e && e.id; }); });
+  }
+
   // 백업과 복원용: 클라우드의 모든 줄(웹훅, 상품 이미지 포함)을 (채널, 날짜, 데이터) 그대로 읽는다
   function snapshot() {
     var all = [];
@@ -188,5 +195,5 @@
     });
   }
 
-  root.TTData = { load: load, saveCost: saveCost, saveRows: saveRows, loadImages: loadImages, snapshot: snapshot, loadWebhook: loadWebhook, loadOnline: loadOnline, sendSlack: sendSlack };
+  root.TTData = { load: load, saveCost: saveCost, saveRows: saveRows, loadImages: loadImages, snapshot: snapshot, loadFeedback: loadFeedback, loadWebhook: loadWebhook, loadOnline: loadOnline, sendSlack: sendSlack };
 })(window);
