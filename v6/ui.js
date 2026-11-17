@@ -8,7 +8,7 @@
   var C = root.TTCalc;
   var DATA = null, RAW = null;      // 정리된 데이터
   var META = {};        // 불러오기 결과(기타마켓 연결 여부 등)
-  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '', tpage: 0, topen: '', acOpen: {}, acSel: null, acBasis: 'ad', adView: 'camp', aitem: '', amd: 'all', apage: 0, aopen: {}, aiq: '', ppage: 0 };
+  var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '', tpage: 0, topen: '', acOpen: {}, acSel: null, acBasis: 'ad', adView: 'camp', aitem: '', amd: 'all', apage: 0, aopen: {}, aiq: '', ppage: 0, psize: 10, dsort: 'new' };
   var READY = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, promo: 1, data: 1, slack: 1 }; // 옮겨온 메뉴
   var STORE_KEY = 'tt6_state';
 
@@ -38,9 +38,9 @@
   function pctText(p) { return (p > 0 ? '+' : '') + Math.round(p * 100).toLocaleString('ko-KR') + '%'; }
   function today() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
   // 열 때마다 기간은 '최근 1일'에서 시작한다. 보던 메뉴, 채널, 차트 단위만 기억한다.
-  var KEEP = ['view', 'ch', 'unit', 'ad', 'pch', 'pmode', 'adView', 'amd', 'aitem'];
+  var KEEP = ['view', 'ch', 'unit', 'ad', 'pch', 'pmode', 'adView', 'amd', 'aitem', 'psize', 'dsort'];
   function save() { try { var o = {}; KEEP.forEach(function (k) { o[k] = S[k]; }); localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) { /* 저장 못 해도 화면은 동작 */ } }
-  function restore() { try { var v = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); if (v && typeof v === 'object') KEEP.forEach(function (k) { if (typeof v[k] === 'string') S[k] = v[k]; }); } catch (e) { /* 무시 */ } }
+  function restore() { try { var v = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); if (v && typeof v === 'object') KEEP.forEach(function (k) { if (typeof v[k] === 'string' || (k === 'psize' && typeof v[k] === 'number')) S[k] = v[k]; }); } catch (e) { /* 무시 */ } }
 
   /* ───────── 기간 상태 ───────── */
   function cmpRange() {
@@ -76,10 +76,12 @@
     h += '<div class="period-row"><b>조회 기간</b>';
     h += '<label>시작<input type="date" data-act="from" value="' + S.from + '" min="' + DATA.first + '" max="' + DATA.last + '"></label>';
     h += '<label>끝<input type="date" data-act="to" value="' + S.to + '" min="' + DATA.first + '" max="' + DATA.last + '"></label>';
+    h += '<span class="pdays num" title="시작일과 끝일을 모두 포함한 날짜 수">' + n0(C.dayDiff(S.from, S.to) + 1) + '일</span>';
     presets.forEach(function (p) { h += '<button type="button" class="chip" data-act="preset" data-key="' + p[0] + '" aria-pressed="' + (S.preset === p[0]) + '">' + p[1] + '</button>'; });
     h += '</div><div class="period-row"><b>비교 기간</b>';
     h += '<label>시작<input type="date" data-act="cmpFrom" value="' + (cr ? cr.from : '') + '" min="' + DATA.first + '" max="' + DATA.last + '"' + (custom ? '' : ' disabled') + '></label>';
     h += '<label>끝<input type="date" data-act="cmpTo" value="' + (cr ? cr.to : '') + '" min="' + DATA.first + '" max="' + DATA.last + '"' + (custom ? '' : ' disabled') + '></label>';
+    h += '<span class="pdays num">' + (cr ? n0(C.dayDiff(cr.from, cr.to) + 1) + '일' : '-') + '</span>';
     cmps.forEach(function (p) { h += '<button type="button" class="chip" data-act="cmp" data-key="' + p[0] + '" aria-pressed="' + (S.cmp === p[0]) + '">' + p[1] + '</button>'; });
     h += '</div><span class="period-note">가장 오래된 데이터인 ' + dot(DATA.first) + '부터 조회할 수 있습니다' + (DATA.span.naver.first ? ' (네이버는 ' + dot(DATA.span.naver.first) + '부터)' : '') + '. 여기서 정한 기간은 다른 메뉴로 옮겨도 유지됩니다.</span>';
     return h + '</section>';
@@ -230,19 +232,28 @@
 
   /* ───────── 표 넘겨보기: 최근 날짜부터 10줄씩 ───────── */
   var PAGE_SIZE_DEF = 10;
+  var PSIZES = [10, 20, 30, 40, 50], PFIELDS = ['page', 'apage', 'tpage', 'ppage'];
+  var EXPORT_ALL = false; // 엑셀로 내보낼 때: 모든 줄을 한 번에, 펼칠 수 있는 줄은 다 펼쳐서 그린다
   function pageOf(list, size, field) {
-    var f = field || 'page', PAGE_SIZE = size || PAGE_SIZE_DEF, pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    var f = field || 'page', PAGE_SIZE = PSIZES.indexOf(+S.psize) >= 0 ? +S.psize : 10, pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    if (EXPORT_ALL) return { rows: list, pages: 1, total: list.length, field: f };
     if (!(S[f] >= 0)) S[f] = 0;
     if (S[f] >= pages) S[f] = pages - 1;
     return { rows: list.slice(S[f] * PAGE_SIZE, (S[f] + 1) * PAGE_SIZE), pages: pages, total: list.length, field: f };
   }
-  // list = true 이면 날짜가 아닌 목록(품목 등)이라 '이전 / 다음'으로 부른다
+  // 날짜 표의 순서: 최신순(기본) / 과거순. 받는 목록은 최신 날짜가 앞에 있어야 한다
+  function dateOrder(newestFirst) { return S.dsort === 'old' ? newestFirst.slice().reverse() : newestFirst; }
+  // list = true 이면 날짜가 아닌 목록(품목 등). 날짜 표에는 정렬 버튼이 붙는다
   function pagerHtml(pg, list) {
-    if (pg.pages <= 1) return '';
-    var f = pg.field || 'page', cur = S[f] || 0, at = f === 'page' ? '' : ' data-field="' + f + '"';
-    return '<div class="pager"><button type="button" class="chip" data-act="page" data-key="newer"' + at + (cur === 0 ? ' disabled' : '') + '>‹ ' + (list ? '이전' : '더 최근') + '</button>' +
-      '<span class="num">' + (cur + 1) + ' / ' + pg.pages + ' <small>(전체 ' + pg.total + (list ? '개' : '줄') + ')</small></span>' +
-      '<button type="button" class="chip" data-act="page" data-key="older"' + at + (cur >= pg.pages - 1 ? ' disabled' : '') + '>' + (list ? '다음' : '더 과거') + ' ›</button></div>';
+    if (pg.total <= PSIZES[0]) return '';
+    var f = pg.field || 'page', cur = S[f] || 0, at = f === 'page' ? '' : ' data-field="' + f + '"', old = S.dsort === 'old';
+    var h = '<div class="pager"><label class="psize"><select data-act="psize" aria-label="한 번에 볼 줄 수">' + PSIZES.map(function (n) { return '<option value="' + n + '"' + (+S.psize === n ? ' selected' : '') + '>' + n + '줄씩 보기</option>'; }).join('') + '</select></label>';
+    if (!list) h += '<span class="psort" role="group" aria-label="날짜 순서"><button type="button" class="chip" data-act="dsort" data-key="new" aria-pressed="' + !old + '">최신순</button><button type="button" class="chip" data-act="dsort" data-key="old" aria-pressed="' + old + '">과거순</button></span>';
+    h += '<span class="pnav">';
+    if (pg.pages > 1) h += '<button type="button" class="chip" data-act="page" data-key="newer"' + at + (cur === 0 ? ' disabled' : '') + '>‹ ' + (list ? '이전' : old ? '더 과거' : '더 최근') + '</button>';
+    h += '<span class="num">' + (cur + 1) + ' / ' + pg.pages + ' <small>(전체 ' + pg.total + (list ? '개' : '줄') + ')</small></span>';
+    if (pg.pages > 1) h += '<button type="button" class="chip" data-act="page" data-key="older"' + at + (cur >= pg.pages - 1 ? ' disabled' : '') + '>' + (list ? '다음' : old ? '더 최근' : '더 과거') + ' ›</button>';
+    return h + '</span></div>';
   }
 
   /* ───────── 매출 ───────── */
@@ -337,12 +348,12 @@
       var orows = C.otherRows(DATA, S.from, S.to);
       h += '<table class="tbl"><thead><tr><th scope="col">날짜</th><th scope="col">마켓</th><th scope="col">상품</th><th scope="col" class="r">수량</th><th scope="col" class="r">매출</th></tr></thead><tbody>';
       if (!orows.length) h += '<tr><td colspan="5" class="none">이 기간에 기타마켓 주문이 없습니다.</td></tr>';
-      var opg = pageOf(orows);
+      orows = dateOrder(orows); var opg = pageOf(orows);
       opg.rows.forEach(function (e) { h += '<tr><th scope="row">' + dot(e.d) + '</th><td>' + esc(e.market) + '</td><td>' + esc(e.product) + '</td><td class="r num">' + n0(e.qty) + '</td><td class="r num b">' + n0(e.amount) + '</td></tr>'; });
       if (orows.length) h += '<tr class="sum"><th scope="row">합계</th><td></td><td></td><td class="r num">' + n0(t.otherQty) + '</td><td class="r num b">' + n0(t.other) + '</td></tr>';
       h += '</tbody></table>' + pagerHtml(opg);
     } else {
-      var cols = salesColumns(ch), list = M.rows.slice().reverse(), pg = pageOf(list);
+      var cols = salesColumns(ch), list = dateOrder(M.rows.slice().reverse()), pg = pageOf(list);
       h += '<table class="tbl"><thead><tr><th scope="col">' + (M.unit === 'day' ? '날짜' : '기간') + '</th>';
       cols.forEach(function (c) { h += '<th scope="col" class="r">' + c[0] + '</th>'; });
       h += '</tr></thead><tbody>';
@@ -518,7 +529,7 @@
     h += '<span class="note">' + (ctx ? '조회 기간이 짧아 최근 14일 흐름을 함께 보여줍니다. 색칠된 부분이 조회 기간입니다.' : UNIT_NAME[M.unit] + ' 단위' + (S.unit === 'auto' ? ' (기간 길이에 맞춰 자동 선택)' : '') + '.') + ' 차트에 마우스를 올리면 그 날짜의 값이 보입니다.</span></section>';
 
     // 표
-    var cols = adsColumns(md), list = M.rows.slice().reverse(), pg = pageOf(list);
+    var cols = adsColumns(md), list = dateOrder(M.rows.slice().reverse()), pg = pageOf(list);
     h += '<div class="row"><section class="card grow3 flush" aria-label="기간별 광고 실적"><div class="card-h pad"><h2>' + UNIT_NAME[M.unit] + '별 실적</h2><span class="hint">합계는 조회 기간 전체</span><button type="button" class="chip" data-act="adcsv">엑셀로 받기 (CSV)</button></div><div class="scroll">';
     h += '<table class="tbl"><thead><tr><th scope="col">' + (M.unit === 'day' ? '날짜' : '기간') + '</th>';
     cols.forEach(function (c) { h += '<th scope="col" class="r">' + c[0] + '</th>'; });
@@ -643,11 +654,11 @@
     h += '<span class="note">' + (byMonth ? '월별' : '날짜별') + (multi ? '. 여러 품목 판매 페이지는 전체 판매 수량을 품목별로 나눌 수 없어 0으로 보입니다.' : '') + '</span></section>';
 
     // 날짜별 표 (최근부터 10줄)
-    var list2 = rows.slice().reverse(), pg = pageOf(list2, 10, 'apage');
+    var list2 = dateOrder(rows.slice().reverse()), pg = pageOf(list2, 10, 'apage');
     h += '<section class="card flush" aria-label="날짜별 광고 성과"><div class="card-h pad"><h2>날짜별</h2><span class="hint">날짜를 누르면 그날 어느 캠페인, 광고그룹이었는지 펼쳐집니다' + (has ? '. 비교 칸은 비교 기간의 같은 순번 날짜' : '') + '</span></div><div class="scroll">';
     h += '<table class="tbl wrap"><thead><tr><th scope="col">날짜</th><th scope="col" class="r">광고비</th><th scope="col" class="r">광고매출</th><th scope="col" class="r">ROAS</th><th scope="col" class="r">' + (md === 'sa' ? '광고 전환' : '광고 판매') + '</th><th scope="col" class="r">전체 판매</th><th scope="col" class="r">광고 비중</th>' + (has ? '<th scope="col" class="r">비교: 전체 / 광고 판매</th>' : '') + '</tr></thead><tbody>';
     pg.rows.forEach(function (o) {
-      var q = itemQtyRange(key, o.d, o.d), open = !!S.aopen[o.d], idx = C.dayDiff(S.from, o.d), pd = has ? C.addDays(cr.from, idx) : null, po = prow && prow[idx], pq2 = pd && pd <= cr.to ? itemQtyRange(key, pd, pd) : null;
+      var q = itemQtyRange(key, o.d, o.d), open = EXPORT_ALL || !!S.aopen[o.d], idx = C.dayDiff(S.from, o.d), pd = has ? C.addDays(cr.from, idx) : null, po = prow && prow[idx], pq2 = pd && pd <= cr.to ? itemQtyRange(key, pd, pd) : null;
       var zero = !o.cost && !o.rev && !(q && q.qty);
       h += '<tr' + (zero ? ' class="zero-row"' : '') + '><th scope="row">' + (o.lines.length ? '<button type="button" class="exp" data-act="aopen" data-key="' + o.d + '" aria-expanded="' + open + '">' + (open ? '▾ ' : '▸ ') + dot(o.d) + ' ' + dowOf(o.d) + '</button>' : '<span class="iname">' + dot(o.d) + ' ' + dowOf(o.d) + '</span>') + '</th>';
       h += '<td class="r num b">' + n0(o.cost) + '</td><td class="r num">' + n0(o.rev) + '</td><td class="r num">' + roasText(C.ratio(o.rev, o.cost)) + '</td><td class="r num b">' + n0(o.qty) + '</td><td class="r num">' + (q ? n0(q.qty) : '-') + '</td><td class="r num">' + (q && q.qty > 0 ? pctOf(Math.min(o.qty, q.qty), q.qty) : '-') + '</td>';
@@ -690,11 +701,11 @@
     function selBtn(path) { var k = JSON.stringify(path), on = S.acSel && JSON.stringify(S.acSel) === k; return '<td><button type="button" class="chip mini" data-act="acsel" data-key="' + esc(k) + '" aria-pressed="' + !!on + '">추이</button></td>'; }
     if (!T.camps.length) h += '<tr><td colspan="9" class="none">이 기간에 집행 기록이 없습니다.</td></tr>';
     T.camps.forEach(function (c) {
-      var ck = 'c|' + c.name, co = !!S.acOpen[ck];
+      var ck = 'c|' + c.name, co = EXPORT_ALL || !!S.acOpen[ck];
       h += '<tr class="lv1"><th scope="row"><button type="button" class="exp" data-act="acopen" data-key="' + esc(ck) + '" aria-expanded="' + co + '">' + (co ? '▾ ' : '▸ ') + esc(c.name) + '</button></th>' + cells(c.m, 1) + selBtn({ camp: c.name }) + '</tr>';
       if (!co) return;
       c.groups.forEach(function (g) {
-        var gk = 'g|' + c.name + '|' + g.name, go = !!S.acOpen[gk], hasI = g.items.length > 0;
+        var gk = 'g|' + c.name + '|' + g.name, go = EXPORT_ALL || !!S.acOpen[gk], hasI = g.items.length > 0;
         h += '<tr class="lv2"><th scope="row">' + (hasI ? '<button type="button" class="exp" data-act="acopen" data-key="' + esc(gk) + '" aria-expanded="' + go + '">' + (go ? '▾ ' : '▸ ') + esc(g.name) + '</button>' : '<span class="iname">' + esc(g.name) + '</span>') + '</th>' + cells(g.m, 2) + selBtn({ camp: c.name, group: g.name }) + '</tr>';
         if (!go) return;
         g.items.forEach(function (it) { h += '<tr class="lv3"><th scope="row">' + adItemLabel(T, it.key) + '</th>' + cells(it.m, 3) + selBtn({ camp: c.name, group: g.name, item: it.key }) + '</tr>'; });
@@ -904,7 +915,7 @@
       });
       if (PM) list.forEach(function (o) { pn += prev[o.prodId] ? prev[o.prodId].net : 0; });
       if (list.length) h += '<tr class="sum"><th scope="row">' + sumName + ' <small>(원가, 마진은 원가가 다 입력된 상품만)</small></th><td class="r num">' + n0(t.qty) + '</td><td class="r num b">' + n0(t.net) + '</td>' + (cr ? '<td class="r num">' + grow(t.net, pn) + '</td>' : '') + '<td class="r num">' + (t.netCosted > 0 ? n0(t.cost) : '-') + '</td><td class="r num">' + (t.netCosted > 0 ? n0(t.margin) : '-') + '</td><td class="r num">' + (t.netCosted > 0 ? rate(t.margin, t.netCosted) : '-') + '</td></tr>';
-      return h + '</tbody></table>' + pagerHtml(pg);
+      return h + '</tbody></table>' + pagerHtml(pg, true);
     }
     return h;
   }
@@ -1622,6 +1633,55 @@
   }
 
   /* ───────── 그리기 ───────── */
+  function viewHtml(cur) {
+    return cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : cur.id === 'ads' ? viewAds() : cur.id === 'products' ? viewProducts() : cur.id === 'customers' ? viewCustomers() : cur.id === 'promo' ? viewPromo() : cur.id === 'data' ? viewData() : cur.id === 'slack' ? viewSlack() : viewSoon(cur.label);
+  }
+  /* ───────── 지금 화면 전체를 엑셀로 ─────────
+   * 지금 보는 메뉴를 "모든 줄, 다 펼친 상태"로 한 번 더 그린 뒤, 그 안의 요약 칸과 표를 시트로 옮긴다.
+   * 화면과 같은 계산을 그대로 쓰므로 화면 숫자와 엑셀 숫자가 달라질 수 없다. 표 하나 = 시트 하나.
+   */
+  var EXPORTABLE = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, promo: 1 }, XMSG = '';
+  function xText(el) { return el.textContent.replace(/[▸▾]/g, '').replace(/\s+/g, ' ').trim(); }
+  function xVal(t) { // 쉼표 숫자는 숫자로, 나머지(날짜, %, 코드)는 글자 그대로
+    if (/^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$/.test(t) || /^[+-]?\d+(\.\d+)?$/.test(t) && !/^0\d/.test(t) && t.length < 12) return parseFloat(t.replace(/[,+]/g, ''));
+    return t;
+  }
+  function exportView() {
+    var cur = VIEWS.filter(function (v) { return v.id === S.view; })[0] || VIEWS[0];
+    if (!EXPORTABLE[cur.id] || XMSG === '만드는 중…') return;
+    XMSG = '만드는 중…'; render();
+    loadXlsx().then(function () {
+      var X = root.XLSX, wb = X.utils.book_new(), box = document.createElement('div'), used = {}, html;
+      EXPORT_ALL = true; try { html = viewHtml(cur); } finally { EXPORT_ALL = false; }
+      box.innerHTML = html;
+      function sheetName(n) { n = String(n || '표').replace(/[\\\/\?\*\[\]:]/g, ' ').trim().slice(0, 28) || '표'; var b = n, i = 2; while (used[n]) n = b.slice(0, 25) + ' ' + (i++); used[n] = 1; return n; }
+      function add(name, rows, widths) { var ws = X.utils.aoa_to_sheet(rows); ws['!cols'] = (widths || rows[0] || []).map(function (c, i) { var w = 8; rows.forEach(function (r) { var l = String(r[i] === undefined || r[i] === null ? '' : r[i]).length; if (l > w) w = l; }); return { wch: Math.min(60, w * 1.6 + 2) }; }); X.utils.book_append_sheet(wb, ws, sheetName(name)); }
+      // 1) 요약 시트: 어떤 화면, 어떤 기간인지 + 요약 칸
+      var cr = cmpRange(), info = [['메뉴', cur.label], ['데이터 기준일', DATA.last], ['받은 시각', new Date().toLocaleString('ko-KR')]];
+      if (cur.id !== 'promo') { info.push(['조회 기간', S.from + ' ~ ' + S.to, (C.dayDiff(S.from, S.to) + 1) + '일']); info.push(['비교 기간', cr ? cr.from + ' ~ ' + cr.to : '없음', cr ? (C.dayDiff(cr.from, cr.to) + 1) + '일' : '']); }
+      var on = [].map.call(box.querySelectorAll('[role="tab"][aria-selected="true"], .viewtoggle [aria-pressed="true"]'), xText).filter(Boolean);
+      if (on.length) info.push(['보는 방식', on.join(' / ')]);
+      var cur2 = box.querySelector('.aicur b'); if (cur2) info.push(['품목', xText(cur2)]);
+      info.push([]); info.push(['항목', '값', '설명']);
+      [].forEach.call(box.querySelectorAll('.cell, .kpi'), function (c) { var l = c.querySelector('.lab'), v = c.querySelector('.val'); if (!l || !v) return; var rest = [].filter.call(c.children, function (x) { return x !== l && x !== v; }).map(xText).filter(Boolean).join(' '); info.push([xText(l), xVal(xText(v).replace(/원$/, '')), rest]); });
+      add('요약', info, [0, 0, 0]);
+      // 2) 표마다 시트 하나
+      [].forEach.call(box.querySelectorAll('table'), function (t) {
+        [].forEach.call(t.querySelectorAll('button.chip, input, small.zero'), function (b) { b.parentNode.removeChild(b); });
+        var sec = t.closest('section'), name = sec ? (sec.getAttribute('aria-label') || (sec.querySelector('h2') ? xText(sec.querySelector('h2')) : '')) : '';
+        var rows = [].map.call(t.querySelectorAll('tr'), function (tr) {
+          var out = []; [].forEach.call(tr.children, function (td) { var v = td.tagName === 'TH' && tr.parentNode.tagName === 'THEAD' ? xText(td) : xVal(xText(td)); out.push(v); for (var k = 1; k < (td.colSpan || 1); k++) out.push(''); });
+          var lv = /\blv3\b/.test(tr.className) ? '      └ ' : /\blv2\b/.test(tr.className) ? '   └ ' : ''; // 펼친 줄은 들여쓰기로 단계 표시
+          if (lv && typeof out[0] === 'string') out[0] = lv + out[0];
+          return out;
+        }).filter(function (r) { return r.some(function (v) { return v !== ''; }); });
+        if (rows.length > 1) add(name, rows);
+      });
+      X.writeFile(wb, '톰토미_' + cur.label.replace(/[\/]/g, '_') + (cur.id === 'promo' ? '' : '_' + S.from + '_' + S.to) + '.xlsx');
+      XMSG = '받았습니다 (시트 ' + wb.SheetNames.length + '개)';
+    }).catch(function (e) { XMSG = '만들지 못했습니다: ' + (e && e.message); }).then(function () { render(); setTimeout(function () { if (XMSG !== '만드는 중…') { XMSG = ''; render(); } }, 6000); });
+  }
+
   function render() {
     var app = document.getElementById('app');
     var cur = VIEWS.filter(function (v) { return v.id === S.view; })[0] || VIEWS[0];
@@ -1636,9 +1696,10 @@
     h += '<a href="index.html">v5 화면<small>매핑표 등</small></a>';
     h += '</div><div class="nav"><span class="nav-h">바로가기</span><a href="' + SNS_URL + '" target="_blank" rel="noopener">SNS 라이브러리<small>새 탭 ↗</small></a>';
     h += '</div><div class="side-status"><b class="' + (ok ? 'ok' : 'chk') + '">' + (ok ? '데이터 정상' : '확인 필요') + '</b><span>네이버 판매 ' + mdot(hl.lastNaver) + '까지</span><span>주문 ' + mdot(hl.lastOrders) + '까지</span></div></nav>';
-    h += '<main class="main"><header class="head"><h1>' + cur.label + '</h1><span>데이터 기준일 ' + dot(DATA.last) + '</span></header>';
+    var canX = !!EXPORTABLE[cur.id];
+    h += '<main class="main"><header class="head"><div class="head-t"><h1>' + cur.label + '</h1><span>데이터 기준일 ' + dot(DATA.last) + '</span></div>' + (canX ? '<div class="head-x"><button type="button" class="chip" data-act="xall"' + (XMSG === '만드는 중…' ? ' disabled' : '') + '>지금 화면 전체를 엑셀로 받기</button>' + (XMSG ? '<small>' + esc(XMSG) + '</small>' : '') + '</div>' : '') + '</header>';
     if (cur.id !== 'data' && cur.id !== 'promo') h += periodBar(); // 데이터 관리, 프로모션은 위의 조회 기간과 상관없음
-    h += cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : cur.id === 'ads' ? viewAds() : cur.id === 'products' ? viewProducts() : cur.id === 'customers' ? viewCustomers() : cur.id === 'promo' ? viewPromo() : cur.id === 'data' ? viewData() : cur.id === 'slack' ? viewSlack() : viewSoon(cur.label);
+    h += viewHtml(cur);
     h += '</main></div>';
     app.innerHTML = h;
   }
@@ -1647,6 +1708,8 @@
     var el = ev.target.closest('[data-act]'); if (!el || el.tagName === 'INPUT') return;
     var act = el.getAttribute('data-act'), key = el.getAttribute('data-key');
     if (act === 'page') { var pf = el.getAttribute('data-field') || 'page'; S[pf] = (S[pf] || 0) + (key === 'older' ? 1 : -1); render(); return; }
+    if (act === 'dsort') { S.dsort = key === 'old' ? 'old' : 'new'; PFIELDS.forEach(function (f) { S[f] = 0; }); save(); render(); return; }
+    if (act === 'xall') { exportView(); return; }
     if (act === 'adview') { S.adView = key; render(); return; }
     if (act === 'aipick') { S.aitem = key; S.aiq = ''; S.apage = 0; S.aopen = {}; save(); render(); return; }
     if (act === 'amd') { S.amd = key; S.apage = 0; S.aopen = {}; render(); return; }
@@ -1699,7 +1762,8 @@
     if (el.matches('[data-pf]')) { if (PR.form) { PR.form[el.getAttribute('data-pf')] = el.value; if (el.tagName === 'SELECT') render(); } return; } // 글자 칸은 다시 그리지 않는다 (누르던 버튼이 사라지지 않게)
     if (!el.matches('input[data-act], select[data-act]')) return;
     var act = el.getAttribute('data-act'), v = el.value;
-    if (act === 'aiq' || act === 'pq') return; // 검색칸에서 포커스가 빠질 때 목록을 다시 그리면 누르던 결과가 사라져 클릭이 무시된다
+    if (act === 'aiq' || act === 'pq') return;
+    if (act === 'psize') { S.psize = PSIZES.indexOf(+v) >= 0 ? +v : 10; PFIELDS.forEach(function (f) { S[f] = 0; }); save(); render(); return; } // 검색칸에서 포커스가 빠질 때 목록을 다시 그리면 누르던 결과가 사라져 클릭이 무시된다
     if (act === 'q') { onSearch(ev); return; }
     if (act === 'upfiles') { onUpload(el.files); el.value = ''; return; }
     if (act === 'sel') {
