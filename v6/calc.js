@@ -149,6 +149,7 @@
     out.skuMap = (raw.skuMap || []).filter(function (r) { return r && r.k; });
     out.costVer = costPick(raw.skuCost);
     out.promos = promoList(raw.promo);
+    out.itemInfo = itemInfo(raw.itemInfo);
 
     // 조회 가능한 범위: 채널별 첫 날짜와 마지막 날짜
     function span(rows) {
@@ -836,6 +837,48 @@
     o.ok = true; return o;
   }
 
+  /* ───────── 상품 관리: 정가, 채널별 판매가 (이력 포함) ─────────
+   * raw.itemInfo: 품목 1개 = 1줄 { d: 코드, code, hist: [{ from: 적용 시작일, list: 정가, prices: { naver, coupang, 몰이름… } }] }
+   *              + 몰 목록 1줄 { d: '_malls', malls: [이름…] }
+   * 가격을 바꾸면 이전 값을 지우지 않고 적용 시작일이 다른 줄을 하나 더 쌓는다. 그 날짜의 가격 = 적용 시작일이 그 날짜 이하인 마지막 줄.
+   */
+  function itemInfo(raw) {
+    var out = { malls: [], by: {} };
+    (raw || []).forEach(function (e) {
+      if (!e) return;
+      if (e.d === '_malls') { out.malls = (e.malls || []).map(function (m) { return String(m || '').trim(); }).filter(Boolean); return; }
+      if (!e.code) return;
+      out.by[e.code] = (e.hist || []).filter(function (h) { return h && h.from; }).map(function (h) {
+        var pr = {}; Object.keys(h.prices || {}).forEach(function (k) { var v = num(h.prices[k]); if (v > 0) pr[k] = v; });
+        return { from: h.from, list: num(h.list), prices: pr };
+      }).sort(function (a, b) { return a.from < b.from ? -1 : a.from > b.from ? 1 : 0; });
+    });
+    return out;
+  }
+  function priceAt(info, code, d) {
+    var h = info && info.by[code], v = null; if (!h) return null;
+    h.forEach(function (e) { if (e.from <= d) v = e; });
+    return v;
+  }
+  // 새 값 한 줄(entry)을 이력에 합친다. entry: { from, list, prices } 에서 undefined/null = 그대로, 0 = 비움.
+  // 같은 적용 시작일이 있으면 그 줄을 고치고, 없으면 바로 앞 줄의 값을 이어받은 새 줄을 넣는다. 값이 하나도 안 바뀌면 changed=false
+  function priceMerge(hist, entry) {
+    var list = (hist || []).map(function (h) { var p = {}; Object.keys(h.prices || {}).forEach(function (k) { p[k] = h.prices[k]; }); return { from: h.from, list: h.list || 0, prices: p }; });
+    var prev = null, same = null;
+    list.forEach(function (h) { if (h.from === entry.from) same = h; else if (h.from < entry.from) prev = h; });
+    var base = same || prev || { list: 0, prices: {} }, next = { from: entry.from, list: base.list || 0, prices: {} }, changed = false;
+    Object.keys(base.prices).forEach(function (k) { next.prices[k] = base.prices[k]; });
+    if (entry.list !== undefined && entry.list !== null) { var l = num(entry.list); if (l !== next.list) { next.list = l; changed = true; } }
+    Object.keys(entry.prices || {}).forEach(function (k) {
+      var v = entry.prices[k]; if (v === undefined || v === null) return; v = num(v);
+      if ((next.prices[k] || 0) !== v) { changed = true; if (v > 0) next.prices[k] = v; else delete next.prices[k]; }
+    });
+    if (!changed) return { hist: list, changed: false };
+    if (same) list[list.indexOf(same)] = next; else list.push(next);
+    list.sort(function (a, b) { return a.from < b.from ? -1 : a.from > b.from ? 1 : 0; });
+    return { hist: list, changed: true };
+  }
+
   /* ───────── 유입 (네이버) ───────── */
   function spanOf(rows) { var f = '', l = ''; rows.forEach(function (e) { if (!f || e.d < f) f = e.d; if (e.d > l) l = e.d; }); return { first: f, last: l }; }
   var TR_FIELDS = ['visits', 'orders', 'rev'];
@@ -1034,6 +1077,7 @@
     adsDaily: adsDaily, adsBucket: adsBucket, adsTotal: adsTotal, adsBreakdown: adsBreakdown, ratio: ratio,
     skuAggregate: skuAggregate, skuUnmapped: skuUnmapped, skuParseOpt: skuParseOpt, orderCheck: orderCheck,
     costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products, productSeries: productSeries, items: items, itemOrder: itemOrder, adTree: adTree, adPathSeries: adPathSeries, adItemDaily: adItemDaily, adItemList: adItemList, coupAdCode: coupAdCode, AD_OTHER: AD_OTHER, trafficDaily: trafficDaily, trafficBucket: trafficBucket, trafficTotal: trafficTotal, trafficPaths: trafficPaths, trafficItems: trafficItems, trafficOrder: trafficOrder, pageCodes: pageCodes, queryTop: queryTop, custDemo: custDemo, itemSeries: itemSeries, itemMaster: itemMaster, NONE: NONE, COUP_MAP: COUP_MAP,
+    itemInfo: itemInfo, priceAt: priceAt, priceMerge: priceMerge, ITEM_PARTS: ITEM_PARTS,
     adPlanRef: adPlanRef, adPlanCalc: adPlanCalc,
     promoList: promoList, promoCalc: promoCalc, promoDaily: promoDaily, promoBase: promoBase, promoRange: promoRange,
     signals: signals, health: health

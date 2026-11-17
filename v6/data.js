@@ -14,7 +14,7 @@
   function loadSupabase() {
     var all = [];
     function page(offset) {
-      var url = SUPABASE_URL + '/rest/v1/tomtomi_data?select=channel,date,data&order=channel,date&limit=' + PAGE + '&offset=' + offset;
+      var url = SUPABASE_URL + '/rest/v1/tomtomi_data?select=channel,date,data&channel=neq.itemImg&order=channel,date&limit=' + PAGE + '&offset=' + offset; // 상품 이미지는 무거워서 상품 관리 화면에서만 따로 불러온다
       return fetch(url, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } })
         .then(function (res) { if (!res.ok) throw new Error('데이터 서버 응답 오류 (HTTP ' + res.status + ')'); return res.json(); })
         .then(function (rows) {
@@ -97,6 +97,13 @@
     });
   }
 
+  // 상품 이미지 (channel=itemImg, date=품목코드, 줄여서 저장한 작은 사진): 상품 관리 화면에서만 불러온다
+  function loadImages() {
+    return fetch(SUPABASE_URL + '/rest/v1/tomtomi_data?select=date,data&channel=eq.itemImg', { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } })
+      .then(function (res) { if (!res.ok) throw new Error('이미지를 불러오지 못했습니다 (HTTP ' + res.status + ')'); return res.json(); })
+      .then(function (rows) { var m = {}; (rows || []).forEach(function (r) { var e = (r.data || [])[0]; if (e && e.img) m[r.date] = e.img; }); return m; });
+  }
+
   // 파일 올리기 저장: (채널, 날짜) 한 줄씩 덮어쓰기(upsert). v5의 클라우드 동기화와 같은 방식
   function saveRows(rows) {
     var i = 0, CH = 50;
@@ -167,5 +174,5 @@
     });
   }
 
-  root.TTData = { load: load, saveCost: saveCost, saveRows: saveRows, loadWebhook: loadWebhook, loadOnline: loadOnline, sendSlack: sendSlack };
+  root.TTData = { load: load, saveCost: saveCost, saveRows: saveRows, loadImages: loadImages, loadWebhook: loadWebhook, loadOnline: loadOnline, sendSlack: sendSlack };
 })(window);
