@@ -9,7 +9,7 @@
   var DATA = null, RAW = null;      // 정리된 데이터
   var META = {};        // 불러오기 결과(기타마켓 연결 여부 등)
   var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '', tpage: 0, topen: '', acOpen: {}, acSel: null, acBasis: 'ad', adView: 'camp', aitem: '', amd: 'all', apage: 0, aopen: {}, aiq: '', ppage: 0, psize: 10, dsort: 'new', ipage: 0, ptunit: 'auto', ptmet: 'qty', mpage: 0 };
-  var READY = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, promo: 1, data: 1, slack: 1, itemadmin: 1 }; // 옮겨온 메뉴
+  var READY = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, promo: 1, data: 1, slack: 1, itemadmin: 1, feedback: 1 }; // 옮겨온 메뉴
   var STORE_KEY = 'tt6_state';
 
   var VIEWS = [
@@ -22,6 +22,7 @@
     { id: 'slack', label: '슬랙 리포트', group: 'manage' },
     { id: 'data', label: '데이터 관리', group: 'manage' },
     { id: 'itemadmin', label: '상품 관리', group: 'manage' },
+    { id: 'feedback', label: '제보 목록', group: 'manage' },
   ];
   var SNS_URL = 'https://script.google.com/macros/s/AKfycbwPP2q4xCM9g5XQwGLELKyS8lxRY9Nz1K9xMSb6wB3lSJtb4y1hmDIKb7gruPMcvMz-bA/exec';
 
@@ -1938,7 +1939,7 @@
    */
   var RS = { name: '', bk: null, cloud: null, diff: null, err: '', msg: '', busy: '', mode: 'fill', ch: '', from: '', to: '', open: '', confirm: '' };
   var RS_SKIP = { other: 1, roi: 1 }; // roi는 v5 백업에만 있던 화면 설정 // 기타몰은 구글 시트가 원본이라 클라우드로 되돌리지 않는다
-  var RS_NAME = { promo: '프로모션', itemInfo: '상품 가격', itemImg: '상품 이미지', skuMap: '옵션 매핑표', skuCost: '원가표', slackConfig: '슬랙 웹훅', naverAdCreative: '네이버 소재 목록', naverQuery: '검색어 (보관 데이터)', naverCustNew: '고객 (보관 데이터)', naverCustDemo: '고객 연령/성별 (보관 데이터)' };
+  var RS_NAME = { promo: '프로모션', itemInfo: '상품 가격', itemImg: '상품 이미지', skuMap: '옵션 매핑표', skuCost: '원가표', slackConfig: '슬랙 웹훅', naverAdCreative: '네이버 소재 목록', naverQuery: '검색어 (보관 데이터)', naverCustNew: '고객 (보관 데이터)', naverCustDemo: '고객 연령/성별 (보관 데이터)', feedback: '제보' };
   function rsName(ch) { return RS_NAME[ch] || CH_LABEL[ch] || ch; }
   function rsIsDate(k) { return /^\d{4}-\d{2}-\d{2}$/.test(k); }
   function rsInRange(k) { if (!rsIsDate(k)) return true; return (!RS.from || k >= RS.from) && (!RS.to || k <= RS.to); } // 날짜가 아닌 줄(매핑표 등)은 범위와 상관없이 고른 종류면 대상
@@ -2112,6 +2113,92 @@
     }).catch(function (e) { WH.err = '저장하지 못했습니다. ' + (e && e.message); }).then(function () { WH.saving = false; render(); });
   }
 
+  /* ───────── 버그, 개선 제보 ─────────
+   * 어느 화면에서든 왼쪽 [제보하기] → 종류, 내용, 캡처(파일 고르기 또는 Cmd+V 붙여넣기) → 저장.
+   * 지금 보던 메뉴, 조회 기간, 버전 등은 자동으로 붙는다. 저장: channel feedback, date = 제보 id (캡처는 긴 쪽 1280px JPEG로 줄여 같은 줄에)
+   * 저장되면 슬랙 웹훅으로 한 줄 알림 (실패해도 제보는 저장된 상태)
+   */
+  var FB = { open: false, kind: 'bug', text: '', img: '', msg: '', err: '', saving: false, list: null, state: 'idle', filter: 'open', openId: '', big: '' };
+  var FB_STATUS = ['접수', '진행 중', '완료', '보류'];
+  function fbVersion() { var sc = document.querySelector('script[src*="ui.js"]'); var m = sc && sc.src.match(/v=([\d.]+)/); return m ? m[1] : ''; }
+  function fbContext() {
+    var cur = VIEWS.filter(function (v) { return v.id === S.view; })[0] || VIEWS[0], c = { view: cur.label, version: fbVersion(), last: DATA.last, ua: navigator.userAgent.slice(0, 160), size: window.innerWidth + 'x' + window.innerHeight };
+    if (S.view !== 'data' && S.view !== 'promo' && S.view !== 'itemadmin' && S.view !== 'feedback') { c.period = S.from + ' ~ ' + S.to; c.cmp = cmpRange() ? cmpRange().from + ' ~ ' + cmpRange().to : '없음'; }
+    if (S.view === 'products') { c.channel = CH_NAME[S.pch] || '전체'; c.items = S.sel.join(', '); if (S.q) c.search = S.q; }
+    if (S.view === 'ads') { c.ad = S.ad; c.adView = S.adView; if (S.adView === 'item') c.item = S.aitem; }
+    if (S.view === 'sales') c.channel = CH_NAME[S.ch] || S.ch;
+    return c;
+  }
+  function fbModalHtml() {
+    var h = '<div class="fbback" data-act="fbclose"></div><div class="fbmodal" role="dialog" aria-modal="true" aria-label="버그, 개선 제보"><div class="card-h"><h2>제보하기</h2><button type="button" class="chip" data-act="fbclose">닫기</button></div>';
+    h += '<div class="viewtoggle" role="group" aria-label="종류"><button type="button" class="chip" data-act="fbkind" data-key="bug" aria-pressed="' + (FB.kind === 'bug') + '">🐞 버그 (이상해요)</button><button type="button" class="chip" data-act="fbkind" data-key="idea" aria-pressed="' + (FB.kind === 'idea') + '">💡 개선 (이랬으면 좋겠어요)</button></div>';
+    h += '<label class="fbl"><span>내용</span><textarea id="fbtext" data-fb="text" rows="6" placeholder="' + (FB.kind === 'bug' ? '무엇을 했더니 어떻게 됐는지 적어 주세요. 예: 상품에서 다다 검색 후 Enter를 눌렀는데 그래프가 안 나와요' : '어떻게 바뀌면 좋을지 적어 주세요') + '">' + esc(FB.text) + '</textarea></label>';
+    h += '<div class="fbl"><span>캡처 (선택)</span>' + (FB.img ? '<div class="fbimg"><img src="' + FB.img + '" alt="첨부한 캡처"><button type="button" class="chip" data-act="fbimgdel">캡처 빼기</button></div>' : '<div class="fbdrop">Cmd+Shift+4로 캡처한 뒤 이 창에서 <b>Cmd+V</b>로 붙여넣거나, <label class="linkbtn">파일 고르기<input type="file" accept="image/*" data-act="fbfile" hidden></label></div>') + '</div>';
+    var c = fbContext();
+    h += '<p class="note">자동으로 같이 저장: ' + esc(c.view) + (c.period ? ', 조회 기간 ' + c.period : '') + (c.items ? ', 품목 ' + c.items : '') + ', 버전 ' + esc(c.version) + '</p>';
+    if (FB.err) h += '<p class="note"><b class="warn">' + esc(FB.err) + '</b></p>';
+    h += '<div class="plan-f"><span></span><button type="button" class="chip" data-act="fbclose">취소</button><button type="button" class="btn" data-act="fbsave"' + (FB.saving ? ' disabled' : '') + '>' + (FB.saving ? '보내는 중…' : '제보 보내기') + '</button></div></div>';
+    return h;
+  }
+  function fbShrink(file, max) { // 사진을 긴 쪽 max px JPEG로 줄인다
+    return new Promise(function (ok, fail) {
+      var rd = new FileReader();
+      rd.onload = function () { var im = new Image(); im.onload = function () { var k = Math.min(1, max / Math.max(im.width, im.height)), cv = document.createElement('canvas'); cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k); var cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(im, 0, 0, cv.width, cv.height); ok(cv.toDataURL('image/jpeg', 0.8)); }; im.onerror = function () { fail(new Error('이미지 파일을 읽지 못했습니다.')); }; im.src = rd.result; };
+      rd.onerror = function () { fail(new Error('파일을 읽지 못했습니다.')); }; rd.readAsDataURL(file);
+    });
+  }
+  function fbAttach(file) { if (!file || !/^image\//.test(file.type)) return; fbShrink(file, 1280).then(function (u) { FB.img = u; FB.err = ''; }, function (e) { FB.err = e.message; }).then(render); }
+  function fbSave() {
+    if (FB.saving) return;
+    var el = document.getElementById('fbtext'); if (el) FB.text = el.value;
+    if (!FB.text.trim()) { FB.err = '내용을 한 줄이라도 적어 주세요.'; render(); return; }
+    var now = new Date(), id = 'fb' + now.getTime().toString(36), rec = { d: id, id: id, kind: FB.kind, text: FB.text.trim(), img: FB.img, ctx: fbContext(), status: '접수', created: now.toISOString(), at: today() + ' ' + now.toTimeString().slice(0, 5) };
+    FB.saving = true; FB.err = ''; render();
+    root.TTData.saveRows([{ channel: 'feedback', date: id, data: [rec] }]).then(function () {
+      FB.open = false; FB.text = ''; FB.img = ''; FB.kind = 'bug';
+      if (FB.list) FB.list.unshift(rec);
+      FB.msg = '제보를 저장했습니다. 관리 > 제보 목록에서 볼 수 있어요.';
+      var line = (rec.kind === 'bug' ? '🐞 대시보드 버그 제보' : '💡 대시보드 개선 제보') + ' (' + rec.at + ')\n' + rec.text.slice(0, 300) + (rec.text.length > 300 ? '…' : '') + '\n화면: ' + rec.ctx.view + (rec.ctx.period ? ', 기간 ' + rec.ctx.period : '') + (rec.img ? ', 캡처 있음' : '') + '\n📎 대시보드: ' + location.href.split(/[?#]/)[0];
+      return root.TTData.loadWebhook().then(function (url) { if (!url) throw new Error('웹훅 없음'); return root.TTData.sendSlack(url, line); }).then(function () { FB.msg += ' 슬랙에도 알렸습니다.'; }, function () { FB.msg += ' (슬랙 알림은 보내지 못했습니다)'; });
+    }).catch(function (e) { FB.err = '저장하지 못했습니다. ' + (e && e.message); })
+      .then(function () { FB.saving = false; render(); setTimeout(function () { if (FB.msg) { FB.msg = ''; render(); } }, 7000); });
+  }
+  function fbLoad() {
+    if (FB.state === 'loading') return;
+    FB.state = 'loading';
+    root.TTData.loadFeedback().then(function (l) { FB.list = l; FB.state = 'ready'; }, function (e) { FB.state = 'fail'; FB.err = e && e.message; }).then(function () { if (S.view === 'feedback') render(); });
+  }
+  function fbSetStatus(id, st) {
+    var r = (FB.list || []).filter(function (x) { return x.id === id; })[0]; if (!r || r.status === st) return;
+    var rec = {}; Object.keys(r).forEach(function (k) { rec[k] = r[k]; }); rec.status = st; rec.updated = new Date().toISOString();
+    root.TTData.saveRows([{ channel: 'feedback', date: id, data: [rec] }]).then(function () { FB.list = FB.list.map(function (x) { return x.id === id ? rec : x; }); }, function (e) { FB.err = '상태를 바꾸지 못했습니다. ' + (e && e.message); }).then(render);
+  }
+  function viewFeedback() {
+    if (!FB.list && FB.state !== 'loading' && FB.state !== 'fail') fbLoad();
+    var h = '<section class="card" aria-label="제보 목록"><div class="card-h"><h2>제보 목록</h2><span class="hint">대시보드를 쓰다가 남긴 버그, 개선 제보입니다. Claude에게 "제보 확인해줘"라고 하면 읽고 처리합니다</span><button type="button" class="btn" data-act="fbopen">+ 새 제보</button></div>';
+    if (FB.err && !FB.open) h += '<p class="note"><b class="warn">' + esc(FB.err) + '</b></p>';
+    if (!FB.list) return h + '<p class="note">' + (FB.state === 'fail' ? '불러오지 못했습니다. 새로고침해 주세요.' : '불러오는 중…') + '</p></section>';
+    var cnt = { open: 0, all: FB.list.length }; FB.list.forEach(function (r) { if (r.status !== '완료' && r.status !== '보류') cnt.open++; });
+    h += '<div class="viewtoggle" role="group" aria-label="보기"><button type="button" class="chip" data-act="fbfilter" data-key="open" aria-pressed="' + (FB.filter === 'open') + '">처리할 것 ' + cnt.open + '</button><button type="button" class="chip" data-act="fbfilter" data-key="all" aria-pressed="' + (FB.filter === 'all') + '">전체 ' + cnt.all + '</button></div></section>';
+    var list = FB.list.filter(function (r) { return FB.filter === 'all' || (r.status !== '완료' && r.status !== '보류'); });
+    h += '<section class="card flush" aria-label="제보"><div class="scroll"><table class="tbl wrap fbtbl"><thead><tr><th scope="col">받은 때</th><th scope="col">종류</th><th scope="col">내용</th><th scope="col">화면</th><th scope="col">상태</th></tr></thead><tbody>';
+    if (!list.length) h += '<tr><td colspan="5" class="none">' + (FB.list.length ? '처리할 제보가 없습니다.' : '아직 제보가 없습니다. 왼쪽 아래 [버그, 개선 제보하기]로 남길 수 있어요.') + '</td></tr>';
+    list.forEach(function (r) {
+      var op = FB.openId === r.id;
+      h += '<tr' + (op ? ' class="on"' : '') + '><th scope="row" class="num">' + esc(r.at || '') + '</th><td>' + (r.kind === 'bug' ? '<span class="chtag bulk">버그</span>' : '<span class="chtag on">개선</span>') + '</td><td><button type="button" class="exp fbtxt" data-act="fbrow" data-key="' + esc(r.id) + '" aria-expanded="' + op + '">' + (op ? '▾ ' : '▸ ') + esc(r.text.length > 70 && !op ? r.text.slice(0, 70) + '…' : r.text.split('\n')[0]) + (r.img ? ' 📷' : '') + '</button></td><td>' + esc((r.ctx && r.ctx.view) || '') + '</td>';
+      h += '<td><select data-fbst="' + esc(r.id) + '" aria-label="상태">' + FB_STATUS.map(function (x) { return '<option' + (r.status === x ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></td></tr>';
+      if (op) {
+        var c = r.ctx || {};
+        h += '<tr class="iaform"><td colspan="5"><p class="fbfull">' + esc(r.text).replace(/\n/g, '<br>') + '</p>';
+        h += '<p class="note">' + Object.keys(c).filter(function (k) { return k !== 'ua' && c[k]; }).map(function (k) { return '<b>' + esc({ view: '화면', version: '버전', last: '데이터 기준일', size: '창 크기', period: '조회 기간', cmp: '비교 기간', channel: '채널', items: '품목', search: '검색어', ad: '광고 매체', adView: '광고 보기', item: '광고 품목' }[k] || k) + '</b> ' + esc(c[k]); }).join(', ') + '</p>';
+        if (r.img) h += '<img class="fbshot" src="' + r.img + '" alt="첨부한 캡처" data-act="fbbig" data-key="' + esc(r.id) + '">';
+        h += '</td></tr>';
+      }
+    });
+    h += '</tbody></table></div></section>';
+    if (FB.big) { var br = FB.list.filter(function (x) { return x.id === FB.big; })[0]; if (br && br.img) h += '<div class="fbback" data-act="fbbigclose"></div><img class="fbbigimg" src="' + br.img + '" alt="캡처 크게 보기" data-act="fbbigclose">'; }
+    return h;
+  }
   /* ───────── 슬랙 리포트 ─────────
    * 데일리는 위의 조회 기간과 비교 기간을 쓰고, 위클리와 먼슬리는 데이터 기준일까지 끝난 한 주, 한 달을 쓴다.
    * 문구는 보내기 전에 고칠 수 있고, 맨 아래에 대시보드 주소가 붙는다.
@@ -2165,7 +2252,7 @@
 
   /* ───────── 그리기 ───────── */
   function viewHtml(cur) {
-    return cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : cur.id === 'ads' ? viewAds() : cur.id === 'products' ? viewProducts() : cur.id === 'customers' ? viewCustomers() : cur.id === 'promo' ? viewPromo() : cur.id === 'data' ? viewData() : cur.id === 'itemadmin' ? viewItemAdmin() : cur.id === 'slack' ? viewSlack() : viewSoon(cur.label);
+    return cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : cur.id === 'ads' ? viewAds() : cur.id === 'products' ? viewProducts() : cur.id === 'customers' ? viewCustomers() : cur.id === 'promo' ? viewPromo() : cur.id === 'data' ? viewData() : cur.id === 'itemadmin' ? viewItemAdmin() : cur.id === 'feedback' ? viewFeedback() : cur.id === 'slack' ? viewSlack() : viewSoon(cur.label);
   }
   /* ───────── 지금 화면 전체를 엑셀로 ─────────
    * 지금 보는 메뉴를 "모든 줄, 다 펼친 상태"로 한 번 더 그린 뒤, 그 안의 요약 칸과 표를 시트로 옮긴다.
@@ -2226,12 +2313,12 @@
     VIEWS.filter(function (v) { return v.group === 'manage'; }).forEach(function (v) { h += navBtn(v); });
     h += '<a href="index.html">v5 화면<small>예전 화면</small></a>';
     h += '</div><div class="nav"><span class="nav-h">바로가기</span><a href="' + SNS_URL + '" target="_blank" rel="noopener">SNS 라이브러리<small>새 탭 ↗</small></a>';
-    h += '</div><div class="side-status"><b class="' + (ok ? 'ok' : 'chk') + '">' + (ok ? '데이터 정상' : '확인 필요') + '</b><span>네이버 판매 ' + mdot(hl.lastNaver) + '까지</span><span>주문 ' + mdot(hl.lastOrders) + '까지</span>' + (function () { var a = backupAge(); return a === null ? '<button type="button" class="bkwarn" data-act="view" data-key="data">이 브라우저 백업 기록 없음</button>' : a > 7 ? '<button type="button" class="bkwarn" data-act="view" data-key="data">백업한 지 ' + a + '일 지남</button>' : ''; })() + '</div></nav>';
+    h += '</div><button type="button" class="fbbtn" data-act="fbopen">🐞 버그, 개선 제보하기</button><div class="side-status"><b class="' + (ok ? 'ok' : 'chk') + '">' + (ok ? '데이터 정상' : '확인 필요') + '</b><span>네이버 판매 ' + mdot(hl.lastNaver) + '까지</span><span>주문 ' + mdot(hl.lastOrders) + '까지</span>' + (function () { var a = backupAge(); return a === null ? '<button type="button" class="bkwarn" data-act="view" data-key="data">이 브라우저 백업 기록 없음</button>' : a > 7 ? '<button type="button" class="bkwarn" data-act="view" data-key="data">백업한 지 ' + a + '일 지남</button>' : ''; })() + '</div></nav>';
     var canX = !!EXPORTABLE[cur.id];
     h += '<main class="main"><header class="head"><div class="head-t"><h1>' + cur.label + '</h1><span>데이터 기준일 ' + dot(DATA.last) + '</span></div>' + (canX ? '<div class="head-x"><button type="button" class="chip" data-act="xall"' + (XMSG === '만드는 중…' ? ' disabled' : '') + '>지금 화면 전체를 엑셀로 받기</button>' + (XMSG ? '<small>' + esc(XMSG) + '</small>' : '') + '</div>' : '') + '</header>';
-    if (cur.id !== 'data' && cur.id !== 'promo' && cur.id !== 'itemadmin') h += periodBar(); // 데이터 관리, 프로모션은 위의 조회 기간과 상관없음
+    if (cur.id !== 'data' && cur.id !== 'promo' && cur.id !== 'itemadmin' && cur.id !== 'feedback') h += periodBar(); // 데이터 관리, 프로모션은 위의 조회 기간과 상관없음
     h += viewHtml(cur);
-    h += '</main></div>';
+    h += '</main></div>' + (FB.open ? fbModalHtml() : '');
     app.innerHTML = h;
   }
 
@@ -2254,6 +2341,15 @@
     if (act === 'rsmode') { RS.mode = key === 'over' ? 'over' : 'fill'; RS.confirm = ''; RS.err = ''; render(); return; }
     if (act === 'rscancel') { RS.bk = null; RS.diff = null; RS.name = ''; RS.err = ''; RS.confirm = ''; render(); return; }
     if (act === 'rsrun') { rsRun(); return; }
+    if (act === 'fbopen') { FB.open = true; FB.err = ''; render(); var t = document.getElementById('fbtext'); if (t) t.focus(); return; }
+    if (act === 'fbclose') { var tx = document.getElementById('fbtext'); if (tx) FB.text = tx.value; FB.open = false; FB.err = ''; render(); return; }
+    if (act === 'fbkind') { var tk = document.getElementById('fbtext'); if (tk) FB.text = tk.value; FB.kind = key === 'idea' ? 'idea' : 'bug'; render(); return; }
+    if (act === 'fbimgdel') { var ti = document.getElementById('fbtext'); if (ti) FB.text = ti.value; FB.img = ''; render(); return; }
+    if (act === 'fbsave') { fbSave(); return; }
+    if (act === 'fbfilter') { FB.filter = key === 'all' ? 'all' : 'open'; render(); return; }
+    if (act === 'fbrow') { FB.openId = FB.openId === key ? '' : key; render(); return; }
+    if (act === 'fbbig') { FB.big = key; render(); return; }
+    if (act === 'fbbigclose') { FB.big = ''; render(); return; }
     if (act === 'mptpl') { mapTemplate(); return; }
     if (act === 'mpno') { MP.plan = null; render(); return; }
     if (act === 'mpsave') { mapSave(); return; }
@@ -2330,6 +2426,8 @@
   function onChange(ev) {
     var el = ev.target; if (!el.matches) return;
     if (el.matches('input[type="file"][data-act="iaimg"]')) { iaImage(el.getAttribute('data-key'), el.files && el.files[0]); return; }
+    if (el.matches('input[type="file"][data-act="fbfile"]')) { var tf = document.getElementById('fbtext'); if (tf) FB.text = tf.value; fbAttach(el.files && el.files[0]); el.value = ''; return; }
+    if (el.matches('select[data-fbst]')) { fbSetStatus(el.getAttribute('data-fbst'), el.value); return; }
     if (el.matches('input[type="file"][data-act="rsfile"]')) { rsLoad(el.files && el.files[0]); el.value = ''; return; }
     if (el.matches('[data-rs]')) { var rk = el.getAttribute('data-rs'); RS[rk] = el.value; if (rk !== 'confirm') render(); return; }
     if (el.matches('input[type="file"][data-act="mpxls"]')) { mapUpload(el.files && el.files[0]); el.value = ''; return; }
@@ -2373,6 +2471,7 @@
     if (el.matches('textarea[data-act="sltext"]')) { SL.text = el.value; SL.edited = true; return; }
     if (el.matches('[data-pf]')) { if (PR.form) { PR.form[el.getAttribute('data-pf')] = el.value; PR.msg = ''; var pm = document.getElementById('pmsg'); if (pm) pm.hidden = true; } return; }
     if (el.matches('[data-rs="confirm"]')) { RS.confirm = el.value; return; }
+    if (el.matches('[data-fb="text"]')) { FB.text = el.value; return; }
     if (el.matches('[data-ia]')) { if (IA.form) { IA.form[el.getAttribute('data-ia')] = el.value; var im = document.getElementById('iamsg'); if (im) im.hidden = true; IA.err = ''; } return; }
     if (el.matches('input[data-act="iaq"]')) { IA.q = el.value; S.ipage = 0; IA.edit = ''; IA.form = null; IA.hist = ''; var it = document.getElementById('iatbl'); if (it) it.innerHTML = iaTableHtml(); return; }
     if (el.matches('[data-pl]')) { if (el.tagName === 'INPUT' && el.type === 'text') { PL[el.getAttribute('data-pl')] = el.value; var po = document.getElementById('plout'); if (po) po.innerHTML = planOutHtml(); } return; }
@@ -2427,6 +2526,11 @@
     document.addEventListener('dragover', function (ev) { var z = ev.target.closest && ev.target.closest('[data-drop]'); if (z) { ev.preventDefault(); z.classList.add('over'); } });
     document.addEventListener('dragleave', function (ev) { var z = ev.target.closest && ev.target.closest('[data-drop]'); if (z) z.classList.remove('over'); });
     document.addEventListener('drop', function (ev) { var z = ev.target.closest && ev.target.closest('[data-drop]'); if (!z) return; ev.preventDefault(); z.classList.remove('over'); onUpload(ev.dataTransfer.files); });
+    document.addEventListener('paste', function (ev) { // 제보 창이 열려 있으면 Cmd+V로 캡처를 붙인다
+      if (!FB.open || !ev.clipboardData) return;
+      var it = [].filter.call(ev.clipboardData.items || [], function (x) { return x.kind === 'file' && /^image\//.test(x.type); })[0];
+      if (!it) return; ev.preventDefault(); var t = document.getElementById('fbtext'); if (t) FB.text = t.value; fbAttach(it.getAsFile());
+    });
     document.addEventListener('mousemove', onTip);
     document.addEventListener('mouseover', onBig); document.addEventListener('focusin', onBig); document.addEventListener('click', onBig);
     document.addEventListener('click', onTip); // 터치 화면에서는 눌러서 본다

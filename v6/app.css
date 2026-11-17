@@ -374,3 +374,20 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; color
 .psearch .aibox { flex: 1 1 340px; width: auto; }
 .psearch .pchips { margin-top: 0; }
 .psearch .hint, .psearch .note { flex-basis: 100%; margin: 0; }
+
+/* 제보 */
+.fbbtn { margin-top: auto; padding: 10px 12px; border: 1px dashed var(--line); border-radius: var(--r-md); background: none; color: var(--sub); font: inherit; font-size: 13px; font-weight: 700; text-align: left; cursor: pointer; }
+.fbbtn:hover, .fbbtn:focus-visible { border-color: var(--accent); color: var(--accent-deep); }
+.fbbtn + .side-status { margin-top: 0; }
+.fbback { position: fixed; inset: 0; background: rgba(20, 16, 40, .35); z-index: 60; }
+.fbmodal { position: fixed; z-index: 61; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; background: var(--card); border-radius: 16px; padding: 22px 24px; box-shadow: 0 24px 60px rgba(0, 0, 0, .25); display: flex; flex-direction: column; gap: 14px; }
+.fbl { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; }
+.fbl textarea { min-height: 120px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--text); font: inherit; font-size: 14px; font-weight: 400; resize: vertical; }
+.fbdrop { padding: 18px; border: 1px dashed var(--line); border-radius: 10px; font-weight: 400; color: var(--sub); text-align: center; }
+.fbimg { display: flex; align-items: flex-start; gap: 10px; }
+.fbimg img { max-width: 70%; max-height: 220px; border: 1px solid var(--line); border-radius: 8px; }
+.fbtxt { text-align: left; white-space: normal; font-weight: 400; }
+.fbtbl select { min-height: 32px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; font-size: 13px; padding: 0 8px; }
+.fbfull { white-space: normal; line-height: 1.6; margin: 0 0 10px; }
+.fbshot { max-width: 420px; max-height: 260px; border: 1px solid var(--line); border-radius: 8px; cursor: zoom-in; }
+.fbbigimg { position: fixed; z-index: 61; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: calc(100vw - 48px); max-height: calc(100vh - 48px); border-radius: 10px; background: #fff; cursor: zoom-out; }
