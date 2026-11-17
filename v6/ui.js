@@ -1274,7 +1274,8 @@
             }
           }
           if (!type) { item.err = '어떤 파일인지 알 수 없습니다 (파일 이름을 확인해 주세요)'; return; }
-          if (!root.TTParse.SUPPORTED[type]) { item.err = 'v6에서는 아직 받지 않는 파일입니다. v5 화면에서 올려 주세요'; return; }
+          if (type === 'skuMap') { item.err = '옵션 매핑표는 이 화면 아래쪽 [옵션 매핑표] 칸의 [매핑표 올리기]로 올려 주세요'; return; }
+          if (!root.TTParse.SUPPORTED[type]) { item.err = '이제 받지 않는 파일입니다 (상품성과, 검색어, 고객 파일은 네이버 개편으로 더 이상 쓰지 않습니다)'; return; }
           var before = Object.keys(P.touched).length, nb = P.notes.length, ok;
           try {
             if (/\.csv$/i.test(name)) {
@@ -1397,7 +1398,8 @@
     // 백업, 그 밖의 관리
     var bkd = backupDay();
     h += '<div class="row"><section class="card grow1" aria-label="백업"><div class="card-h"><h2>백업</h2></div><p class="note">클라우드에 저장된 전체 데이터를 JSON 파일로 받습니다. 파일 올리기로 저장할 때는 그날 첫 저장 전에 자동으로 받습니다. 백업 파일은 공개 저장소(GitHub)에 올리지 마세요.</p><p class="note">이 브라우저에서 마지막 자동/수동 백업: <b>' + (bkd ? dot(bkd) : '기록 없음') + '</b></p><div><button type="button" class="chip" data-act="backup">지금 백업 받기</button></div></section>';
-    h += '<section class="card grow1" aria-label="그 밖의 관리"><div class="card-h"><h2>그 밖의 관리</h2></div><div class="li"><span>원가표 올리기</span><button type="button" class="chip" data-act="view" data-key="products">상품 메뉴로</button></div><div class="li"><span>옵션 매핑표 올리기, 상품성과, 검색어, 고객 파일</span><a class="chip" href="index.html">v5 화면에서</a></div><div class="li"><span>쿠팡 상품번호 매핑</span><span class="zero">새 쿠팡 상품이 생기면 Claude에게 알려 주세요</span></div></section></div>';
+    h += '<section class="card grow1" aria-label="그 밖의 관리"><div class="card-h"><h2>그 밖의 관리</h2></div><div class="li"><span>원가, 정가, 판매가, 이미지</span><button type="button" class="chip" data-act="view" data-key="itemadmin">상품 관리로</button></div><div class="li"><span>슬랙 웹훅 주소</span><button type="button" class="chip" data-act="view" data-key="slack">슬랙 리포트로</button></div><div class="li"><span>쿠팡 상품번호 매핑</span><span class="zero">새 쿠팡 상품이 생기면 Claude에게 알려 주세요</span></div></section></div>';
+    h += mapCardHtml();
     return h;
   }
 
@@ -1879,6 +1881,86 @@
     pop.src = el.src; pop.style.left = x + 'px'; pop.style.top = y + 'px'; pop.hidden = false;
   }
 
+  /* ───────── 옵션 → SKU 매핑표 (데이터 관리 안, v5에서 옮김) ─────────
+   * [매핑표 받기] → 엑셀에서 "확정 SKU코드" 칸만 채우기 → [매핑표 올리기] → 바뀌는 줄 확인 → 저장.
+   * v5는 올린 파일로 통째 교체했지만 v6는 합친다(파일에 없는 줄은 그대로). 저장 위치는 v5와 같은 skuMap 채널의 'map' 줄.
+   */
+  var MP = { plan: null, msg: '', err: '', saving: false };
+  function mapCardHtml() {
+    var un = DATA.skuMap.length ? C.skuUnmappedList(DATA) : [], h = '';
+    h += '<section class="card" aria-label="옵션 매핑표"><div class="card-h"><h2>옵션 매핑표</h2><span class="hint">네이버 주문의 옵션을 품목코드(SKU)로 바꾸는 표입니다. 새 옵션이 생겼을 때만 고치면 됩니다</span></div>';
+    h += '<div class="li"><span>지금 매핑</span><b class="num">' + n0(DATA.skuMap.length) + '줄</b></div><div class="li"><span>매핑표에 없는 옵션</span><b class="num">' + (un.length ? '<span class="warn">' + un.length + '종</span>' : '없음') + '</b></div>';
+    if (un.length) h += '<p class="note">없는 옵션 (판매 수량 많은 순): ' + un.slice(0, 5).map(function (u) { return esc(u.prodId + ' ' + u.val) + ' (' + n0(u.qty) + '개)'; }).join(', ') + (un.length > 5 ? ' 외 ' + (un.length - 5) + '종' : '') + '. 이 옵션의 판매는 "품목 미지정"으로 잡힙니다.</p>';
+    h += '<div class="aipick" style="margin-top:14px"><button type="button" class="chip" data-act="mptpl">매핑표 받기 (엑셀)</button><label class="chip filebtn">매핑표 올리기<input type="file" accept=".xlsx,.xls" data-act="mpxls" hidden></label></div>';
+    if (MP.msg) h += '<p class="note"><b>' + esc(MP.msg) + '</b></p>';
+    if (MP.err) h += '<p class="note"><b class="warn">' + esc(MP.err) + '</b></p>';
+    if (MP.plan) {
+      var st = MP.plan.merged.stat, P = MP.plan.P, ch = st.added + st.changed;
+      h += '<div class="plan"><p><b>' + esc(MP.plan.name) + '</b></p><p><b>새로 추가 ' + st.added + '줄, SKU코드가 바뀌는 줄 ' + st.changed + '줄</b>, 같은 값 ' + st.same + '줄, 파일에 없어서 그대로 두는 줄 ' + st.kept + '줄</p>';
+      var skip = []; if (P.empty) skip.push('SKU코드가 빈 줄 ' + P.empty + '개'); if (P.dup) skip.push('중복 ' + P.dup + '줄'); if (P.bad) skip.push('상품번호가 이상한 줄 ' + P.bad + '개');
+      if (skip.length) h += '<p class="zero">건너뜀: ' + skip.join(', ') + '</p>';
+      if (MP.plan.changes.length) h += '<p class="zero">' + MP.plan.changes.slice(0, 6).map(esc).join(' / ') + (MP.plan.changes.length > 6 ? ' 외 ' + (MP.plan.changes.length - 6) + '줄' : '') + '</p>';
+      h += '</div><div class="plan-f"><span>' + (backupDay() !== today() ? '저장 전에 백업 파일을 자동으로 받습니다' : '') + '</span><button type="button" class="chip" data-act="mpno">취소</button><button type="button" class="btn" data-act="mpsave"' + (MP.saving || !ch ? ' disabled' : '') + '>' + (MP.saving ? '저장 중…' : ch ? '저장' : '바뀌는 줄 없음') + '</button></div>';
+    }
+    return h + '</section>';
+  }
+  function mapTemplate() {
+    loadXlsx().then(function () {
+      var X = root.XLSX, st = C.skuMapStats(DATA), aoa = [['확인', '구분', '네이버 상품번호', '상품명', '옵션값', '옵션 원문 예시', '2년 판매수량', '최근 주문일', '확정 SKU코드 (여기만 수정)', '코드명 (참고)', '근거', '비고']];
+      C.skuUnmappedList(DATA).forEach(function (u) { aoa.push(['⚠️ 새 옵션', '', u.prodId, u.name, u.val, u.raw, u.qty, u.last, '', '', '', '매핑표에 없는 옵션: SKU코드를 채워 주세요']); });
+      DATA.skuMap.forEach(function (r) { var x = st[r.k] || { q: 0, last: '', raw: '' }; aoa.push([(r.codes && r.codes.length) ? '✅' : '미상', r.typ || '', r.prodId, r.pname || '', r.val, x.raw, x.q, x.last, C.skuCodeText(r), (r.names || []).join(' + '), '', r.note || '']); });
+      var ws = X.utils.aoa_to_sheet(aoa); ws['!cols'] = [6, 12, 15, 44, 26, 44, 11, 12, 30, 40, 10, 48].map(function (w) { return { wch: w }; });
+      for (var i = 1; i < aoa.length; i++) { var c = ws[X.utils.encode_cell({ r: i, c: 2 })]; if (c) { c.t = 's'; c.v = String(c.v); } }
+      var wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, '매핑초안');
+      X.writeFile(wb, '톰토미_옵션_SKU_매핑_' + today().replace(/-/g, '') + '.xlsx');
+    }).catch(function (e) { MP.err = e && e.message; render(); });
+  }
+  function mapUpload(file) {
+    if (!file) return;
+    MP.err = ''; MP.msg = ''; MP.plan = null;
+    loadXlsx().then(function () { return readFile(file); }).then(function (buf) {
+      var X = root.XLSX, wb = X.read(buf, { type: 'array' }), sn = wb.SheetNames.filter(function (n) { return n.indexOf('매핑') >= 0; })[0] || wb.SheetNames[0];
+      var P = C.skuMapParse(X.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '', raw: false }));
+      if (!P) throw new Error('"네이버 상품번호", "옵션값", "확정 SKU코드" 칸을 찾지 못했습니다. [매핑표 받기]로 받은 파일을 써 주세요.');
+      if (!P.rows.length) throw new Error('읽을 수 있는 줄이 없습니다 (SKU코드가 채워진 줄이 없음).');
+      var prev = {}; DATA.skuMap.forEach(function (r) { prev[r.k] = r; });
+      var changes = P.rows.filter(function (r) { return !prev[r.k] || C.skuCodeText(prev[r.k]) !== C.skuCodeText(r); }).map(function (r) { return r.prodId + ' ' + r.val + ': ' + (prev[r.k] ? C.skuCodeText(prev[r.k]) + ' → ' : '새로 ') + C.skuCodeText(r); });
+      MP.plan = { name: file.name.normalize('NFC'), P: P, merged: C.skuMapMerge(DATA.skuMap, P.rows), changes: changes };
+    }).catch(function (e) { MP.err = '매핑표를 읽지 못했습니다: ' + (e && e.message); }).then(render);
+  }
+  function mapSave() {
+    var pl = MP.plan; if (!pl || MP.saving) return;
+    var needBk = backupDay() !== today(); if (needBk) downloadBackup();
+    MP.saving = true; MP.err = ''; render();
+    root.TTData.saveRows([{ channel: 'skuMap', date: 'map', data: pl.merged.rows }]).then(function () {
+      MP.msg = '매핑표를 저장했습니다 (전체 ' + pl.merged.rows.length + '줄, 추가 ' + pl.merged.stat.added + ', 변경 ' + pl.merged.stat.changed + ')' + (needBk ? '. 저장 전에 백업 파일을 받았습니다.' : '.'); MP.plan = null;
+      return reloadData();
+    }).catch(function (e) { MP.err = '저장하지 못했습니다. ' + (e && e.message); }).then(function () { MP.saving = false; render(); });
+  }
+  /* ───────── 슬랙 웹훅 주소 등록 (슬랙 리포트 안, v5에서 옮김) ───────── */
+  var WH = { state: 'idle', url: '', msg: '', err: '', saving: false };
+  function hookLoad() { if (WH.state !== 'idle') return; WH.state = 'loading'; root.TTData.loadWebhook().then(function (u) { WH.url = u || ''; }).catch(function () { WH.url = ''; }).then(function () { WH.state = 'ready'; if (S.view === 'slack') { var el = document.getElementById('whstat'); if (el) el.innerHTML = hookStat(); } }); }
+  function hookStat() { return WH.state !== 'ready' ? '확인 중…' : WH.url ? '설정됨: ' + esc(WH.url.slice(0, 46)) + '…' : '<b class="warn">아직 설정되지 않았습니다</b>'; }
+  function hookCardHtml() {
+    hookLoad();
+    var h = '<section class="card" aria-label="슬랙 웹훅 주소"><div class="card-h"><h2>슬랙 웹훅 주소</h2><span class="hint">리포트를 보낼 슬랙 채널의 주소입니다. 한 번만 등록하면 됩니다</span></div>';
+    h += '<p class="note">지금 상태: <span id="whstat">' + hookStat() + '</span></p>';
+    h += '<div class="aipick"><div class="aibox"><input id="whurl" type="url" placeholder="https://hooks.slack.com/services/… (바꿀 때만 붙여넣기)" autocomplete="off"></div><button type="button" class="btn" data-act="whsave"' + (WH.saving ? ' disabled' : '') + '>' + (WH.saving ? '저장 중…' : '저장') + '</button></div>';
+    if (WH.msg) h += '<p class="note"><b>' + esc(WH.msg) + '</b></p>';
+    if (WH.err) h += '<p class="note"><b class="warn">' + esc(WH.err) + '</b></p>';
+    return h + '<p class="note">이 주소를 아는 사람은 누구나 그 채널에 글을 보낼 수 있으니 다른 곳에 붙여넣지 마세요.</p></section>';
+  }
+  function hookSave() {
+    var el = document.getElementById('whurl'), u = el ? el.value.trim() : '';
+    WH.msg = ''; WH.err = '';
+    if (u.indexOf('https://hooks.slack.com/services/') !== 0) { WH.err = '슬랙 웹훅 주소는 https://hooks.slack.com/services/ 로 시작합니다. 주소를 다시 확인해 주세요.'; render(); return; }
+    WH.saving = true; render();
+    root.TTData.saveRows([{ channel: 'slackConfig', date: 'webhook', data: [{ url: u }] }]).then(function () {
+      try { localStorage.setItem('tt_slack_webhook', u); } catch (e) { /* 브라우저 저장은 안 돼도 클라우드에 있으면 된다 */ }
+      WH.url = u; WH.state = 'ready'; WH.msg = '웹훅 주소를 저장했습니다.';
+    }).catch(function (e) { WH.err = '저장하지 못했습니다. ' + (e && e.message); }).then(function () { WH.saving = false; render(); });
+  }
+
   /* ───────── 슬랙 리포트 ─────────
    * 데일리는 위의 조회 기간과 비교 기간을 쓰고, 위클리와 먼슬리는 데이터 기준일까지 끝난 한 주, 한 달을 쓴다.
    * 문구는 보내기 전에 고칠 수 있고, 맨 아래에 대시보드 주소가 붙는다.
@@ -1907,7 +1989,7 @@
     h += '<div class="plan-f"><span>' + (SL.edited ? '직접 고친 문구입니다. <button type="button" class="chip" data-act="slreset">처음 문구로 되돌리기</button>' : '') + '</span>';
     h += '<button type="button" class="chip" data-act="slcopy">복사하기</button> <button type="button" class="btn" data-act="slsend"' + (SL.sending ? ' disabled' : '') + '>' + (SL.sending ? '보내는 중…' : '슬랙으로 보내기') + '</button></div>';
     if (SL.msg) h += '<p class="note"><b>' + esc(SL.msg) + '</b></p>';
-    h += '</section>';
+    h += '</section>' + hookCardHtml();
     return h;
   }
   function copyText(t) {
@@ -1919,7 +2001,7 @@
     if (!SL.text.trim()) { SL.msg = '보낼 문구가 없습니다.'; render(); return; }
     SL.sending = true; SL.msg = ''; render();
     root.TTData.loadWebhook().then(function (url) {
-      if (!url) throw new Error('슬랙 웹훅 주소가 설정되어 있지 않습니다 (v5 화면의 관리자 설정에서 등록)');
+      if (!url) throw new Error('슬랙 웹훅 주소가 설정되어 있지 않습니다 (이 화면 아래의 [슬랙 웹훅 주소] 칸에서 등록해 주세요)');
       return root.TTData.sendSlack(url, SL.text);
     }).then(function () { SL.msg = '슬랙으로 보냈습니다.'; }, function (e) {
       return copyText(SL.text).then(function (ok) { SL.msg = '보내지 못했습니다: ' + (e && e.message) + (ok ? '. 문구는 클립보드에 복사해 두었으니 슬랙에 붙여넣어 주세요.' : ''); });
@@ -1991,7 +2073,7 @@
     VIEWS.filter(function (v) { return v.group === 'view'; }).forEach(function (v) { h += navBtn(v); });
     h += '</div><div class="nav"><span class="nav-h">관리</span>';
     VIEWS.filter(function (v) { return v.group === 'manage'; }).forEach(function (v) { h += navBtn(v); });
-    h += '<a href="index.html">v5 화면<small>매핑표 등</small></a>';
+    h += '<a href="index.html">v5 화면<small>예전 화면</small></a>';
     h += '</div><div class="nav"><span class="nav-h">바로가기</span><a href="' + SNS_URL + '" target="_blank" rel="noopener">SNS 라이브러리<small>새 탭 ↗</small></a>';
     h += '</div><div class="side-status"><b class="' + (ok ? 'ok' : 'chk') + '">' + (ok ? '데이터 정상' : '확인 필요') + '</b><span>네이버 판매 ' + mdot(hl.lastNaver) + '까지</span><span>주문 ' + mdot(hl.lastOrders) + '까지</span></div></nav>';
     var canX = !!EXPORTABLE[cur.id];
@@ -2016,6 +2098,10 @@
     if (act === 'acsel') { S.acSel = key ? JSON.parse(key) : null; render(); return; }
     if (act === 'acbasis') { S.acBasis = key; S.acSel = null; render(); return; }
     if (act === 'accsv') { downloadAdTreeCsv(); return; }
+    if (act === 'mptpl') { mapTemplate(); return; }
+    if (act === 'mpno') { MP.plan = null; render(); return; }
+    if (act === 'mpsave') { mapSave(); return; }
+    if (act === 'whsave') { hookSave(); return; }
     if (act === 'iaedit') { if (IA.edit === key) { IA.edit = ''; IA.form = null; } else { IA.edit = key; IA.form = iaFormOf(key); IA.hist = ''; } IA.err = ''; IA.msg = ''; iaRefresh(); return; }
     if (act === 'iahist') { IA.hist = IA.hist === key ? '' : key; if (IA.hist) { IA.edit = ''; IA.form = null; } iaRefresh(); return; }
     if (act === 'iacancel') { IA.edit = ''; IA.form = null; IA.err = ''; iaRefresh(); return; }
@@ -2077,6 +2163,7 @@
   function onChange(ev) {
     var el = ev.target; if (!el.matches) return;
     if (el.matches('input[type="file"][data-act="iaimg"]')) { iaImage(el.getAttribute('data-key'), el.files && el.files[0]); return; }
+    if (el.matches('input[type="file"][data-act="mpxls"]')) { mapUpload(el.files && el.files[0]); el.value = ''; return; }
     if (el.matches('input[type="file"][data-act="iaxls"]')) { iaUpload(el.files && el.files[0]); el.value = ''; return; }
     if (el.matches('[data-ia]')) { if (IA.form) IA.form[el.getAttribute('data-ia')] = el.value; return; }
     if (el.matches('[data-pl]')) { // 계획 세우기: 날짜와 선택 칸은 다시 그리고, 글자 칸은 결과만 바꾼다

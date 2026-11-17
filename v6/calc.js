@@ -983,6 +983,65 @@
     return Object.keys(seen);
   }
 
+  /* ───────── 옵션 → SKU 매핑표 올리기 (v5의 parseSkuMap과 같은 읽기 규칙) ─────────
+   * v5와 다른 점: 통째로 바꾸지 않고 합친다. 파일에 있는 줄은 새 값으로, 파일에 없는 줄은 그대로 둔다.
+   */
+  function skuMapParse(rows) { // rows: 엑셀 첫 시트를 2차원 배열로 읽은 것 (첫 줄이 제목)
+    var hdr = (rows[0] || []).map(function (v) { return String(v || '').trim(); });
+    function col(prefix) { for (var i = 0; i < hdr.length; i++) if (hdr[i].indexOf(prefix) === 0) return i; return -1; }
+    var iPid = col('네이버 상품번호'), iVal = col('옵션값'), iCode = col('확정 SKU코드'), iNm = col('코드명'), iTyp = col('구분'), iPn = col('상품명'), iNote = col('비고');
+    if (iPid < 0 || iVal < 0 || iCode < 0) return null;
+    var out = [], seen = {}, dup = 0, bad = 0, empty = 0;
+    for (var i = 1; i < rows.length; i++) {
+      var r = rows[i], pid = String(r[iPid] || '').trim(), val = String(r[iVal] || '').trim();
+      if (!pid) continue;
+      if (!/^\d{6,}$/.test(pid)) { bad++; continue; }
+      if (!val) val = '(없음)';
+      if (val !== '(없음)') val = skuNorm(val);
+      var k = pid + '|' + val;
+      if (seen[k]) { dup++; continue; } seen[k] = 1;
+      var codes = parseParts(r[iCode]).filter(function (c) { return c.c; });
+      if (!codes.length) { empty++; continue; } // SKU코드가 빈 줄은 저장하지 않는다 (아직 안 채운 새 옵션)
+      var nmRaw = iNm >= 0 ? String(r[iNm] || '').trim() : '';
+      var names = codes.length === 1 ? (nmRaw ? [nmRaw] : []) : nmRaw.split(' + ').map(function (x) { return x.trim(); });
+      if (names.length !== codes.length) names = [];
+      out.push({ k: k, prodId: pid, val: val, typ: iTyp >= 0 ? String(r[iTyp] || '').trim() : '', pname: iPn >= 0 ? String(r[iPn] || '').trim() : '', codes: codes, names: names, note: iNote >= 0 ? String(r[iNote] || '').trim() : '' });
+    }
+    return { rows: out, dup: dup, bad: bad, empty: empty };
+  }
+  function skuCodeText(r) { return (r.codes || []).map(function (c) { return c.c + (c.q > 1 ? '*' + c.q : ''); }).join(' + '); }
+  function skuMapMerge(prev, rows) {
+    var m = {}, order = [], st = { added: 0, changed: 0, same: 0, kept: 0 }, touched = {};
+    (prev || []).forEach(function (r) { if (!r || !r.k) return; if (!m[r.k]) order.push(r.k); m[r.k] = r; });
+    rows.forEach(function (r) {
+      touched[r.k] = 1;
+      if (!m[r.k]) { order.push(r.k); st.added++; }
+      else if (skuCodeText(m[r.k]) !== skuCodeText(r)) st.changed++; else st.same++;
+      m[r.k] = r;
+    });
+    order.forEach(function (k) { if (!touched[k]) st.kept++; });
+    return { rows: order.map(function (k) { return m[k]; }), stat: st };
+  }
+  // 매핑표에 없는 옵션 목록 (수량 많은 순): 매핑표 엑셀의 "새 옵션" 줄로 쓴다
+  function skuUnmappedList(data) {
+    var ix = skuIndex(data.skuMap).idx, seen = {}, out = [];
+    data.orders.forEach(function (e) {
+      if (e.st === '미결제취소') return;
+      skuKeys(e).forEach(function (k) {
+        if (ix[k]) return;
+        if (!seen[k]) { seen[k] = { k: k, prodId: e.prodId, val: k.split('|').slice(1).join('|'), name: e.name || '', raw: e.opt || '(옵션 없음)', qty: 0, last: '' }; out.push(seen[k]); }
+        seen[k].qty += e.qty || 0; if (e.d > seen[k].last) { seen[k].last = e.d; seen[k].raw = e.opt || '(옵션 없음)'; }
+      });
+    });
+    return out.sort(function (a, b) { return b.qty - a.qty; });
+  }
+  // 매핑 줄마다 주문 수량, 최근 주문일, 옵션 원문 (엑셀 참고 칸)
+  function skuMapStats(data) {
+    var st = {};
+    data.orders.forEach(function (e) { if (e.st === '미결제취소') return; skuKeys(e).forEach(function (k) { var s = st[k] = st[k] || { q: 0, last: '', raw: '' }; s.q += e.qty || 0; if (e.d >= s.last) { s.last = e.d; s.raw = e.opt || '(옵션 없음)'; } }); });
+    return st;
+  }
+
   /* ───────── 판매 파일과 주문 파일 대조 (v5.36과 같은 규칙) ───────── */
   function orderCheck(data) {
     var ord = {}, sal = {}, salDates = {}, ordDates = {};
@@ -1075,6 +1134,7 @@
     summary: summary, delta: delta, daily: daily, bucket: bucket, autoUnit: autoUnit,
     dailyFull: dailyFull, bucketFull: bucketFull, totalFull: totalFull, coupangTop: coupangTop, otherByMarket: otherByMarket, otherRows: otherRows,
     adsDaily: adsDaily, adsBucket: adsBucket, adsTotal: adsTotal, adsBreakdown: adsBreakdown, ratio: ratio,
+    skuMapParse: skuMapParse, skuMapMerge: skuMapMerge, skuUnmappedList: skuUnmappedList, skuMapStats: skuMapStats, skuCodeText: skuCodeText,
     skuAggregate: skuAggregate, skuUnmapped: skuUnmapped, skuParseOpt: skuParseOpt, orderCheck: orderCheck,
     costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products, productSeries: productSeries, items: items, itemOrder: itemOrder, adTree: adTree, adPathSeries: adPathSeries, adItemDaily: adItemDaily, adItemList: adItemList, coupAdCode: coupAdCode, AD_OTHER: AD_OTHER, trafficDaily: trafficDaily, trafficBucket: trafficBucket, trafficTotal: trafficTotal, trafficPaths: trafficPaths, trafficItems: trafficItems, trafficOrder: trafficOrder, pageCodes: pageCodes, queryTop: queryTop, custDemo: custDemo, itemSeries: itemSeries, itemMaster: itemMaster, NONE: NONE, COUP_MAP: COUP_MAP,
     itemInfo: itemInfo, priceAt: priceAt, priceMerge: priceMerge, ITEM_PARTS: ITEM_PARTS,
