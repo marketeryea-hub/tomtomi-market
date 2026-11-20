@@ -2102,6 +2102,24 @@
     if (WH.err) h += '<p class="note"><b class="warn">' + esc(WH.err) + '</b></p>';
     return h + '<p class="note">이 주소를 아는 사람은 누구나 그 채널에 글을 보낼 수 있으니 다른 곳에 붙여넣지 마세요.</p></section>';
   }
+  var WF = { state: 'idle', url: '', msg: '', err: '', saving: false };
+  function fbHookLoad() { if (WF.state !== 'idle') return; WF.state = 'loading'; root.TTData.loadFeedbackHook().then(function (u) { WF.url = u || ''; }).then(function () { WF.state = 'ready'; if (S.view === 'slack') { var el = document.getElementById('wfstat'); if (el) el.innerHTML = fbHookStat(); } }); }
+  function fbHookStat() { return WF.state !== 'ready' ? '확인 중…' : WF.url ? '설정됨: ' + esc(WF.url.slice(0, 46)) + '…' : '아직 없음 (제보는 저장되지만 슬랙 알림은 가지 않습니다)'; }
+  function fbHookCardHtml() {
+    fbHookLoad();
+    var h = '<section class="card" aria-label="제보 알림 받을 곳"><div class="card-h"><h2>제보 알림 받을 곳</h2><span class="hint">버그, 개선 제보 알림만 따로 받는 곳입니다. 리포트 채널로는 보내지 않습니다</span></div>';
+    h += '<p class="note">지금 상태: <span id="wfstat">' + fbHookStat() + '</span></p>';
+    h += '<div class="aipick"><div class="aibox"><input id="wfurl" type="url" placeholder="https://hooks.slack.com/… (DM이나 나만 있는 채널의 웹훅)" autocomplete="off"></div><button type="button" class="btn" data-act="wfsave"' + (WF.saving ? ' disabled' : '') + '>' + (WF.saving ? '저장 중…' : '저장') + '</button>' + (WF.url ? '<button type="button" class="chip" data-act="wfoff">알림 끄기</button>' : '') + '</div>';
+    if (WF.msg) h += '<p class="note"><b>' + esc(WF.msg) + '</b></p>';
+    if (WF.err) h += '<p class="note"><b class="warn">' + esc(WF.err) + '</b></p>';
+    return h + '</section>';
+  }
+  function fbHookSave(u) {
+    WF.msg = ''; WF.err = '';
+    if (u && u.indexOf('https://hooks.slack.com/') !== 0) { WF.err = '슬랙 웹훅 주소는 https://hooks.slack.com/ 으로 시작합니다.'; render(); return; }
+    WF.saving = true; render();
+    root.TTData.saveRows([{ channel: 'slackConfig', date: 'feedback', data: [{ fbUrl: u }] }]).then(function () { WF.url = u; WF.state = 'ready'; WF.msg = u ? '저장했습니다. 이제 제보 알림은 여기로만 갑니다.' : '제보 슬랙 알림을 껐습니다. 제보는 그대로 저장됩니다.'; }, function (e) { WF.err = '저장하지 못했습니다. ' + (e && e.message); }).then(function () { WF.saving = false; render(); });
+  }
   function hookSave() {
     var el = document.getElementById('whurl'), u = el ? el.value.trim() : '';
     WH.msg = ''; WH.err = '';
@@ -2159,7 +2177,8 @@
       if (FB.list) FB.list.unshift(rec);
       FB.msg = '제보를 저장했습니다. 관리 > 제보 목록에서 볼 수 있어요.';
       var line = (rec.kind === 'bug' ? '🐞 대시보드 버그 제보' : '💡 대시보드 개선 제보') + ' (' + rec.at + ')\n' + rec.text.slice(0, 300) + (rec.text.length > 300 ? '…' : '') + '\n화면: ' + rec.ctx.view + (rec.ctx.period ? ', 기간 ' + rec.ctx.period : '') + (rec.img ? ', 캡처 있음' : '') + '\n📎 대시보드: ' + location.href.split(/[?#]/)[0];
-      return root.TTData.loadWebhook().then(function (url) { if (!url) throw new Error('웹훅 없음'); return root.TTData.sendSlack(url, line); }).then(function () { FB.msg += ' 슬랙에도 알렸습니다.'; }, function () { FB.msg += ' (슬랙 알림은 보내지 못했습니다)'; });
+      // 제보 알림은 리포트 채널이 아니라 따로 등록한 곳(예영 DM 등)으로만 보낸다. 등록 전이면 보내지 않는다
+      return root.TTData.loadFeedbackHook().then(function (url) { if (!url) { FB.msg += ' (제보 알림 받을 곳이 아직 없어 슬랙 알림은 보내지 않았습니다)'; return; } return root.TTData.sendSlack(url, line).then(function () { FB.msg += ' 슬랙 알림도 보냈습니다.'; }); }).catch(function () { FB.msg += ' (슬랙 알림은 보내지 못했습니다)'; });
     }).catch(function (e) { FB.err = '저장하지 못했습니다. ' + (e && e.message); })
       .then(function () { FB.saving = false; render(); setTimeout(function () { if (FB.msg) { FB.msg = ''; render(); } }, 7000); });
   }
@@ -2227,7 +2246,7 @@
     h += '<div class="plan-f"><span>' + (SL.edited ? '직접 고친 문구입니다. <button type="button" class="chip" data-act="slreset">처음 문구로 되돌리기</button>' : '') + '</span>';
     h += '<button type="button" class="chip" data-act="slcopy">복사하기</button> <button type="button" class="btn" data-act="slsend"' + (SL.sending ? ' disabled' : '') + '>' + (SL.sending ? '보내는 중…' : '슬랙으로 보내기') + '</button></div>';
     if (SL.msg) h += '<p class="note"><b>' + esc(SL.msg) + '</b></p>';
-    h += '</section>' + hookCardHtml();
+    h += '</section>' + hookCardHtml() + fbHookCardHtml();
     return h;
   }
   function copyText(t) {
@@ -2378,6 +2397,8 @@
     if (act === 'mpno') { MP.plan = null; render(); return; }
     if (act === 'mpsave') { mapSave(); return; }
     if (act === 'whsave') { hookSave(); return; }
+    if (act === 'wfsave') { var wi = document.getElementById('wfurl'); fbHookSave(wi ? wi.value.trim() : ''); return; }
+    if (act === 'wfoff') { fbHookSave(''); return; }
     if (act === 'iaedit') { if (IA.edit === key) { IA.edit = ''; IA.form = null; } else { IA.edit = key; IA.form = iaFormOf(key); IA.hist = ''; } IA.err = ''; IA.msg = ''; iaRefresh(); return; }
     if (act === 'iahist') { IA.hist = IA.hist === key ? '' : key; if (IA.hist) { IA.edit = ''; IA.form = null; } iaRefresh(); return; }
     if (act === 'iacancel') { IA.edit = ''; IA.form = null; IA.err = ''; iaRefresh(); return; }
