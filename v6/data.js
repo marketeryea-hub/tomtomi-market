@@ -147,7 +147,7 @@
   function loadWebhook() {
     var local = ''; try { local = localStorage.getItem('tt_slack_webhook') || ''; } catch (e) { /* 무시 */ }
     if (local) return Promise.resolve(local);
-    var url = SUPABASE_URL + '/rest/v1/tomtomi_data?select=data&channel=eq.slackConfig';
+    var url = SUPABASE_URL + '/rest/v1/tomtomi_data?select=data&channel=eq.slackConfig&date=eq.webhook';
     return fetch(url, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } })
       .then(function (res) { return res.ok ? res.json() : []; })
       .then(function (rows) { var u = ''; (rows || []).forEach(function (r) { (r.data || []).forEach(function (x) { if (x && x.url) u = x.url; }); }); return u; })
@@ -189,11 +189,18 @@
     return Promise.all([a, b]).then(function () { return out; });
   }
   // 슬랙 보내기: v5와 같은 방식(본문만 JSON 문자열로, 브라우저 사전 확인 없이)
+  // 제보 알림을 받을 곳 (리포트 채널과 따로): slackConfig 채널의 'feedback' 줄 { fbUrl }
+  function loadFeedbackHook() {
+    return fetch(SUPABASE_URL + '/rest/v1/tomtomi_data?select=data&channel=eq.slackConfig&date=eq.feedback', { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } })
+      .then(function (res) { return res.ok ? res.json() : []; })
+      .then(function (rows) { var u = ''; (rows || []).forEach(function (r) { (r.data || []).forEach(function (x) { if (x && x.fbUrl) u = x.fbUrl; }); }); return u; })
+      .catch(function () { return ''; });
+  }
   function sendSlack(webhook, text) {
     return fetch(webhook, { method: 'POST', body: JSON.stringify({ text: text }) }).then(function (res) {
       return res.text().then(function (t) { if (!res.ok) throw new Error('HTTP ' + res.status + (t ? ' (' + t + ')' : '')); return true; });
     });
   }
 
-  root.TTData = { load: load, saveCost: saveCost, saveRows: saveRows, loadImages: loadImages, snapshot: snapshot, loadFeedback: loadFeedback, loadWebhook: loadWebhook, loadOnline: loadOnline, sendSlack: sendSlack };
+  root.TTData = { load: load, saveCost: saveCost, saveRows: saveRows, loadImages: loadImages, snapshot: snapshot, loadFeedback: loadFeedback, loadFeedbackHook: loadFeedbackHook, loadWebhook: loadWebhook, loadOnline: loadOnline, sendSlack: sendSlack };
 })(window);
