@@ -232,5 +232,12 @@ eq('쿠팡 광고 상품명 연결', ['톰토미 루나 NEW 봉제인형,블루,
   const T = C.itemTrend(D, ['A'], '2026-03-01', '2026-03-03', 'day');
   eq('추이: 날짜별 채널 수량', T.rows.A.other.map(x => x.qty), [1, 40, 0]);
 }
+// 소모품, 비품: 마지막 저장분, 삭제 제외, 창고별 합계
+{
+  const L = C.supplyList([{ id: 'a', box: 'B박스', name: '테이프', price: 1000, qty: 3, updated: '1' }, { id: 'a', box: 'B박스', name: '테이프', price: 1200, qty: 5, updated: '2' },
+    { id: 'b', box: 'A박스', name: '포장지', price: '2,000', qty: 2, updated: '1' }, { id: 'c', box: 'A박스', name: '버린 것', price: 1, qty: 1, del: 1 }, { id: 'd', name: '박스 없음', price: 0, qty: 1 }]);
+  eq('비품 목록: 창고 순, 마지막 저장분, 삭제 제외, 숫자 쉼표', L.map(e => [e.box, e.name, e.price, e.qty]), [['(창고 미지정)', '박스 없음', 0, 1], ['A박스', '포장지', 2000, 2], ['B박스', '테이프', 1200, 5]]);
+  eq('창고별 합계', C.supplyBoxes(L).map(b => [b.box, b.n, b.qty, b.amount]), [['(창고 미지정)', 1, 1, 0], ['A박스', 1, 2, 4000], ['B박스', 1, 5, 6000]]);
+}
 console.log(fail ? '실패 ' + fail + '건' : '모든 규칙 통과');
 process.exit(fail ? 1 : 0);

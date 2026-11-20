@@ -9,7 +9,7 @@
   var DATA = null, RAW = null;      // 정리된 데이터
   var META = {};        // 불러오기 결과(기타마켓 연결 여부 등)
   var S = { view: 'home', from: '', to: '', preset: '1', cmp: 'prev', cmpFrom: '', cmpTo: '', ch: 'all', unit: 'auto', ad: 'store', page: 0, pch: 'all', pmode: 'item', open: '', draft: null, costMsg: '', saving: false, q: '', sel: [], selMsg: '', tpage: 0, topen: '', acOpen: {}, acSel: null, acBasis: 'ad', adView: 'camp', aitem: '', amd: 'all', apage: 0, aopen: {}, aiq: '', ppage: 0, psize: 10, dsort: 'new', ipage: 0, ptunit: 'auto', ptmet: 'qty', mpage: 0 };
-  var READY = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, promo: 1, data: 1, slack: 1, itemadmin: 1, feedback: 1 }; // 옮겨온 메뉴
+  var READY = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, promo: 1, data: 1, slack: 1, itemadmin: 1, feedback: 1, supply: 1 }; // 옮겨온 메뉴
   var STORE_KEY = 'tt6_state';
 
   var VIEWS = [
@@ -22,6 +22,7 @@
     { id: 'slack', label: '슬랙 리포트', group: 'manage' },
     { id: 'data', label: '데이터 관리', group: 'manage' },
     { id: 'itemadmin', label: '상품 관리', group: 'manage' },
+    { id: 'supply', label: '소모품, 비품 관리', group: 'manage' },
     { id: 'feedback', label: '제보 목록', group: 'manage' },
   ];
   var SNS_URL = 'https://script.google.com/macros/s/AKfycbwPP2q4xCM9g5XQwGLELKyS8lxRY9Nz1K9xMSb6wB3lSJtb4y1hmDIKb7gruPMcvMz-bA/exec';
@@ -234,7 +235,7 @@
 
   /* ───────── 표 넘겨보기: 최근 날짜부터 10줄씩 ───────── */
   var PAGE_SIZE_DEF = 10;
-  var PSIZES = [10, 20, 30, 40, 50], PFIELDS = ['page', 'apage', 'tpage', 'ppage', 'ipage', 'mpage'];
+  var PSIZES = [10, 20, 30, 40, 50], PFIELDS = ['page', 'apage', 'tpage', 'ppage', 'ipage', 'mpage', 'spage'];
   var EXPORT_ALL = false; // 엑셀로 내보낼 때: 모든 줄을 한 번에, 펼칠 수 있는 줄은 다 펼쳐서 그린다
   function pageOf(list, size, field) {
     var f = field || 'page', PAGE_SIZE = PSIZES.indexOf(+S.psize) >= 0 ? +S.psize : 10, pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
@@ -1939,7 +1940,7 @@
    */
   var RS = { name: '', bk: null, cloud: null, diff: null, err: '', msg: '', busy: '', mode: 'fill', ch: '', from: '', to: '', open: '', confirm: '' };
   var RS_SKIP = { other: 1, roi: 1 }; // roi는 v5 백업에만 있던 화면 설정 // 기타몰은 구글 시트가 원본이라 클라우드로 되돌리지 않는다
-  var RS_NAME = { promo: '프로모션', itemInfo: '상품 가격', itemImg: '상품 이미지', skuMap: '옵션 매핑표', skuCost: '원가표', slackConfig: '슬랙 웹훅', naverAdCreative: '네이버 소재 목록', naverQuery: '검색어 (보관 데이터)', naverCustNew: '고객 (보관 데이터)', naverCustDemo: '고객 연령/성별 (보관 데이터)', feedback: '제보' };
+  var RS_NAME = { promo: '프로모션', itemInfo: '상품 가격', itemImg: '상품 이미지', skuMap: '옵션 매핑표', skuCost: '원가표', slackConfig: '슬랙 웹훅', naverAdCreative: '네이버 소재 목록', naverQuery: '검색어 (보관 데이터)', naverCustNew: '고객 (보관 데이터)', naverCustDemo: '고객 연령/성별 (보관 데이터)', feedback: '제보', supply: '소모품, 비품', supplyImg: '소모품, 비품 이미지' };
   function rsName(ch) { return RS_NAME[ch] || CH_LABEL[ch] || ch; }
   function rsIsDate(k) { return /^\d{4}-\d{2}-\d{2}$/.test(k); }
   function rsInRange(k) { if (!rsIsDate(k)) return true; return (!RS.from || k >= RS.from) && (!RS.to || k <= RS.to); } // 날짜가 아닌 줄(매핑표 등)은 범위와 상관없이 고른 종류면 대상
@@ -2131,6 +2132,145 @@
     }).catch(function (e) { WH.err = '저장하지 못했습니다. ' + (e && e.message); }).then(function () { WH.saving = false; render(); });
   }
 
+  /* ───────── 소모품, 비품 관리 (관리 메뉴) ─────────
+   * 창고(박스)가 가장 큰 분류. 표: 창고(박스) | 이미지 | 품목명 | 코드 | 구매가 | 수량 | 금액 | 관리
+   * 저장: channel supply (비품 1개 = 1줄, 구매가/수량이 바뀌면 hist에 이전 값을 쌓음, 삭제는 del 표시), 이미지 = channel supplyImg (480px)
+   */
+  var SP = { q: '', box: '', edit: '', hist: '', form: null, msg: '', err: '', saving: false, imgs: {}, imgState: 'idle', delAsk: '', plan: null };
+  function spLoadImages() {
+    if (SP.imgState !== 'idle') return; SP.imgState = 'loading';
+    root.TTData.loadSupplyImages().then(function (m) { SP.imgs = m; SP.imgState = 'ready'; }, function () { SP.imgState = 'fail'; }).then(function () { if (S.view === 'supply') spRefresh(); });
+  }
+  function spGet(id) { return DATA.supply.filter(function (e) { return e.id === id; })[0] || null; }
+  function spRaw(id) { var r = null; (RAW.supply || []).forEach(function (e) { if (e && e.id === id && (!r || String(e.updated || '') >= String(r.updated || ''))) r = e; }); return r; }
+  function spList() {
+    var q = SP.q.trim().toLowerCase(), words = q ? q.split(/\s+/) : [];
+    return DATA.supply.filter(function (e) { if (SP.box && e.box !== SP.box) return false; if (!words.length) return true; var t = (e.box + ' ' + e.name + ' ' + e.code + ' ' + e.memo).toLowerCase(); return words.every(function (w) { return t.indexOf(w) >= 0; }); });
+  }
+  function spFormHtml(f, colspan) {
+    var boxes = C.supplyBoxes(DATA.supply).map(function (b) { return b.box; }).filter(function (b) { return b !== '(창고 미지정)'; });
+    function inp(label, field, ph, hint, num) { return '<label><span>' + label + '</span><input type="text"' + (num ? ' inputmode="numeric"' : '') + ' data-sp="' + field + '" value="' + esc(f[field]) + '" placeholder="' + esc(ph || '') + '" autocomplete="off"' + (field === 'box' ? ' list="spboxes"' : '') + '>' + (hint ? '<small>' + hint + '</small>' : '') + '</label>'; }
+    var h = '<div class="pform">' + inp('창고 (박스)', 'box', '예: 1번 박스, 사무실 선반', '가장 큰 분류입니다. 있던 이름은 목록에서 고를 수 있어요') + '<datalist id="spboxes">' + boxes.map(function (b) { return '<option value="' + esc(b) + '">'; }).join('') + '</datalist>';
+    h += inp('품목명', 'name', '예: 박스테이프') + inp('코드 (선택)', 'code', '') + inp('구매가 (원, 1개)', 'price', '0', '', true) + inp('수량', 'qty', '0', '', true) + inp('메모', 'memo', '');
+    h += f.id ? '<label><span>이미지</span><input type="file" accept="image/*" data-act="spimg" data-key="' + esc(f.id) + '"><small>사진을 고르면 줄여서 바로 저장합니다</small></label>' : '<label><span>이미지</span><small>먼저 저장한 뒤 [수정]에서 넣을 수 있어요</small></label>';
+    h += '</div><p class="note" id="spmsg"' + (SP.err ? '' : ' hidden') + '><b class="warn">' + esc(SP.err) + '</b></p>';
+    h += '<div class="plan-f"><span></span><button type="button" class="chip" data-act="spcancel">취소</button><button type="button" class="btn" data-act="spsave"' + (SP.saving ? ' disabled' : '') + '>' + (SP.saving ? '저장 중…' : '저장') + '</button></div>';
+    return colspan ? '<tr class="iaform"><td colspan="' + colspan + '">' + h + '</td></tr>' : h;
+  }
+  function spTableHtml() {
+    var list = spList(), pg = pageOf(list, 10, 'spage'), nc = 8, h = '', prevBox = null, t = { qty: 0, amount: 0 };
+    list.forEach(function (e) { t.qty += e.qty; t.amount += e.price * e.qty; });
+    h += '<div class="scroll"><table class="tbl wrap iatbl sptbl"><thead><tr><th scope="col">창고 (박스)</th><th scope="col">이미지</th><th scope="col">품목명</th><th scope="col">코드</th><th scope="col" class="r">구매가</th><th scope="col" class="r">수량</th><th scope="col" class="r">금액</th><th scope="col" class="r">관리</th></tr></thead><tbody>';
+    if (!list.length) h += '<tr><td colspan="' + nc + '" class="none">' + (DATA.supply.length ? '검색 결과가 없습니다.' : '아직 등록한 소모품, 비품이 없습니다. 위의 [+ 새로 등록]이나 [엑셀로 한 번에 올리기]로 시작해 주세요.') + '</td></tr>';
+    pg.rows.forEach(function (e) {
+      var img = SP.imgs[e.id], first = e.box !== prevBox; prevBox = e.box;
+      h += '<tr' + (SP.edit === e.id ? ' class="on"' : '') + '><td class="spbox' + (first ? '' : ' same') + '">' + (first || EXPORT_ALL ? esc(e.box) : '') + '</td>';
+      h += '<td class="iaimg">' + (EXPORT_ALL ? (img ? '있음' : '') : img ? '<img class="ithumb" src="' + img + '" alt="' + esc(e.name) + '" data-big="1" tabindex="0">' : '<span class="ithumb none" aria-label="이미지 없음"></span>') + '</td>';
+      h += '<th scope="row">' + esc(e.name) + (e.memo && !EXPORT_ALL ? '<small class="iasub">' + esc(e.memo) + '</small>' : '') + '</th><td>' + (e.code ? esc(e.code) : '<span class="zero">-</span>') + '</td>';
+      h += '<td class="r num">' + n0(e.price) + '</td><td class="r num b">' + n0(e.qty) + '</td><td class="r num">' + n0(e.price * e.qty) + '</td>';
+      h += '<td class="r pact">' + (SP.delAsk === e.id ? '<button type="button" class="chip danger" data-act="spdel" data-key="' + esc(e.id) + '">정말 삭제</button><button type="button" class="chip" data-act="spdelno">취소</button>'
+        : '<button type="button" class="chip" data-act="spedit" data-key="' + esc(e.id) + '">수정</button><button type="button" class="chip" data-act="sphist" data-key="' + esc(e.id) + '" aria-expanded="' + (SP.hist === e.id) + '">이력</button><button type="button" class="chip" data-act="spdelask" data-key="' + esc(e.id) + '">삭제</button>') + '</td></tr>';
+      if (EXPORT_ALL) return;
+      if (SP.edit === e.id && SP.form) h += spFormHtml(SP.form, nc);
+      if (SP.hist === e.id) {
+        var hs = (e.hist || []).slice().reverse();
+        h += '<tr class="iaform"><td colspan="' + nc + '"><b class="plh">구매가, 수량 이력</b>' + (hs.length ? '<table class="tbl"><thead><tr><th scope="col">바꾼 때</th><th scope="col" class="r">구매가</th><th scope="col" class="r">수량</th></tr></thead><tbody><tr><th scope="row">지금 <span class="chtag on">최신</span></th><td class="r num">' + n0(e.price) + '</td><td class="r num">' + n0(e.qty) + '</td></tr>' + hs.map(function (x) { return '<tr><th scope="row" class="num">' + esc(x.at || '') + ' 전까지</th><td class="r num">' + n0(x.price) + '</td><td class="r num">' + n0(x.qty) + '</td></tr>'; }).join('') + '</tbody></table>' : '<p class="note">아직 바뀐 적이 없습니다.</p>') + '</td></tr>';
+      }
+    });
+    if (list.length) h += '<tr class="sum"><th scope="row">' + (SP.q.trim() || SP.box ? '보이는 것 합계' : '합계') + '</th><td></td><td>' + list.length + '개 품목</td><td></td><td></td><td class="r num">' + n0(t.qty) + '</td><td class="r num b">' + n0(t.amount) + '</td><td></td></tr>';
+    return h + '</tbody></table>' + pagerHtml(pg, true) + '</div>';
+  }
+  function spRefresh() { var t = document.getElementById('sptbl'); if (t) t.innerHTML = spTableHtml(); else render(); }
+  function viewSupply() {
+    spLoadImages();
+    var boxes = C.supplyBoxes(DATA.supply), tot = { n: DATA.supply.length, amount: 0 }, h = '';
+    boxes.forEach(function (b) { tot.amount += b.amount; });
+    h += '<section class="card" aria-label="소모품, 비품 관리"><div class="card-h"><h2>소모품, 비품 관리</h2><span class="hint">창고 ' + boxes.length + '곳, 품목 ' + tot.n + '개, 금액 합계 ' + n0(tot.amount) + '원</span>' + (SP.form && !SP.form.id ? '' : '<button type="button" class="btn" data-act="spnew">+ 새로 등록</button>') + '</div>';
+    h += '<div class="aipick"><label for="spq">검색</label><div class="aibox"><input id="spq" type="search" data-act="spq" value="' + esc(SP.q) + '" placeholder="창고, 품목명, 코드, 메모로 검색" autocomplete="off"></div>';
+    h += '<button type="button" class="chip" data-act="sptpl">엑셀 양식 받기</button><label class="chip filebtn">엑셀로 한 번에 올리기<input type="file" accept=".xlsx,.xls" data-act="spxls" hidden></label></div>';
+    h += '<div class="pchips spboxes" role="group" aria-label="창고 (박스)"><button type="button" class="chip" data-act="spbox" data-key="" aria-pressed="' + (!SP.box) + '">전체 창고</button>' + boxes.map(function (b) { return '<button type="button" class="chip" data-act="spbox" data-key="' + esc(b.box) + '" aria-pressed="' + (SP.box === b.box) + '">' + esc(b.box) + ' <small>' + b.n + '</small></button>'; }).join('') + '</div>';
+    if (SP.msg) h += '<p class="note"><b>' + esc(SP.msg) + '</b></p>';
+    if (SP.err && !SP.form) h += '<p class="note"><b class="warn">' + esc(SP.err) + '</b></p>';
+    h += '</section>';
+    if (SP.form && !SP.form.id) h += '<section class="card" aria-label="새로 등록"><div class="card-h"><h2>새로 등록</h2></div>' + spFormHtml(SP.form) + '</section>';
+    if (SP.plan) {
+      var P = SP.plan;
+      h += '<section class="card" aria-label="엑셀 올리기 확인"><div class="card-h"><h2>엑셀 올리기 확인</h2><span class="hint">' + esc(P.name) + '</span></div><div class="plan"><p><b>새로 추가 ' + P.add + '개, 바뀌는 것 ' + P.change + '개</b>, 그대로 ' + P.same + '개</p>' + (P.bad.length ? '<p><b class="warn">건너뛴 줄: ' + esc(P.bad.slice(0, 6).join(', ')) + (P.bad.length > 6 ? ' 외 ' + (P.bad.length - 6) + '개' : '') + '</b></p>' : '') + '<p class="zero">같은 창고, 같은 품목명이면 같은 품목으로 봅니다. 엑셀에 없는 품목은 지우지 않습니다.</p></div><div class="plan-f"><span></span><button type="button" class="chip" data-act="spplanno">취소</button><button type="button" class="btn" data-act="spplansave"' + (SP.saving || !(P.add + P.change) ? ' disabled' : '') + '>' + (SP.saving ? '저장 중…' : '저장') + '</button></div></section>';
+    }
+    h += '<section class="card flush" aria-label="소모품, 비품 목록"><div id="sptbl">' + spTableHtml() + '</div></section>';
+    h += '<span class="note tight">금액 = 구매가 × 수량. 이미지에 마우스를 올리면 크게 보입니다. 구매가나 수량을 바꾸면 이전 값은 [이력]에 남습니다.</span>';
+    return h;
+  }
+  function spRecord(f, prev) { // 저장할 줄 하나 만들기. 구매가/수량이 바뀌면 이전 값을 이력에 쌓는다
+    var price = iaNum(f.price), qty = iaNum(f.qty), now = new Date(), at = today() + ' ' + now.toTimeString().slice(0, 5);
+    var rec = { d: f.id || 'sp' + now.getTime().toString(36) + Math.random().toString(36).slice(2, 5), box: f.box.trim(), name: f.name.trim(), code: f.code.trim(), price: price || 0, qty: qty || 0, memo: f.memo.trim(), hist: prev ? (prev.hist || []).slice() : [], updated: now.toISOString() };
+    rec.id = rec.d;
+    if (prev && (C.num(prev.price) !== rec.price || C.num(prev.qty) !== rec.qty)) rec.hist.push({ at: at, price: C.num(prev.price), qty: C.num(prev.qty) });
+    return rec;
+  }
+  function spWrite(recs, okMsg) {
+    SP.saving = true; SP.err = ''; render();
+    return root.TTData.saveRows(recs.map(function (r) { return { channel: 'supply', date: r.id, data: [r] }; })).then(function () {
+      recs.forEach(function (r) { RAW.supply = (RAW.supply || []).filter(function (e) { return e && e.id !== r.id; }); RAW.supply.push(r); });
+      DATA.supply = C.supplyList(RAW.supply); SP.msg = okMsg; SP.form = null; SP.edit = ''; SP.delAsk = ''; SP.plan = null;
+    }).catch(function (e) { SP.err = '저장하지 못했습니다. ' + (e && e.message); }).then(function () { SP.saving = false; render(); });
+  }
+  function spSave() {
+    var f = SP.form; if (!f || SP.saving) return;
+    function bad(m) { SP.err = m; if (f.id) spRefresh(); else render(); }
+    if (!f.box.trim()) return bad('창고(박스)를 적어 주세요.');
+    if (!f.name.trim()) return bad('품목명을 적어 주세요.');
+    var p = iaNum(f.price), q = iaNum(f.qty);
+    if ((p !== null && !(p >= 0)) || (q !== null && !(q >= 0))) return bad('구매가와 수량은 0 이상의 숫자로 적어 주세요.');
+    if (!f.id && DATA.supply.some(function (e) { return e.box === f.box.trim() && e.name === f.name.trim(); })) return bad('같은 창고에 같은 이름의 품목이 이미 있습니다. 그 품목의 [수정]을 눌러 주세요.');
+    spWrite([spRecord(f, f.id ? spRaw(f.id) : null)], (f.id ? '고쳤습니다: ' : '등록했습니다: ') + f.name.trim());
+  }
+  function spDelete(id) { var r = spRaw(id); if (!r) return; var rec = {}; Object.keys(r).forEach(function (k) { rec[k] = r[k]; }); rec.del = 1; rec.updated = new Date().toISOString(); spWrite([rec], '삭제했습니다: ' + r.name); }
+  function spFormOf(e) { return e ? { id: e.id, box: e.box === '(창고 미지정)' ? '' : e.box, name: e.name, code: e.code, price: String(e.price || ''), qty: String(e.qty || ''), memo: e.memo || '' } : { id: '', box: SP.box || '', name: '', code: '', price: '', qty: '', memo: '' }; }
+  function spImage(id, file) {
+    if (!file) return;
+    fbShrink(file, 480).then(function (url) {
+      return root.TTData.saveRows([{ channel: 'supplyImg', date: id, data: [{ d: id, id: id, img: url, updated: new Date().toISOString() }] }]).then(function () { SP.imgs[id] = url; SP.err = ''; SP.msg = '이미지를 저장했습니다.'; });
+    }).catch(function (e) { SP.err = '이미지를 저장하지 못했습니다. ' + (e && e.message); }).then(spRefresh);
+  }
+  var SP_HEAD = ['창고 (박스)', '품목명', '코드', '구매가', '수량', '메모'];
+  function spTemplate() {
+    loadXlsx().then(function () {
+      var X = root.XLSX, rows = [SP_HEAD];
+      DATA.supply.forEach(function (e) { rows.push([e.box === '(창고 미지정)' ? '' : e.box, e.name, e.code, e.price, e.qty, e.memo]); });
+      if (rows.length === 1) rows.push(['1번 박스', '박스테이프 (예시, 지우고 쓰세요)', '', 1500, 10, '']);
+      var ws = X.utils.aoa_to_sheet(rows); ws['!cols'] = [{ wch: 18 }, { wch: 36 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 30 }];
+      var wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, '소모품 비품');
+      X.writeFile(wb, '톰토미_소모품비품_' + today().replace(/-/g, '') + '.xlsx');
+    }).catch(function (e) { SP.err = e && e.message; render(); });
+  }
+  function spUpload(file) {
+    if (!file) return;
+    SP.err = ''; SP.msg = ''; SP.plan = null;
+    loadXlsx().then(function () { return readFile(file); }).then(function (buf) {
+      var X = root.XLSX, wb = X.read(buf, { type: 'array' }), rows = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+      var hd = (rows[0] || []).map(function (v) { return String(v || '').trim(); }), col = function (k) { for (var i = 0; i < hd.length; i++) if (hd[i].indexOf(k) === 0) return i; return -1; };
+      var iB = col('창고'), iN = col('품목명'), iC = col('코드'), iP = col('구매가'), iQ = col('수량'), iM = col('메모');
+      if (iB < 0 || iN < 0) throw new Error('첫 줄에 "창고 (박스)", "품목명" 칸이 없습니다. [엑셀 양식 받기]로 받은 파일을 써 주세요.');
+      var by = {}; DATA.supply.forEach(function (e) { by[e.box + '|' + e.name] = e; });
+      var P = { name: file.name.normalize('NFC'), recs: [], add: 0, change: 0, same: 0, bad: [] }, seen = {};
+      rows.slice(1).forEach(function (r, i) {
+        var box = String(r[iB] || '').trim(), name = String(r[iN] || '').trim(); if (!box && !name) return;
+        if (!box || !name) { P.bad.push((i + 2) + '번째 줄 (창고나 품목명 빈칸)'); return; }
+        if (seen[box + '|' + name]) { P.bad.push((i + 2) + '번째 줄 (같은 품목이 두 번)'); return; } seen[box + '|' + name] = 1;
+        var cur = by[box + '|' + name], f = cur ? spFormOf(cur) : spFormOf(null);
+        f.box = box; f.name = name;
+        function take(idx, k) { if (idx < 0) return; var v = String(r[idx] === undefined ? '' : r[idx]).trim(); if (v !== '') f[k] = v; }
+        take(iC, 'code'); take(iP, 'price'); take(iQ, 'qty'); take(iM, 'memo');
+        var p = iaNum(f.price), q = iaNum(f.qty); if ((p !== null && !(p >= 0)) || (q !== null && !(q >= 0))) { P.bad.push((i + 2) + '번째 줄 (구매가나 수량이 숫자가 아님)'); return; }
+        var rec = spRecord(f, cur ? spRaw(cur.id) : null);
+        if (cur && rec.code === cur.code && rec.price === cur.price && rec.qty === cur.qty && rec.memo === (cur.memo || '')) { P.same++; return; }
+        if (cur) P.change++; else P.add++;
+        P.recs.push(rec);
+      });
+      SP.plan = P;
+    }).catch(function (e) { SP.err = '엑셀을 읽지 못했습니다: ' + (e && e.message); }).then(render);
+  }
   /* ───────── 버그, 개선 제보 ─────────
    * 어느 화면에서든 왼쪽 [제보하기] → 종류, 내용, 캡처(파일 고르기 또는 Cmd+V 붙여넣기) → 저장.
    * 지금 보던 메뉴, 조회 기간, 버전 등은 자동으로 붙는다. 저장: channel feedback, date = 제보 id (캡처는 긴 쪽 1280px JPEG로 줄여 같은 줄에)
@@ -2141,7 +2281,7 @@
   function fbVersion() { var sc = document.querySelector('script[src*="ui.js"]'); var m = sc && sc.src.match(/v=([\d.]+)/); return m ? m[1] : ''; }
   function fbContext() {
     var cur = VIEWS.filter(function (v) { return v.id === S.view; })[0] || VIEWS[0], c = { view: cur.label, version: fbVersion(), last: DATA.last, ua: navigator.userAgent.slice(0, 160), size: window.innerWidth + 'x' + window.innerHeight };
-    if (S.view !== 'data' && S.view !== 'promo' && S.view !== 'itemadmin' && S.view !== 'feedback') { c.period = S.from + ' ~ ' + S.to; c.cmp = cmpRange() ? cmpRange().from + ' ~ ' + cmpRange().to : '없음'; }
+    if (S.view !== 'data' && S.view !== 'promo' && S.view !== 'itemadmin' && S.view !== 'feedback' && S.view !== 'supply') { c.period = S.from + ' ~ ' + S.to; c.cmp = cmpRange() ? cmpRange().from + ' ~ ' + cmpRange().to : '없음'; }
     if (S.view === 'products') { c.channel = CH_NAME[S.pch] || '전체'; c.items = S.sel.join(', '); if (S.q) c.search = S.q; }
     if (S.view === 'ads') { c.ad = S.ad; c.adView = S.adView; if (S.adView === 'item') c.item = S.aitem; }
     if (S.view === 'sales') c.channel = CH_NAME[S.ch] || S.ch;
@@ -2271,13 +2411,13 @@
 
   /* ───────── 그리기 ───────── */
   function viewHtml(cur) {
-    return cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : cur.id === 'ads' ? viewAds() : cur.id === 'products' ? viewProducts() : cur.id === 'customers' ? viewCustomers() : cur.id === 'promo' ? viewPromo() : cur.id === 'data' ? viewData() : cur.id === 'itemadmin' ? viewItemAdmin() : cur.id === 'feedback' ? viewFeedback() : cur.id === 'slack' ? viewSlack() : viewSoon(cur.label);
+    return cur.id === 'home' ? viewHome() : cur.id === 'sales' ? viewSales() : cur.id === 'ads' ? viewAds() : cur.id === 'products' ? viewProducts() : cur.id === 'customers' ? viewCustomers() : cur.id === 'promo' ? viewPromo() : cur.id === 'data' ? viewData() : cur.id === 'itemadmin' ? viewItemAdmin() : cur.id === 'feedback' ? viewFeedback() : cur.id === 'supply' ? viewSupply() : cur.id === 'slack' ? viewSlack() : viewSoon(cur.label);
   }
   /* ───────── 지금 화면 전체를 엑셀로 ─────────
    * 지금 보는 메뉴를 "모든 줄, 다 펼친 상태"로 한 번 더 그린 뒤, 그 안의 요약 칸과 표를 시트로 옮긴다.
    * 화면과 같은 계산을 그대로 쓰므로 화면 숫자와 엑셀 숫자가 달라질 수 없다. 표 하나 = 시트 하나.
    */
-  var EXPORTABLE = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, promo: 1, itemadmin: 1 }, XMSG = '';
+  var EXPORTABLE = { home: 1, sales: 1, ads: 1, products: 1, customers: 1, promo: 1, itemadmin: 1, supply: 1 }, XMSG = '';
   function xText(el) { return el.textContent.replace(/[▸▾]/g, '').replace(/\s+/g, ' ').trim(); }
   function xVal(t) { // 쉼표 숫자는 숫자로, 나머지(날짜, %, 코드)는 글자 그대로
     if (/^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$/.test(t) || /^[+-]?\d+(\.\d+)?$/.test(t) && !/^0\d/.test(t) && t.length < 12) return parseFloat(t.replace(/[,+]/g, ''));
@@ -2316,7 +2456,7 @@
       function add(name, rows, widths) { var ws = X.utils.aoa_to_sheet(rows); ws['!cols'] = (widths || rows[0] || []).map(function (c, i) { var w = 8; rows.forEach(function (r) { var l = String(r[i] === undefined || r[i] === null ? '' : r[i]).length; if (l > w) w = l; }); return { wch: Math.min(60, w * 1.6 + 2) }; }); X.utils.book_append_sheet(wb, ws, sheetName(name)); }
       // 1) 요약 시트: 어떤 화면, 어떤 기간인지 + 요약 칸
       var cr = cmpRange(), info = [['메뉴', cur.label], ['데이터 기준일', DATA.last], ['받은 시각', new Date().toLocaleString('ko-KR')]];
-      if (cur.id !== 'promo' && cur.id !== 'itemadmin') { info.push(['조회 기간', S.from + ' ~ ' + S.to, (C.dayDiff(S.from, S.to) + 1) + '일']); info.push(['비교 기간', cr ? cr.from + ' ~ ' + cr.to : '없음', cr ? (C.dayDiff(cr.from, cr.to) + 1) + '일' : '']); }
+      if (cur.id !== 'promo' && cur.id !== 'itemadmin' && cur.id !== 'supply') { info.push(['조회 기간', S.from + ' ~ ' + S.to, (C.dayDiff(S.from, S.to) + 1) + '일']); info.push(['비교 기간', cr ? cr.from + ' ~ ' + cr.to : '없음', cr ? (C.dayDiff(cr.from, cr.to) + 1) + '일' : '']); }
       var on = [].map.call(box.querySelectorAll('[role="tab"][aria-selected="true"], .viewtoggle [aria-pressed="true"]'), xText).filter(Boolean);
       if (on.length) info.push(['보는 방식', on.join(' / ')]);
       var cur2 = box.querySelector('.aicur b'); if (cur2) info.push(['품목', xText(cur2)]);
@@ -2338,7 +2478,7 @@
       // 3) 일자 × 채널 × 품목 (매출, 홈, 상품 화면): 날짜마다 품목별 수량과 매출을 한 줄씩
       var cube = xCube(cur.id);
       if (cube) add(cube.name, cube.rows);
-      X.writeFile(wb, '톰토미_' + cur.label.replace(/[\/]/g, '_') + (cur.id === 'promo' || cur.id === 'itemadmin' ? '_' + today() : '_' + S.from + '_' + S.to) + '.xlsx');
+      X.writeFile(wb, '톰토미_' + cur.label.replace(/[\/]/g, '_') + (cur.id === 'promo' || cur.id === 'itemadmin' || cur.id === 'supply' ? '_' + today() : '_' + S.from + '_' + S.to) + '.xlsx');
       XMSG = '받았습니다 (시트 ' + wb.SheetNames.length + '개)';
     }).catch(function (e) { XMSG = '만들지 못했습니다: ' + (e && e.message); }).then(function () { render(); setTimeout(function () { if (XMSG !== '만드는 중…') { XMSG = ''; render(); } }, 6000); });
   }
@@ -2359,7 +2499,7 @@
     h += '</div><button type="button" class="fbbtn" data-act="fbopen">🐞 버그, 개선 제보하기</button><div class="side-status"><b class="' + (ok ? 'ok' : 'chk') + '">' + (ok ? '데이터 정상' : '확인 필요') + '</b><span>네이버 판매 ' + mdot(hl.lastNaver) + '까지</span><span>주문 ' + mdot(hl.lastOrders) + '까지</span>' + (function () { var a = backupAge(); return a === null ? '<button type="button" class="bkwarn" data-act="view" data-key="data">이 브라우저 백업 기록 없음</button>' : a > 7 ? '<button type="button" class="bkwarn" data-act="view" data-key="data">백업한 지 ' + a + '일 지남</button>' : ''; })() + '</div></nav>';
     var canX = !!EXPORTABLE[cur.id];
     h += '<main class="main"><header class="head"><div class="head-t"><h1>' + cur.label + '</h1><span>데이터 기준일 ' + dot(DATA.last) + '</span></div>' + (canX ? '<div class="head-x"><button type="button" class="chip" data-act="xall"' + (XMSG === '만드는 중…' ? ' disabled' : '') + '>지금 화면 전체를 엑셀로 받기</button>' + (XMSG ? '<small>' + esc(XMSG) + '</small>' : '') + '</div>' : '') + '</header>';
-    if (cur.id !== 'data' && cur.id !== 'promo' && cur.id !== 'itemadmin' && cur.id !== 'feedback') h += periodBar(); // 데이터 관리, 프로모션은 위의 조회 기간과 상관없음
+    if (cur.id !== 'data' && cur.id !== 'promo' && cur.id !== 'itemadmin' && cur.id !== 'feedback' && cur.id !== 'supply') h += periodBar(); // 데이터 관리, 프로모션은 위의 조회 기간과 상관없음
     h += viewHtml(cur);
     h += '</main></div>' + (FB.open ? fbModalHtml() : '');
     app.innerHTML = h;
@@ -2384,6 +2524,18 @@
     if (act === 'rsmode') { RS.mode = key === 'over' ? 'over' : 'fill'; RS.confirm = ''; RS.err = ''; render(); return; }
     if (act === 'rscancel') { RS.bk = null; RS.diff = null; RS.name = ''; RS.err = ''; RS.confirm = ''; render(); return; }
     if (act === 'rsrun') { rsRun(); return; }
+    if (act === 'spnew') { SP.form = spFormOf(null); SP.edit = ''; SP.err = ''; SP.msg = ''; render(); return; }
+    if (act === 'spedit') { if (SP.edit === key) { SP.edit = ''; SP.form = null; } else { SP.edit = key; SP.form = spFormOf(spGet(key)); SP.hist = ''; } SP.err = ''; SP.msg = ''; spRefresh(); return; }
+    if (act === 'sphist') { SP.hist = SP.hist === key ? '' : key; if (SP.hist) { SP.edit = ''; SP.form = null; } spRefresh(); return; }
+    if (act === 'spcancel') { SP.form = null; SP.edit = ''; SP.err = ''; render(); return; }
+    if (act === 'spsave') { spSave(); return; }
+    if (act === 'spdelask') { SP.delAsk = key; spRefresh(); return; }
+    if (act === 'spdelno') { SP.delAsk = ''; spRefresh(); return; }
+    if (act === 'spdel') { spDelete(key); return; }
+    if (act === 'spbox') { SP.box = key; S.spage = 0; render(); return; }
+    if (act === 'sptpl') { spTemplate(); return; }
+    if (act === 'spplanno') { SP.plan = null; render(); return; }
+    if (act === 'spplansave') { if (SP.plan && SP.plan.recs.length) spWrite(SP.plan.recs, '엑셀에서 ' + SP.plan.add + '개 추가, ' + SP.plan.change + '개 고쳤습니다.'); return; }
     if (act === 'fbopen') { FB.open = true; FB.err = ''; render(); var t = document.getElementById('fbtext'); if (t) t.focus(); return; }
     if (act === 'fbclose') { var tx = document.getElementById('fbtext'); if (tx) FB.text = tx.value; FB.open = false; FB.err = ''; render(); return; }
     if (act === 'fbkind') { var tk = document.getElementById('fbtext'); if (tk) FB.text = tk.value; FB.kind = key === 'idea' ? 'idea' : 'bug'; render(); return; }
@@ -2471,6 +2623,9 @@
   function onChange(ev) {
     var el = ev.target; if (!el.matches) return;
     if (el.matches('input[type="file"][data-act="iaimg"]')) { iaImage(el.getAttribute('data-key'), el.files && el.files[0]); return; }
+    if (el.matches('input[type="file"][data-act="spimg"]')) { spImage(el.getAttribute('data-key'), el.files && el.files[0]); el.value = ''; return; }
+    if (el.matches('input[type="file"][data-act="spxls"]')) { spUpload(el.files && el.files[0]); el.value = ''; return; }
+    if (el.matches('[data-sp]')) { if (SP.form) SP.form[el.getAttribute('data-sp')] = el.value; return; }
     if (el.matches('input[type="file"][data-act="fbfile"]')) { var tf = document.getElementById('fbtext'); if (tf) FB.text = tf.value; fbAttach(el.files && el.files[0]); el.value = ''; return; }
     if (el.matches('select[data-fbst]')) { fbSetStatus(el.getAttribute('data-fbst'), el.value); return; }
     if (el.matches('input[type="file"][data-act="rsfile"]')) { rsLoad(el.files && el.files[0]); el.value = ''; return; }
@@ -2489,7 +2644,7 @@
     if (el.matches('[data-pf]')) { if (PR.form) { PR.form[el.getAttribute('data-pf')] = el.value; if (el.tagName === 'SELECT') render(); } return; } // 글자 칸은 다시 그리지 않는다 (누르던 버튼이 사라지지 않게)
     if (!el.matches('input[data-act], select[data-act]')) return;
     var act = el.getAttribute('data-act'), v = el.value;
-    if (act === 'aiq' || act === 'pq' || act === 'plq' || act === 'iaq') return;
+    if (act === 'aiq' || act === 'pq' || act === 'plq' || act === 'iaq' || act === 'spq') return;
     if (act === 'psize') { S.psize = PSIZES.indexOf(+v) >= 0 ? +v : 10; PFIELDS.forEach(function (f) { S[f] = 0; }); save(); render(); return; } // 검색칸에서 포커스가 빠질 때 목록을 다시 그리면 누르던 결과가 사라져 클릭이 무시된다
     if (act === 'q') return; // 검색어는 input 이벤트로만 받는다 (다시 그릴 때 옛 검색칸의 change가 지운 검색어를 되살리지 않게)
     if (act === 'upfiles') { onUpload(el.files); el.value = ''; return; }
@@ -2517,6 +2672,8 @@
     if (el.matches('[data-pf]')) { if (PR.form) { PR.form[el.getAttribute('data-pf')] = el.value; PR.msg = ''; var pm = document.getElementById('pmsg'); if (pm) pm.hidden = true; } return; }
     if (el.matches('[data-rs="confirm"]')) { RS.confirm = el.value; return; }
     if (el.matches('[data-fb="text"]')) { FB.text = el.value; return; }
+    if (el.matches('[data-sp]')) { if (SP.form) { SP.form[el.getAttribute('data-sp')] = el.value; var sm = document.getElementById('spmsg'); if (sm) sm.hidden = true; SP.err = ''; } return; }
+    if (el.matches('input[data-act="spq"]')) { SP.q = el.value; S.spage = 0; SP.edit = ''; SP.form = SP.form && !SP.form.id ? SP.form : null; SP.hist = ''; var st = document.getElementById('sptbl'); if (st) st.innerHTML = spTableHtml(); return; }
     if (el.matches('[data-ia]')) { if (IA.form) { IA.form[el.getAttribute('data-ia')] = el.value; var im = document.getElementById('iamsg'); if (im) im.hidden = true; IA.err = ''; } return; }
     if (el.matches('input[data-act="iaq"]')) { IA.q = el.value; S.ipage = 0; IA.edit = ''; IA.form = null; IA.hist = ''; var it = document.getElementById('iatbl'); if (it) it.innerHTML = iaTableHtml(); return; }
     if (el.matches('[data-pl]')) { if (el.tagName === 'INPUT' && el.type === 'text') { PL[el.getAttribute('data-pl')] = el.value; var po = document.getElementById('plout'); if (po) po.innerHTML = planOutHtml(); } return; }

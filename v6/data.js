@@ -14,7 +14,7 @@
   function loadSupabase() {
     var all = [];
     function page(offset) {
-      var url = SUPABASE_URL + '/rest/v1/tomtomi_data?select=channel,date,data&channel=not.in.(itemImg,feedback)&order=channel,date&limit=' + PAGE + '&offset=' + offset; // 상품 이미지와 제보(캡처 포함)는 무거워서 그 화면에서만 따로 불러온다
+      var url = SUPABASE_URL + '/rest/v1/tomtomi_data?select=channel,date,data&channel=not.in.(itemImg,feedback,supplyImg)&order=channel,date&limit=' + PAGE + '&offset=' + offset; // 상품 이미지와 제보(캡처 포함)는 무거워서 그 화면에서만 따로 불러온다
       return fetch(url, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } })
         .then(function (res) { if (!res.ok) throw new Error('데이터 서버 응답 오류 (HTTP ' + res.status + ')'); return res.json(); })
         .then(function (rows) {
@@ -100,6 +100,12 @@
   }
 
   // 상품 이미지 (channel=itemImg, date=품목코드, 줄여서 저장한 작은 사진): 상품 관리 화면에서만 불러온다
+  // 소모품, 비품 이미지 (channel=supplyImg, date=비품 id): 소모품, 비품 관리 화면에서만 불러온다
+  function loadSupplyImages() {
+    return fetch(SUPABASE_URL + '/rest/v1/tomtomi_data?select=date,data&channel=eq.supplyImg', { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } })
+      .then(function (res) { if (!res.ok) throw new Error('이미지를 불러오지 못했습니다 (HTTP ' + res.status + ')'); return res.json(); })
+      .then(function (rows) { var m = {}; (rows || []).forEach(function (r) { var e = (r.data || [])[0]; if (e && e.img) m[r.date] = e.img; }); return m; });
+  }
   function loadImages() {
     return fetch(SUPABASE_URL + '/rest/v1/tomtomi_data?select=date,data&channel=eq.itemImg', { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } })
       .then(function (res) { if (!res.ok) throw new Error('이미지를 불러오지 못했습니다 (HTTP ' + res.status + ')'); return res.json(); })
@@ -202,5 +208,5 @@
     });
   }
 
-  root.TTData = { load: load, saveCost: saveCost, saveRows: saveRows, loadImages: loadImages, snapshot: snapshot, loadFeedback: loadFeedback, loadFeedbackHook: loadFeedbackHook, loadWebhook: loadWebhook, loadOnline: loadOnline, sendSlack: sendSlack };
+  root.TTData = { load: load, saveCost: saveCost, saveRows: saveRows, loadImages: loadImages, loadSupplyImages: loadSupplyImages, snapshot: snapshot, loadFeedback: loadFeedback, loadFeedbackHook: loadFeedbackHook, loadWebhook: loadWebhook, loadOnline: loadOnline, sendSlack: sendSlack };
 })(window);
