@@ -2103,11 +2103,11 @@
     return h + '<p class="note">이 주소를 아는 사람은 누구나 그 채널에 글을 보낼 수 있으니 다른 곳에 붙여넣지 마세요.</p></section>';
   }
   var WF = { state: 'idle', url: '', msg: '', err: '', saving: false };
-  function fbHookLoad() { if (WF.state !== 'idle') return; WF.state = 'loading'; root.TTData.loadFeedbackHook().then(function (u) { WF.url = u || ''; }).then(function () { WF.state = 'ready'; if (S.view === 'slack') { var el = document.getElementById('wfstat'); if (el) el.innerHTML = fbHookStat(); } }); }
+  function fbHookLoad() { if (WF.state !== 'idle') return; WF.state = 'loading'; root.TTData.loadFeedbackHook().then(function (u) { WF.url = u || ''; }).then(function () { WF.state = 'ready'; if (S.view === 'feedback') { var el = document.getElementById('wfstat'); if (el) el.innerHTML = fbHookStat(); } }); }
   function fbHookStat() { return WF.state !== 'ready' ? '확인 중…' : WF.url ? '설정됨: ' + esc(WF.url.slice(0, 46)) + '…' : '아직 없음 (제보는 저장되지만 슬랙 알림은 가지 않습니다)'; }
   function fbHookCardHtml() {
     fbHookLoad();
-    var h = '<section class="card" aria-label="제보 알림 받을 곳"><div class="card-h"><h2>제보 알림 받을 곳</h2><span class="hint">버그, 개선 제보 알림만 따로 받는 곳입니다. 리포트 채널로는 보내지 않습니다</span></div>';
+    var h = '<section class="card" aria-label="제보 알림 받을 곳"><div class="card-h"><h2>제보 알림 받을 곳 (슬랙 웹훅)</h2><span class="hint">제보가 들어오면 여기로만 알림이 갑니다. 리포트 채널로는 보내지 않습니다</span></div>';
     h += '<p class="note">지금 상태: <span id="wfstat">' + fbHookStat() + '</span></p>';
     h += '<div class="aipick"><div class="aibox"><input id="wfurl" type="url" placeholder="https://hooks.slack.com/… (DM이나 나만 있는 채널의 웹훅)" autocomplete="off"></div><button type="button" class="btn" data-act="wfsave"' + (WF.saving ? ' disabled' : '') + '>' + (WF.saving ? '저장 중…' : '저장') + '</button>' + (WF.url ? '<button type="button" class="chip" data-act="wfoff">알림 끄기</button>' : '') + '</div>';
     if (WF.msg) h += '<p class="note"><b>' + esc(WF.msg) + '</b></p>';
@@ -2196,9 +2196,9 @@
     if (!FB.list && FB.state !== 'loading' && FB.state !== 'fail') fbLoad();
     var h = '<section class="card" aria-label="제보 목록"><div class="card-h"><h2>제보 목록</h2><span class="hint">대시보드를 쓰다가 남긴 버그, 개선 제보입니다. Claude에게 "제보 확인해줘"라고 하면 읽고 처리합니다</span><button type="button" class="btn" data-act="fbopen">+ 새 제보</button></div>';
     if (FB.err && !FB.open) h += '<p class="note"><b class="warn">' + esc(FB.err) + '</b></p>';
-    if (!FB.list) return h + '<p class="note">' + (FB.state === 'fail' ? '불러오지 못했습니다. 새로고침해 주세요.' : '불러오는 중…') + '</p></section>';
+    if (!FB.list) return h + '<p class="note">' + (FB.state === 'fail' ? '불러오지 못했습니다. 새로고침해 주세요.' : '불러오는 중…') + '</p></section>' + fbHookCardHtml();
     var cnt = { open: 0, all: FB.list.length }; FB.list.forEach(function (r) { if (r.status !== '완료' && r.status !== '보류') cnt.open++; });
-    h += '<div class="viewtoggle" role="group" aria-label="보기"><button type="button" class="chip" data-act="fbfilter" data-key="open" aria-pressed="' + (FB.filter === 'open') + '">처리할 것 ' + cnt.open + '</button><button type="button" class="chip" data-act="fbfilter" data-key="all" aria-pressed="' + (FB.filter === 'all') + '">전체 ' + cnt.all + '</button></div></section>';
+    h += '<div class="viewtoggle" role="group" aria-label="보기"><button type="button" class="chip" data-act="fbfilter" data-key="open" aria-pressed="' + (FB.filter === 'open') + '">처리할 것 ' + cnt.open + '</button><button type="button" class="chip" data-act="fbfilter" data-key="all" aria-pressed="' + (FB.filter === 'all') + '">전체 ' + cnt.all + '</button></div></section>' + fbHookCardHtml();
     var list = FB.list.filter(function (r) { return FB.filter === 'all' || (r.status !== '완료' && r.status !== '보류'); });
     h += '<section class="card flush" aria-label="제보"><div class="scroll"><table class="tbl wrap fbtbl"><thead><tr><th scope="col">받은 때</th><th scope="col">종류</th><th scope="col">내용</th><th scope="col">화면</th><th scope="col">상태</th></tr></thead><tbody>';
     if (!list.length) h += '<tr><td colspan="5" class="none">' + (FB.list.length ? '처리할 제보가 없습니다.' : '아직 제보가 없습니다. 왼쪽 아래 [버그, 개선 제보하기]로 남길 수 있어요.') + '</td></tr>';
@@ -2246,7 +2246,7 @@
     h += '<div class="plan-f"><span>' + (SL.edited ? '직접 고친 문구입니다. <button type="button" class="chip" data-act="slreset">처음 문구로 되돌리기</button>' : '') + '</span>';
     h += '<button type="button" class="chip" data-act="slcopy">복사하기</button> <button type="button" class="btn" data-act="slsend"' + (SL.sending ? ' disabled' : '') + '>' + (SL.sending ? '보내는 중…' : '슬랙으로 보내기') + '</button></div>';
     if (SL.msg) h += '<p class="note"><b>' + esc(SL.msg) + '</b></p>';
-    h += '</section>' + hookCardHtml() + fbHookCardHtml();
+    h += '</section>' + hookCardHtml();
     return h;
   }
   function copyText(t) {
