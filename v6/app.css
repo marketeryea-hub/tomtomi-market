@@ -391,3 +391,9 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; color
 .fbfull { white-space: normal; line-height: 1.6; margin: 0 0 10px; }
 .fbshot { max-width: 420px; max-height: 260px; border: 1px solid var(--line); border-radius: 8px; cursor: zoom-in; }
 .fbbigimg { position: fixed; z-index: 61; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: calc(100vw - 48px); max-height: calc(100vh - 48px); border-radius: 10px; background: #fff; cursor: zoom-out; }
+
+/* 소모품, 비품 */
+.sptbl td.spbox { font-weight: 700; white-space: nowrap; }
+.sptbl td.spbox.same { border-top-color: transparent; }
+.spboxes { margin-top: 14px; }
+.spboxes .chip small { color: var(--sub); font-weight: 400; margin-left: 4px; }

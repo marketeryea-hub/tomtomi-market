@@ -150,6 +150,7 @@
     out.costVer = costPick(raw.skuCost);
     out.promos = promoList(raw.promo);
     out.itemInfo = itemInfo(raw.itemInfo);
+    out.supply = supplyList(raw.supply);
 
     // 조회 가능한 범위: 채널별 첫 날짜와 마지막 날짜
     function span(rows) {
@@ -928,6 +929,22 @@
     return { hist: list, changed: true };
   }
 
+  /* ───────── 소모품, 비품 ─────────
+   * raw.supply: 비품 1개 = 1줄 { d: id, id, box(창고/박스), name, code, price(구매가), qty(수량), memo, hist: [{ at, price, qty }], del }
+   * 같은 id는 마지막 저장분, del 표시가 있으면 목록에서 뺀다. 정렬: 창고(박스) → 품목명
+   */
+  function supplyList(raw) {
+    var m = {};
+    (raw || []).forEach(function (e) { if (!e || !e.id) return; if (!m[e.id] || String(e.updated || '') >= String(m[e.id].updated || '')) m[e.id] = e; });
+    return Object.keys(m).map(function (k) { return m[k]; }).filter(function (e) { return !e.del; }).map(function (e) {
+      return { id: e.id, box: String(e.box || '').trim() || '(창고 미지정)', name: String(e.name || '').trim(), code: String(e.code || '').trim(), price: num(e.price), qty: num(e.qty), memo: e.memo || '', hist: e.hist || [], updated: e.updated || '' };
+    }).sort(function (a, b) { return a.box < b.box ? -1 : a.box > b.box ? 1 : a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
+  }
+  function supplyBoxes(list) {
+    var m = {}; list.forEach(function (e) { var b = m[e.box] || (m[e.box] = { box: e.box, n: 0, qty: 0, amount: 0 }); b.n++; b.qty += e.qty; b.amount += e.price * e.qty; });
+    return Object.keys(m).sort().map(function (k) { return m[k]; });
+  }
+
   /* ───────── 유입 (네이버) ───────── */
   function spanOf(rows) { var f = '', l = ''; rows.forEach(function (e) { if (!f || e.d < f) f = e.d; if (e.d > l) l = e.d; }); return { first: f, last: l }; }
   var TR_FIELDS = ['visits', 'orders', 'rev'];
@@ -1230,6 +1247,7 @@
     skuMapParse: skuMapParse, skuMapMerge: skuMapMerge, skuUnmappedList: skuUnmappedList, skuMapStats: skuMapStats, skuCodeText: skuCodeText,
     skuAggregate: skuAggregate, skuUnmapped: skuUnmapped, skuParseOpt: skuParseOpt, orderCheck: orderCheck,
     costPick: costPick, costIndex: costIndex, costAt: costAt, costMerge: costMerge, products: products, productSeries: productSeries, items: items, itemOrder: itemOrder, adTree: adTree, adPathSeries: adPathSeries, adItemDaily: adItemDaily, adItemList: adItemList, coupAdCode: coupAdCode, AD_OTHER: AD_OTHER, trafficDaily: trafficDaily, trafficBucket: trafficBucket, trafficTotal: trafficTotal, trafficPaths: trafficPaths, trafficItems: trafficItems, trafficOrder: trafficOrder, pageCodes: pageCodes, queryTop: queryTop, custDemo: custDemo, itemSeries: itemSeries, itemMaster: itemMaster, NONE: NONE, COUP_MAP: COUP_MAP,
+    supplyList: supplyList, supplyBoxes: supplyBoxes,
     itemInfo: itemInfo, priceAt: priceAt, priceMerge: priceMerge, ITEM_PARTS: ITEM_PARTS,
     itemTrend: itemTrend, itemOther: itemOther, itemDays: itemDays, trendBuckets: trendBuckets, BULK_QTY: BULK_QTY,
     adPlanRef: adPlanRef, adPlanCalc: adPlanCalc,
